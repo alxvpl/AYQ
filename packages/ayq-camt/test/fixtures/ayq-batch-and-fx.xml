@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Измислен ден с двете форми, които измерените 212 файла НЕ съдържат, но които
+  схемата допуска и които биха колабирали тихо, ако записът беше един на <Ntry>:
+  batch-нат запис с два <TxDtls> и валутна операция с AmtDtls, CcyXchg и Chrgs.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-20260601-0001</MsgId>
+      <CreDtTm>2026-06-02T03:09:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0123456789.2026-06-01</Id>
+      <CreDtTm>2026-06-02T03:09:00</CreDtTm>
+      <Acct>
+        <Id><IBAN>NL00TEST0123456789</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+
+      <!-- Batch: един запис, две транзакции. Сумата на <Ntry> е сборът. -->
+      <Ntry>
+        <Amt Ccy="EUR">180.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-01</Dt></BookgDt>
+        <ValDt><Dt>2026-06-01</Dt></ValDt>
+        <AcctSvcrRef>2026060100000001</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>ICDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <Btch>
+            <MsgId>BATCH-2026-06-01</MsgId>
+            <NbOfTxs>2</NbOfTxs>
+            <TtlAmt Ccy="EUR">180.00</TtlAmt>
+            <CdtDbtInd>DBIT</CdtDbtInd>
+          </Btch>
+          <TxDtls>
+            <Refs><EndToEndId>BATCH-A</EndToEndId></Refs>
+            <Amt Ccy="EUR">120.00</Amt>
+            <CdtDbtInd>DBIT</CdtDbtInd>
+            <RltdPties>
+              <Cdtr><Nm>TESTVERHUURDER B.V.</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>NL00TEST0777000222</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>Huur juni 2026</Ustrd></RmtInf>
+          </TxDtls>
+          <TxDtls>
+            <Refs><EndToEndId>BATCH-B</EndToEndId></Refs>
+            <Amt Ccy="EUR">60.00</Amt>
+            <CdtDbtInd>DBIT</CdtDbtInd>
+            <RltdPties>
+              <Cdtr><Nm>TESTVERZEKERAAR N.V.</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>NL00TEST0888000333</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>Premie juni 2026</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- Валутна операция: платено в USD, осчетоводено в EUR, с такса. -->
+      <Ntry>
+        <Amt Ccy="EUR">92.11</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-01</Dt></BookgDt>
+        <ValDt><Dt>2026-06-02</Dt></ValDt>
+        <AcctSvcrRef>2026060100000002</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <Chrgs>
+          <Amt Ccy="EUR">1.15</Amt>
+          <CdtDbtInd>DBIT</CdtDbtInd>
+          <Br>DEBT</Br>
+        </Chrgs>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>CARD-USD-0091</EndToEndId></Refs>
+            <AmtDtls>
+              <InstdAmt><Amt Ccy="USD">99.00</Amt></InstdAmt>
+              <TxAmt>
+                <Amt Ccy="EUR">90.96</Amt>
+                <CcyXchg>
+                  <SrcCcy>USD</SrcCcy>
+                  <TrgtCcy>EUR</TrgtCcy>
+                  <XchgRate>1.0884</XchgRate>
+                </CcyXchg>
+              </TxAmt>
+            </AmtDtls>
+            <RmtInf><Ustrd>CCV*TESTWINKEL ONLINE</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+        <AddtlNtryInf>BEA, Apple Pay   CCV*TESTWINKEL ONLINE,PAS421 NR:00Z9Y8, 01.06.26/14:44   www.testwinkel.example</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

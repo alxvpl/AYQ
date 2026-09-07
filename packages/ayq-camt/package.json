@@ -1,0 +1,27 @@
+{
+  "name": "ayq-camt",
+  "version": "0.1.0",
+  "description": "AYQ CAMT.053 -> lossless intermediate bank record + counterparty resolution",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/xml2js": "^0.4.14",
+    "typescript": "^5.9.2"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "ayq-camt": "src/ayq-cli.ts"
+  }
+}
