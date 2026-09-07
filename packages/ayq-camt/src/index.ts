@@ -70,3 +70,20 @@ export type {
   AyqPaymentKind,
   AyqResolveOptions,
 } from './counterparty/ayq-counterparty-types.ts';
+
+export {
+  ayqLoadTargets,
+  ayqReadCamtFile,
+  ayqReadCamtZip,
+  ayqDecodeCamt,
+  type AyqLoadedFile,
+  type AyqFailedFile,
+} from './ayq-files.ts';
+export { ayqReadZip, type AyqZipEntry } from './ayq-zip.ts';
+export {
+  ayqEvaluateSpike,
+  AYQ_R001_EXPECTATIONS,
+  type AyqCheck,
+  type AyqExpectations,
+  type AyqSpikeVerdict,
+} from './ayq-verify.ts';

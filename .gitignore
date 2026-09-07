@@ -6,3 +6,6 @@ dist/
 data/
 *.zip
 /**/bankafschriften/
+
+# Отчетите от verify — агрегирани са, но не им е мястото в историята.
+ayq-camt-report.*
