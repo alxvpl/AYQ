@@ -9,3 +9,6 @@ data/
 
 # Reports from verify. Aggregate, but they do not belong in the history.
 ayq-camt-report.*
+
+# Actual budget data written by the headless import.
+budget-data/

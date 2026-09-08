@@ -1,0 +1,26 @@
+{
+  "name": "ayq-actual-bridge",
+  "version": "0.1.0",
+  "description": "AYQ intermediate bank records into Actual, headless (spike step 4)",
+  "main": "src/index.ts",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@actual-app/api": "^26.9.0"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.9.2"
+  }
+}

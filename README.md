@@ -22,12 +22,21 @@ Forking the whole Actual monorepo comes only after the spike passes.
 The spike is in progress. Steps 1 and 2 — measurement over 212 real daily
 CAMT.053 files — are done; the results live outside this repository.
 
-**Step 3 is this code.** [`packages/ayq-camt`](packages/ayq-camt) turns
-CAMT.053 into a lossless intermediate bank record and resolves the counterparty
-through a chain of evidence that starts at `BkTxCd` rather than at an IBAN.
+**Step 3.** [`packages/ayq-camt`](packages/ayq-camt) turns CAMT.053 into a
+lossless intermediate bank record and resolves the counterparty through a chain
+of evidence that starts at `BkTxCd` rather than at an IBAN. Its `verify` command
+checks the whole export against the measured criteria in one run; that run
+against the 212 real files is still outstanding, because the files live on the
+owner's machine and nowhere else.
 
-Steps 4 (headless loading through `@actual-app/api`) and 5 (one custom screen
-against the same API) have not been started.
+**Step 4.** [`packages/ayq-actual-bridge`](packages/ayq-actual-bridge) loads
+those records into Actual through the stable Node API, headless — no Actual UI,
+no sync server, no monorepo build — and reads the ledger back out. Amounts,
+resolved payees and deduplication across re-exports are asserted end to end.
+What Actual has no field for travels beside the budget as provenance.
+
+Step 5 — one screen of our own against the same API, listing transactions by
+normalised counterparty — has not been started.
 
 ## Rules
 
