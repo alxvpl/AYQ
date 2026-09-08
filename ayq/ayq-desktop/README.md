@@ -83,6 +83,13 @@ Determinism rests on three things, and `setup.mjs` enforces the first:
 - The rebuild is passed that same version explicitly rather than sniffing it.
 - `verify-native.mjs` opens a real database under Electron afterwards.
 
+`setup.mjs` runs npm through `ComSpec` explicitly on Windows rather than
+spawning `npm.cmd` and hoping. Since the CVE-2024-27980 fix, Node refuses to
+execute a batch file without a command shell, and the spawn fails before the
+process exists — no output, no exit code. The first Windows CI run failed
+exactly that way, so the script now also prints `result.error` whenever a spawn
+never starts.
+
 That last point is not ceremony. `better-sqlite3` binds lazily: its entry point
 imports cleanly on any ABI and only reaches for the `.node` when a database is
 opened. A gate that stops at `require` reports success while the engine is

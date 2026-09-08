@@ -52,6 +52,17 @@ const result = spawnSync(require('electron'), [probePath], {
 });
 rmSync(probePath, { force: true });
 
+// A spawn that never started prints nothing through `stdio: 'inherit'`, so the
+// error object is the only account of what went wrong. Without it the failure
+// reads as an ABI mismatch when it may be a missing Electron binary.
+if (result.error) {
+  process.stderr.write(
+    `\n[ayq-verify] failed to start Electron.\n` +
+      `[ayq-verify] ${result.error.stack ?? String(result.error)}\n`,
+  );
+  process.exit(1);
+}
+
 if (result.status !== 0) {
   process.stderr.write(
     `\n[ayq-verify] The native module does not load under Electron.\n` +

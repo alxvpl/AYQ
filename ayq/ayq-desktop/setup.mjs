@@ -23,15 +23,80 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const isWindows = process.platform === 'win32';
 
-function run(command, args, label) {
+// On Windows `npm` is `npm.cmd`, a batch file. Since the fix for
+// CVE-2024-27980, Node refuses to execute a `.cmd` without a command shell:
+// the spawn fails with EINVAL *before* the process exists, so there is no
+// output and no exit code to explain it. That is precisely what the first
+// Windows CI run produced — "installing dependencies" followed by "failed",
+// with nothing in between.
+//
+// So npm is invoked through ComSpec explicitly rather than through whatever
+// the platform happens to do with a bare name. `/d` skips any AutoRun script,
+// `/s` makes cmd strip exactly the outer quote pair, `/c` runs the line and
+// exits; `windowsVerbatimArguments` stops Node re-quoting what is already
+// quoted for cmd.
+function npmInvocation(args) {
+  if (!isWindows) return { command: 'npm', args, options: {} };
+
+  const line = ['npm', ...args].map(quoteForCmd).join(' ');
+  return {
+    command: process.env.ComSpec || 'cmd.exe',
+    args: ['/d', '/s', '/c', `"${line}"`],
+    options: { windowsVerbatimArguments: true },
+  };
+}
+
+// Everything this script passes is a plain token, but quoting is not left to
+// that assumption: an unquoted `&` or a space would let cmd read one argument
+// as two commands.
+function quoteForCmd(argument) {
+  return /^[A-Za-z0-9_@:.,+=/\\-]+$/.test(argument) ? argument : `"${argument}"`;
+}
+
+function run(command, args, label, options = {}) {
   process.stdout.write(`\n[ayq-setup] ${label}\n`);
-  const result = spawnSync(command, args, { cwd: here, stdio: 'inherit' });
+  process.stdout.write(`[ayq-setup] > ${command} ${args.join(' ')}\n`);
+
+  const result = spawnSync(command, args, {
+    cwd: here,
+    stdio: 'inherit',
+    ...options,
+  });
+
+  // A spawn that never started reports nothing on stdio, so the error object
+  // is the only account of what happened. Printing it is not optional: without
+  // it CI shows `failed: installing dependencies` and no cause at all.
+  if (result.error) {
+    process.stderr.write(
+      `\n[ayq-setup] failed to start: ${label}\n` +
+        `[ayq-setup] ${result.error.stack ?? String(result.error)}\n` +
+        `[ayq-setup] platform ${process.platform}, ComSpec ${
+          process.env.ComSpec ?? '(unset)'
+        }\n`,
+    );
+    process.exit(1);
+  }
+
+  if (result.signal) {
+    process.stderr.write(
+      `\n[ayq-setup] failed: ${label} — killed by ${result.signal}\n`,
+    );
+    process.exit(1);
+  }
+
   if (result.status !== 0) {
-    process.stderr.write(`\n[ayq-setup] failed: ${label}\n`);
+    process.stderr.write(
+      `\n[ayq-setup] failed: ${label} — exit code ${result.status}\n`,
+    );
     process.exit(result.status ?? 1);
   }
+}
+
+function runNpm(args, label) {
+  const { command, args: spawnArgs, options } = npmInvocation(args);
+  run(command, spawnArgs, label, options);
 }
 
 const manifest = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
@@ -48,14 +113,12 @@ if (!/^\d+\.\d+\.\d+$/.test(electronVersion ?? '')) {
   process.exit(1);
 }
 
-run(
-  npm,
+runNpm(
   existsSync(join(here, 'package-lock.json')) ? ['ci'] : ['install'],
   'installing dependencies',
 );
 
-run(
-  npm,
+runNpm(
   [
     'exec',
     '--no',

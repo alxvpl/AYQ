@@ -12,7 +12,7 @@
     "smoke": "node start.mjs --smoke --require-host \"electron utilityProcess\"",
     "start:debug-node-engine": "node start.mjs --engine node",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --test-concurrency=1 test/*.test.ts"
+    "test": "npm run build && node --test --test-concurrency=1 \"test/*.test.ts\""
   },
   "license": "MIT",
   "private": true,
