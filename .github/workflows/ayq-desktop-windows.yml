@@ -153,11 +153,36 @@ jobs:
           if (-not $setup) { throw 'electron-builder produced no installer' }
           Write-Host "installer : $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
 
-          # /S is NSIS's silent switch; the installer is per-user, so it needs
-          # no administrator and lands under the profile.
-          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
-          $exe = Join-Path $env:LOCALAPPDATA 'Programs\AYQ\AYQ.exe'
-          if (-not (Test-Path $exe)) { throw "nothing was installed at $exe" }
+          # /S is NSIS's silent switch and /D names the directory. The
+          # installer is per-user, so it needs no administrator; naming the
+          # directory means the check below looks where the files were actually
+          # asked to go rather than guessing at a default.
+          $target = Join-Path $env:RUNNER_TEMP 'ayq-install'
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$target" -Wait
+
+          # NSIS returns before it has finished writing: the silent installer
+          # exits while its own work continues, so waiting on the process is
+          # not waiting on the install. Wait for the file instead.
+          $exe = Join-Path $target 'AYQ.exe'
+          $deadline = (Get-Date).AddMinutes(3)
+          while (-not (Test-Path $exe) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+          }
+
+          if (-not (Test-Path $exe)) {
+            Write-Host "nothing at $exe; what is there instead:"
+            foreach ($place in @($target, (Join-Path $env:LOCALAPPDATA 'Programs'))) {
+              if (Test-Path $place) {
+                Write-Host "  $place :"
+                Get-ChildItem -Recurse -Depth 1 $place |
+                  Select-Object -First 40 -ExpandProperty FullName |
+                  ForEach-Object { Write-Host "    $_" }
+              } else {
+                Write-Host "  $place : absent"
+              }
+            }
+            throw "nothing was installed at $exe"
+          }
           Write-Host "installed : $exe"
 
           # A GUI subsystem binary writes nothing to this console, so the run
