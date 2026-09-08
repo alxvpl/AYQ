@@ -93,10 +93,42 @@ export type AyqImportSummary = {
  * Adding a capability means adding a member here, not a new IPC channel: there
  * is one channel, and the host relays it.
  */
+/**
+ * One row of the ledger, as the screen needs it.
+ *
+ * `payee` is the resolved counterparty — the point of the whole CAMT exercise —
+ * and not the bank's raw string. The engine reads these from the budget; the
+ * renderer formats them and nothing more.
+ */
+export type AyqLedgerRow = {
+  id: string;
+  /** YYYY-MM-DD, the booking date the import chose. */
+  date: string;
+  /** The normalised counterparty, null only when the budget has no payee. */
+  payee: string | null;
+  /** Signed integer cents, as the engine stores them. */
+  amountCents: number;
+  account: string;
+  accountId: string;
+  category: string | null;
+  /** Booked rather than pending, as the statement said. */
+  cleared: boolean;
+};
+
+export type AyqLedger = {
+  /** Newest first. */
+  rows: AyqLedgerRow[];
+  /** Every transaction in the budget, counted by the engine. */
+  total: number;
+  /** How many of them this answer carries. */
+  shown: number;
+};
+
 export type AyqRequestBody =
   | { kind: 'engine.status' }
   | { kind: 'import.pick' }
-  | { kind: 'import.camt'; path: string };
+  | { kind: 'import.camt'; path: string }
+  | { kind: 'transactions.list'; limit?: number };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };
@@ -105,6 +137,7 @@ export type AyqResponse =
   | { id: string; ok: true; kind: 'engine.status'; result: AyqEngineStatus }
   | { id: string; ok: true; kind: 'import.pick'; result: AyqPickedFile }
   | { id: string; ok: true; kind: 'import.camt'; result: AyqImportSummary }
+  | { id: string; ok: true; kind: 'transactions.list'; result: AyqLedger }
   | { id: string; ok: false; kind: 'error'; message: string };
 
 /**

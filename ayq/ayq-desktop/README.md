@@ -30,27 +30,38 @@ A test in `ayq-client` enforces the same rule on the source and on the built
 bundle, because a rule this easy to break by accident should not rest on
 memory.
 
-## The vertical slice
+## The screen
 
-One request, answered from a real budget:
+A ledger and one action. The requests behind it:
 
 ```ts
-{ id: string, kind: 'engine.status' }
-   → { id, ok: true,  kind: 'engine.status', result: AyqEngineStatus }
-   → { id, ok: false, kind: 'error', message: string }
+{ kind: 'engine.status' }                → AyqEngineStatus
+{ kind: 'transactions.list', limit? }    → AyqLedger
+{ kind: 'import.pick' }                  → AyqPickedFile
+{ kind: 'import.camt', path }            → AyqImportSummary
 ```
 
-Nothing in the answer is invented for the interface's benefit. Accounts come
-from `getAccounts()`, each balance from `getAccountBalance()` — computed by the
-engine's spreadsheet, not summed by the renderer — and the transaction count
-from `aqlQuery(q('transactions').calculate({ $count: 'id' }))`, so the number is
-the engine's own query language answering, not the length of a list that
-happened to be fetched.
+One channel carries all four; adding a capability adds a member to the request
+union, not an IPC channel.
 
-On first launch there is no budget to open, so the engine creates one with a
-single account and two invented entries. The response says so
-(`budgetCreated: true`) and the screen prints it, because a number whose origin
-is unclear is worse than no number.
+Nothing in an answer is invented for the interface's benefit. The rows come
+from one AQL query that joins the payee, the account and the category, ordered
+by date descending and then Actual's own intra-day `sort_order`, with the id
+breaking the last tie so two reads of an unchanged budget return the same list.
+Balances are `getAccountBalance()` — the engine's spreadsheet, not a sum in the
+renderer — and the count is `aqlQuery(q('transactions').calculate({ $count:
+'id' }))`, so it is the engine's query language answering rather than the
+length of a list that happened to be fetched.
+
+The counterparty on a row is the one the CAMT resolver decided at import time.
+The bank's raw string stays in the record and is never what a person is shown.
+
+On first launch there is no budget, so the engine creates one — and leaves it
+empty. No demo account, no invented entries: the screen says there is nothing
+yet and points at the import. It creates the budget through the handler
+`runImport` sits on, passing `avoidUpload`, because `runImport` ends by
+uploading to a sync server AYQ does not have and every first launch logged a
+failed cloud attempt for it. Actual's own packages are untouched.
 
 ## Importing a statement
 

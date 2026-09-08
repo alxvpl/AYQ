@@ -93,6 +93,9 @@ jobs:
       # The acceptance test. `--require-host` makes the development Node
       # fallback unable to satisfy it: if anything but the Electron utility
       # process answers, the smoke exits non-zero.
+      # `--require-empty` is the other half of removing the demo seed: a fresh
+      # AYQ opens a budget with nothing in it, and the run fails if anything
+      # invented is there.
       - name: Production smoke
         working-directory: ayq/ayq-desktop
         env:
@@ -100,6 +103,7 @@ jobs:
         run: >
           node start.mjs --smoke
           --require-host "electron utilityProcess"
+          --require-empty
           --screenshot "${{ runner.temp }}\ayq-desktop-windows.png"
 
       # The first real user feature, end to end on Windows: the renderer's own

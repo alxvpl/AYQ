@@ -25,6 +25,7 @@ import { buildZip } from '../../ayq-camt/test/ayq-zip-writer.ts';
 import type {
   AyqEngineStatus,
   AyqImportSummary,
+  AyqLedger,
   AyqRequest,
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -83,6 +84,14 @@ async function askStatus(
   return answer.result;
 }
 
+/** Reads the ledger and insists the engine answered that. */
+async function askLedger(id: string, dataDir: string): Promise<AyqLedger> {
+  const answer = await ask({ id, kind: 'transactions.list' }, dataDir);
+  assert.equal(answer.ok, true, `engine said: ${JSON.stringify(answer)}`);
+  assert.ok(answer.ok && answer.kind === 'transactions.list');
+  return answer.result;
+}
+
 /** Imports one CAMT file and insists on an import answer. */
 async function askImport(
   id: string,
@@ -95,7 +104,7 @@ async function askImport(
   return answer.result;
 }
 
-test('the engine answers engine.status from a real budget', async () => {
+test('a fresh budget is created, and it is empty', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
   const answer = await ask({ id: 'test-1', kind: 'engine.status' }, dataDir);
 
@@ -109,14 +118,19 @@ test('the engine answers engine.status from a real budget', async () => {
   assert.equal(status.budgetCreated, true, 'nothing existed in a fresh dir');
   assert.ok(status.budgetId.length > 0);
 
-  // The engine's own query language counted these, not the test.
-  assert.equal(status.transactionCount, 2);
+  // Empty means empty: no demo account, no invented entries. Both numbers are
+  // the engine's own, one from its spreadsheet and one from its query language.
+  assert.deepEqual(status.accounts, [], 'no account was invented');
+  assert.equal(status.transactionCount, 0, 'and no transaction either');
+});
 
-  assert.equal(status.accounts.length, 1);
-  const [account] = status.accounts;
-  assert.equal(account.name, 'AYQ demo account');
-  // 1250.00 in and 61.90 out, balanced by the engine's spreadsheet.
-  assert.equal(account.balanceCents, 125000 - 6190);
+test('the ledger of an empty budget is empty', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
+  const ledger = await askLedger('empty', dataDir);
+
+  assert.deepEqual(ledger.rows, []);
+  assert.equal(ledger.total, 0);
+  assert.equal(ledger.shown, 0);
 });
 
 test('a second launch reopens the budget instead of creating another', async () => {
@@ -128,7 +142,7 @@ test('a second launch reopens the budget instead of creating another', async () 
   const second = await askStatus('b', dataDir);
   assert.equal(second.budgetCreated, false, 'reopened, not recreated');
   assert.equal(second.budgetId, first.budgetId);
-  assert.equal(second.transactionCount, 2, 'no duplicate seeding');
+  assert.equal(second.transactionCount, 0, 'and still empty');
 });
 
 test('an unknown request kind is refused, not guessed at', async () => {
@@ -162,10 +176,8 @@ const fixture = join(
 test('a CAMT.053 file is imported through the real API', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
 
-  // The fresh budget the engine seeds carries two invented entries; the import
-  // adds to that, so the arithmetic below is stated rather than assumed.
   const before = await askStatus('before', dataDir);
-  assert.equal(before.transactionCount, 2);
+  assert.equal(before.transactionCount, 0, 'the budget starts empty');
 
   const summary = await askImport('import-1', dataDir, fixture);
 
@@ -176,7 +188,7 @@ test('a CAMT.053 file is imported through the real API', async () => {
   assert.equal(summary.failed, 0);
   assert.equal(summary.imported, 14, 'the engine added all fourteen');
   assert.equal(summary.duplicates, 0, 'nothing was there to duplicate');
-  assert.equal(summary.transactionCountAfter, 16, '2 seeded + 14 imported');
+  assert.equal(summary.transactionCountAfter, 14);
 
   // The account is named from the statement's IBAN, masked: two letters and
   // the last four, so two accounts stay distinguishable without the number
@@ -188,8 +200,106 @@ test('a CAMT.053 file is imported through the real API', async () => {
   // And the transactions are really in the budget, counted by the engine's own
   // query language rather than by the summary that just claimed them.
   const after = await askStatus('after', dataDir);
-  assert.equal(after.transactionCount, 16);
-  assert.equal(after.accounts.length, 2, 'the demo account and the imported one');
+  assert.equal(after.transactionCount, 14);
+  assert.equal(after.accounts.length, 1, 'the one account the statement named');
+  // 741.31 net across the month, balanced by the engine's spreadsheet.
+  assert.equal(after.accounts[0].balanceCents, 74131);
+});
+
+test('the imported transactions come back as ledger rows', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
+  await askImport('fill', dataDir, fixture);
+
+  const ledger = await askLedger('rows', dataDir);
+  assert.equal(ledger.total, 14, "the engine's count, not the list's length");
+  assert.equal(ledger.shown, 14);
+  assert.equal(ledger.rows.length, 14);
+
+  // Newest first, and the fixture's own month decides what that means.
+  assert.deepEqual(
+    ledger.rows.map(row => row.date),
+    [
+      '2026-06-30',
+      '2026-06-27',
+      '2026-06-25',
+      '2026-06-24',
+      '2026-06-21',
+      '2026-06-18',
+      '2026-06-17',
+      '2026-06-14',
+      '2026-06-11',
+      '2026-06-09',
+      '2026-06-05',
+      '2026-06-04',
+      '2026-06-03',
+      '2026-06-02',
+    ],
+  );
+
+  // The values are the fixture's, in cents, signed by CdtDbtInd.
+  const [newest] = ledger.rows;
+  assert.equal(newest.amountCents, -6190);
+  assert.equal(newest.payee, 'Testenergie Nederland B.V.');
+  assert.equal(newest.account, 'AYQ NL…6789');
+  assert.ok(newest.accountId.length > 0);
+  assert.equal(newest.cleared, true, 'the statement booked it');
+  assert.equal(newest.category, null, 'nothing categorises anything yet');
+
+  const salary = ledger.rows.find(row => row.amountCents > 0);
+  assert.equal(salary?.date, '2026-06-24');
+  assert.equal(salary?.amountCents, 125000);
+  assert.equal(salary?.payee, 'Testwerkgever B.V.');
+
+  // The counterparty is the resolver's, not the bank's string. Every card
+  // entry in this fixture arrives as "BEA, Betaalpas   ALBERT HEIJN 1234,PAS42…"
+  // and none of that reaches the row.
+  const card = ledger.rows.find(row => row.date === '2026-06-21');
+  assert.equal(card?.payee, 'Albert Heijn 1234');
+  for (const row of ledger.rows) {
+    assert.ok(row.payee !== null, 'every row names a counterparty');
+    assert.ok(
+      !/^BEA[,.]|PAS\d|Betaalpas/.test(row.payee ?? ''),
+      `the raw bank description reached the ledger: ${row.payee}`,
+    );
+  }
+
+  assert.equal(
+    ledger.rows.reduce((total, row) => total + row.amountCents, 0),
+    74131,
+    'and the month adds up',
+  );
+});
+
+test('a second read of an unchanged budget returns the same order', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
+  await askImport('fill', dataDir, fixture);
+
+  const first = await askLedger('once', dataDir);
+  const second = await askLedger('twice', dataDir);
+
+  assert.deepEqual(
+    second.rows.map(row => row.id),
+    first.rows.map(row => row.id),
+    'the ordering is the engine\'s, and it is total',
+  );
+});
+
+test('a limit returns the newest rows, and still counts them all', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
+  await askImport('fill', dataDir, fixture);
+
+  const answer = await ask(
+    { id: 'limited', kind: 'transactions.list', limit: 3 },
+    dataDir,
+  );
+  assert.ok(answer.ok && answer.kind === 'transactions.list');
+
+  assert.equal(answer.result.shown, 3);
+  assert.equal(answer.result.total, 14, 'the budget still holds fourteen');
+  assert.deepEqual(
+    answer.result.rows.map(row => row.date),
+    ['2026-06-30', '2026-06-27', '2026-06-25'],
+  );
 });
 
 test('importing the same file twice does not duplicate anything', async () => {
@@ -211,6 +321,11 @@ test('importing the same file twice does not duplicate anything', async () => {
     'the budget holds exactly what it held before the second import',
   );
   assert.equal(second.accountId, first.accountId, 'the same account, not a new one');
+
+  // And the ledger a person is looking at did not grow either.
+  const ledger = await askLedger('after', dataDir);
+  assert.equal(ledger.total, 14);
+  assert.equal(ledger.rows.length, 14);
 });
 
 test('a ZIP of statements is imported without being extracted', async () => {
@@ -238,5 +353,5 @@ test('a ZIP of statements is imported without being extracted', async () => {
   assert.equal(summary.failed, 0);
   assert.equal(summary.imported, 14, 'the fourteen distinct entries');
   assert.equal(summary.duplicates, 14, 'the second copy of each');
-  assert.equal(summary.transactionCountAfter, 16, '2 seeded + 14 imported');
+  assert.equal(summary.transactionCountAfter, 14);
 });

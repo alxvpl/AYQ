@@ -12,8 +12,11 @@
 // by the development fallback.
 //
 // `--import <file>` answers the smoke run's file picker with that file and
-// requires a second import of it to add nothing. Only fictional fixtures are
-// ever named here: a real statement stays on the machine it came from.
+// requires a second import of it to add nothing, and the ledger on screen to
+// match. Only fictional fixtures are ever named here: a real statement stays on
+// the machine it came from.
+//
+// `--require-empty` demands the opposite: a budget with nothing in it.
 
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -29,6 +32,8 @@ const flag = name => {
   return index >= 0 ? (argv[index + 1] ?? '') : null;
 };
 
+const has = name => argv.includes(`--${name}`);
+
 const env = { ...process.env };
 const engine = flag('engine');
 if (engine) env.AYQ_ENGINE_HOST = engine;
@@ -41,6 +46,9 @@ if (requireHost) env.AYQ_SMOKE_REQUIRE_HOST = requireHost;
 // process forked twice over, and its working directory is nobody's business.
 const importFile = flag('import');
 if (importFile) env.AYQ_SMOKE_IMPORT = resolve(importFile);
+// `--require-empty` fails the smoke unless the budget it opened holds nothing:
+// a fresh AYQ has no demo account and no invented entries to hold.
+if (has('require-empty')) env.AYQ_SMOKE_REQUIRE_EMPTY = '1';
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

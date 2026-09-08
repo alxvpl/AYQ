@@ -19,6 +19,8 @@ import type {
   AyqAccountSummary,
   AyqEngineStatus,
   AyqImportSummary,
+  AyqLedger,
+  AyqLedgerRow,
   AyqRequest,
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -83,6 +85,9 @@ type AyqOpenBudget = { budgetId: string; created: boolean };
 /** Set once the budget is open, so a second request does not reopen it. */
 let opened: AyqOpenBudget | null = null;
 
+/** What `api.init` hands back: the same engine, one level lower. */
+let lib: Awaited<ReturnType<typeof api.init>> | null = null;
+
 /** The budget's id, or null when it does not exist yet. */
 async function findBudgetId(): Promise<string | null> {
   const match = (await api.getBudgets()).find(
@@ -97,7 +102,7 @@ async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
   // On a first launch the directory does not exist yet, and the API expects to
   // be handed one that does.
   mkdirSync(dataDir, { recursive: true });
-  await api.init({ dataDir });
+  lib = await api.init({ dataDir });
 
   const existing = await findBudgetId();
   if (existing !== null) {
@@ -106,18 +111,18 @@ async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
     return opened;
   }
 
-  // First launch: there is nothing to open yet. A budget with one account and
-  // two entries is created so the engine has something real to compute from.
-  // These are invented values, and the interface is told they were created.
-  await api.runImport(BUDGET_NAME, async () => {
-    const accountId = await api.createAccount(
-      { name: 'AYQ demo account', offbudget: false },
-      0,
-    );
-    await api.addTransactions(accountId, [
-      { date: '2026-06-24', amount: 125000, payee_name: 'Testwerkgever B.V.' },
-      { date: '2026-06-30', amount: -6190, payee_name: 'Testenergie Nederland' },
-    ]);
+  // A new budget, and nothing in it. No demo account, no invented entries: an
+  // empty AYQ is empty, and the screen says so rather than showing figures
+  // nobody recognises.
+  //
+  // `runImport` is the public way to make a budget from nothing, and it ends by
+  // uploading the result to a sync server — which AYQ does not have, so every
+  // first launch logged a failed cloud attempt. The handler underneath it takes
+  // `avoidUpload`, so the budget is created without ever reaching for a network
+  // AYQ is not on. Nothing in Actual's own packages is touched to get this.
+  await lib.send('create-budget', {
+    budgetName: BUDGET_NAME,
+    avoidUpload: true,
   });
 
   const created = await findBudgetId();
@@ -161,6 +166,84 @@ async function transactionCount(): Promise<number> {
     api.q('transactions').calculate({ $count: 'id' }),
   )) as { data?: number };
   return Number(counted.data ?? 0);
+}
+
+/** How many rows the screen is given when it does not ask for a number. */
+const LEDGER_LIMIT = 200;
+
+/**
+ * The ledger, newest first.
+ *
+ * One AQL query rather than a fetch per account: the engine's own query
+ * language joins the payee, the account and the category, so what comes back is
+ * already the row the screen draws. `payee` is the counterparty the CAMT
+ * resolver decided at import time — the bank's raw string stays in the record
+ * and is not what a person is shown.
+ *
+ * The ordering is the engine's: date descending, then Actual's own intra-day
+ * `sort_order`. The id breaks the last tie, so two runs over an unchanged
+ * budget return the same list in the same order rather than whatever SQLite
+ * felt like.
+ */
+async function ledger(dataDir: string, limit: number): Promise<AyqLedger> {
+  await openBudget(dataDir);
+
+  const answer = (await api.aqlQuery(
+    api
+      .q('transactions')
+      .select([
+        'id',
+        'date',
+        'amount',
+        'cleared',
+        'sort_order',
+        { payee: 'payee.name' },
+        { account: 'account.name' },
+        { accountId: 'account.id' },
+        { category: 'category.name' },
+      ])
+      .orderBy([{ date: 'desc' }, { sort_order: 'desc' }])
+      .limit(limit),
+  )) as { data?: AyqQueriedRow[] };
+
+  const rows = (answer.data ?? [])
+    .slice()
+    .sort(compareRows)
+    .map(
+      (row): AyqLedgerRow => ({
+        id: String(row.id),
+        date: String(row.date),
+        payee: row.payee ?? null,
+        amountCents: Number(row.amount ?? 0),
+        account: row.account ?? '',
+        accountId: String(row.accountId ?? ''),
+        category: row.category ?? null,
+        cleared: row.cleared === true,
+      }),
+    );
+
+  return { rows, total: await transactionCount(), shown: rows.length };
+}
+
+/** What the query hands back, before it is narrowed to what the screen needs. */
+type AyqQueriedRow = {
+  id: string;
+  date: string;
+  amount: number;
+  cleared: boolean;
+  sort_order: number | null;
+  payee: string | null;
+  account: string | null;
+  accountId: string | null;
+  category: string | null;
+};
+
+function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
+  if (left.date !== right.date) return left.date < right.date ? 1 : -1;
+  const leftOrder = left.sort_order ?? 0;
+  const rightOrder = right.sort_order ?? 0;
+  if (leftOrder !== rightOrder) return rightOrder - leftOrder;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
 /**
@@ -317,6 +400,13 @@ channel.onMessage(message => {
           ok: true,
           kind: 'engine.status',
           result: await status(dataDir),
+        };
+      } else if (request?.kind === 'transactions.list') {
+        response = {
+          id: request.id,
+          ok: true,
+          kind: 'transactions.list',
+          result: await ledger(dataDir, request.limit ?? LEDGER_LIMIT),
         };
       } else if (request?.kind === 'import.camt') {
         response = {

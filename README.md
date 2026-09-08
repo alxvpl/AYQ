@@ -72,12 +72,16 @@ ayq-client ──▶ typed IPC ──▶ Electron background ──▶ @actual-a
 ```
 
 The renderer imports no Actual code and has no `require` and no `process` to
-reach it with; a test enforces that on the source and on the built bundle. One
-request, `engine.status`, is answered from a real budget: balances computed by
-the engine's spreadsheet, the transaction count by its own query language.
+reach it with; a test enforces that on the source and on the built bundle.
 
-**CAMT.053 import.** The first real feature: a button, the host's native
-picker, and the engine reading the file. `.xml` and `.zip` both, the ZIP never
+**The ledger.** The screen is the transactions, newest first, each with the
+counterparty the CAMT resolver decided rather than the bank's raw string. They
+come from one AQL query in the engine; the renderer formats and computes no
+money. A new AYQ is genuinely empty — no demo account, no invented entries —
+and says so, with the import as the obvious next step.
+
+**CAMT.053 import.** A button, the host's native picker, and the engine
+reading the file. `.xml` and `.zip` both, the ZIP never
 extracted. The parsing is the spike's `ayq-camt` unchanged, the mapping the
 bridge's, the import `@actual-app/api`'s — and importing the same export twice
 adds nothing, because every transaction carries the record's own stable key.

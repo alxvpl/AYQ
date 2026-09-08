@@ -204,6 +204,15 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
+/** One published attribute from the page, as a string. */
+async function dataset(window: BrowserWindow, name: string): Promise<string> {
+  return String(
+    await window.webContents.executeJavaScript(
+      `document.body.dataset.${name} || ""`,
+    ),
+  );
+}
+
 /**
  * Runs one import the way a person would: by clicking the button.
  *
@@ -220,11 +229,7 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
   const deadline = Date.now() + 240_000;
   let state = '';
   while (Date.now() < deadline) {
-    state = String(
-      await window.webContents.executeJavaScript(
-        'document.body.dataset.ayqImportState || ""',
-      ),
-    );
+    state = await dataset(window, 'ayqImportState');
     if (state !== '' && state !== 'working') break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
@@ -233,13 +238,7 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
     throw new Error(`the import ended as ${state || 'timeout'}`);
   }
 
-  return JSON.parse(
-    String(
-      await window.webContents.executeJavaScript(
-        'document.body.dataset.ayqImportSummary || ""',
-      ),
-    ),
-  ) as AyqImportSummary;
+  return JSON.parse(await dataset(window, 'ayqImportSummary')) as AyqImportSummary;
 }
 
 /**
@@ -266,12 +265,24 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
     report('1', first);
     report('2', second);
 
+    // The screen's own ledger, not the import's word for it: the rows on the
+    // page have to be the engine's rows, or the import proved nothing a person
+    // can see.
+    const ledgerTotal = Number(await dataset(window, 'ayqLedgerTotal'));
+    const ledgerRows = Number(await dataset(window, 'ayqLedgerRows'));
+    process.stdout.write(
+      `[ayq-smoke] ledger: ${ledgerRows} rows shown, ` +
+        `${ledgerTotal} transactions in the budget\n`,
+    );
+
     const held =
       first.imported > 0 &&
       first.failed === 0 &&
       second.imported === 0 &&
       second.duplicates === first.prepared &&
-      second.transactionCountAfter === first.transactionCountAfter;
+      second.transactionCountAfter === first.transactionCountAfter &&
+      ledgerTotal === second.transactionCountAfter &&
+      ledgerRows === second.transactionCountAfter;
 
     process.stdout.write(
       `[ayq-smoke] duplicate protection: ${held ? 'HOLDS' : 'FAILED'}\n`,
@@ -301,23 +312,28 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
 
   let state = '';
   while (Date.now() < deadline) {
-    state = String(
-      await window.webContents.executeJavaScript(
-        'document.body.dataset.ayqState || ""',
-      ),
-    );
+    state = await dataset(window, 'ayqState');
     if (state !== '') break;
     await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
+  // A fresh AYQ holds nothing: no demo account, no invented entries. The run
+  // that does not import is the one that can prove it.
+  let emptyOk = true;
+  if (process.env.AYQ_SMOKE_REQUIRE_EMPTY === '1') {
+    const total = await dataset(window, 'ayqLedgerTotal');
+    const rows = await dataset(window, 'ayqLedgerRows');
+    emptyOk = total === '0' && rows === '0';
+    process.stdout.write(
+      `[ayq-smoke] empty budget: ${total} transactions, ${rows} rows -> ` +
+        `${emptyOk ? 'EMPTY' : 'NOT EMPTY'}\n`,
+    );
   }
 
   // Before the capture, so the window in the artifact shows the outcome.
   const importOk = smokeImport === '' || (await checkImport(window));
 
-  const engineHost = String(
-    await window.webContents.executeJavaScript(
-      'document.body.dataset.ayqEngineHost || ""',
-    ),
-  );
+  const engineHost = await dataset(window, 'ayqEngineHost');
   const body = String(
     await window.webContents.executeJavaScript(
       'document.getElementById("ayq-body").innerText',
@@ -343,7 +359,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   process.stdout.write(`[ayq-smoke] rendered:\n${body}\n`);
 
   engine?.stop();
-  app.exit(state === 'ready' && hostOk && importOk ? 0 : 1);
+  app.exit(state === 'ready' && hostOk && emptyOk && importOk ? 0 : 1);
 }
 
 void app.whenReady().then(() => {
