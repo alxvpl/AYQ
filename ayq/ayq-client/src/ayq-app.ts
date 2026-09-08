@@ -43,6 +43,8 @@ const VIEWS: Array<{ id: AyqView; label: string }> = [
 
 type AyqState = {
   view: AyqView;
+  /** What stopped the last load, if anything did. */
+  failure: string | null;
   status: AyqEngineStatus | null;
   summary: AyqSummary | null;
   transactions: AyqTransactionsState;
@@ -53,6 +55,7 @@ type AyqState = {
 
 const state: AyqState = {
   view: 'transactions',
+  failure: null,
   status: null,
   summary: null,
   transactions: ayqEmptyTransactionsState(),
@@ -205,11 +208,11 @@ async function refresh(reload: boolean): Promise<void> {
     try {
       await loadShell();
       await loadView();
+      state.failure = null;
       clearProblem();
-      markState('ready');
     } catch (error) {
-      showProblem(error instanceof Error ? error.message : String(error));
-      markState('error');
+      state.failure = error instanceof Error ? error.message : String(error);
+      showProblem(state.failure);
     } finally {
       loading = false;
     }
@@ -230,7 +233,13 @@ function draw(): void {
   drawTabs();
   drawView();
   drawFooter();
+
+  // Published last, once the screen actually says what the attributes claim.
+  // Marking first meant the acceptance run could read "error" and then print a
+  // body that had not been redrawn yet — the state of a screen that no longer
+  // existed.
   markLedger();
+  markState(state.failure === null ? 'ready' : 'error');
 }
 
 function drawSummary(): void {
@@ -296,6 +305,17 @@ function drawTabs(): void {
 function drawView(): void {
   const target = byId('ayq-body');
   if (!target) return;
+
+  // A load that failed must not leave the view sitting on "reading…". The bar
+  // above carries the engine's own words; this says which part of the screen
+  // is missing, and why there is nothing under it.
+  if (state.failure !== null) {
+    target.replaceChildren(
+      ayqElement('p', 'empty-title', 'The budget could not be read.'),
+      ayqElement('pre', 'error', state.failure),
+    );
+    return;
+  }
 
   switch (state.view) {
     case 'transactions':

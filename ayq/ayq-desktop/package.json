@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 --test-timeout=180000 \"test/*.test.ts\"",
     "icon": "node build-icon.mjs",
-    "package": "npm run build && npm run icon && electron-builder --win nsis --x64"
+    "package": "npm run build && npm run icon && electron-builder --win nsis --x64 --publish=never"
   },
   "license": "MIT",
   "private": true,
@@ -75,6 +75,13 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "AYQ"
-    }
+    },
+    "publish": null
+  },
+  "author": "AYQ",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alxvpl/AYQ.git",
+    "directory": "ayq/ayq-desktop"
   }
 }

@@ -135,7 +135,7 @@ jobs:
           # Nothing is published from here; saying so keeps electron-builder
           # from reaching for a release API it has no business calling.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npm run package -- --publish never
+        run: npm run package
 
       - name: Install it and run what was installed
         shell: pwsh
