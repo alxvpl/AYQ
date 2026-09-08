@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
+<title>AYQ</title>
+<style>
+  :root { --bg:#fbfbfa; --panel:#fff; --ink:#16171a; --muted:#6b6f76; --line:#e4e4e1; --accent:#1b4d3e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121316; --panel:#191a1e; --ink:#e8e8e6; --muted:#9a9ea6; --line:#2a2c31; --accent:#7fc4a8; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  main { max-width:640px; margin:0 auto; padding:40px 28px; }
+  .eyebrow { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0 0 6px; }
+  h1 { font-size:24px; font-weight:600; letter-spacing:-.01em; margin:0 0 24px; }
+  h2 { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:500; margin:26px 0 8px; }
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:6px 20px; margin:0; }
+  .facts dt { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .facts dd { margin:0; font-variant-numeric:tabular-nums; }
+  .accounts { list-style:none; margin:0; padding:0; }
+  .accounts li {
+    display:flex; justify-content:space-between; gap:16px;
+    padding:10px 12px; background:var(--panel); border:1px solid var(--line);
+    border-radius:3px; margin-bottom:6px;
+  }
+  .accounts .amount { font-variant-numeric:tabular-nums; color:var(--accent); font-weight:550; }
+  .note { color:var(--muted); font-size:12.5px; border-left:2px solid var(--accent); padding-left:10px; }
+  .error { color:#b3261e; white-space:pre-wrap; font-family:ui-monospace, Menlo, monospace; font-size:12px; }
+  .waiting { color:var(--muted); }
+  footer { margin-top:32px; font-size:11.5px; color:var(--muted); line-height:1.6; }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">AYQ desktop</p>
+  <h1>Engine status</h1>
+  <div id="ayq-body"><p class="waiting">Asking the engine…</p></div>
+  <footer>
+    This renderer imports no Actual code. It asks
+    <code>window.ayq.request()</code>, the host forwards it to the engine
+    process, and the engine is the only place <code>@actual-app/api</code> is
+    loaded.
+  </footer>
+</main>
+<script type="module" src="./ayq-client.js"></script>
+</body>
+</html>

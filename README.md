@@ -60,8 +60,21 @@ The spike is complete and closed: verified against the real 212-file export —
 212 files, 0 parse errors, 567 entries, 350 with `<TxDtls>`, 217 without,
 `BkTxCd` and both dates on all 567, no batched entry, and no unread XML path.
 
-The monorepo fork is in place. Next are `ayq-client` and `ayq-desktop`, and the
-typed IPC that replaces the spike's HTTP host.
+The monorepo fork is in place.
+
+**The desktop skeleton.** [`ayq/ayq-client`](ayq/ayq-client) is the AYQ
+renderer — ours, not Actual's — and [`ayq/ayq-desktop`](ayq/ayq-desktop) is the
+Electron host that serves it. The boundary the spike proved over HTTP is now
+typed IPC:
+
+```
+ayq-client ──▶ typed IPC ──▶ Electron background ──▶ @actual-app/api
+```
+
+The renderer imports no Actual code and has no `require` and no `process` to
+reach it with; a test enforces that on the source and on the built bundle. One
+request, `engine.status`, is answered from a real budget: balances computed by
+the engine's spreadsheet, the transaction count by its own query language.
 
 ## Rules
 
@@ -69,7 +82,9 @@ typed IPC that replaces the spike's HTTP host.
   Every fixture is invented.
 - Everything new is named `ayq-*`.
 - `packages/` is upstream's. Changes there are merge debt; AYQ code goes in
-  `ayq/`.
+  `ayq/`. `desktop-client` in particular is never the AYQ interface.
+- The renderer never imports the engine. Everything crosses the typed IPC
+  contract in `ayq-client/src/ayq-ipc-contract.ts`.
 - CIVION is not touched. When the AYQ-to-CIVION contract comes up: AYQ is an
   untrusted source, entering as a candidate, never as an accepted payment.
 - English is the language of this repository: documentation, code,

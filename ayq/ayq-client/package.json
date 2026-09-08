@@ -1,0 +1,22 @@
+{
+  "name": "ayq-client",
+  "version": "0.1.0",
+  "description": "The AYQ renderer. Talks to the engine only through the typed IPC contract.",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node build.mjs && node --test test/*.test.ts"
+  },
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "main": "src/ayq-ipc-contract.ts"
+}

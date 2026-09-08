@@ -1,0 +1,33 @@
+{
+  "name": "ayq-desktop",
+  "version": "0.1.0",
+  "description": "The AYQ Electron host: window, typed IPC relay, and the forked Actual engine.",
+  "main": "dist/ayq-main.js",
+  "scripts": {
+    "build:client": "node ../ayq-client/build.mjs",
+    "build": "npm run build:client && node build.mjs",
+    "start": "node start.mjs",
+    "start:node-engine": "node start.mjs --engine node",
+    "smoke": "node start.mjs --engine node --smoke",
+    "rebuild:engine": "electron-rebuild -o better-sqlite3 --build-from-source -f",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test --test-concurrency=1 test/*.test.ts"
+  },
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@actual-app/api": "^26.9.0",
+    "better-sqlite3": "^13.0.3",
+    "electron": "^43.4.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "@types/node": "^22.15.3",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

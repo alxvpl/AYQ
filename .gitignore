@@ -131,3 +131,6 @@ ayq-camt-report.*
 
 # Actual budget data written by the AYQ headless import.
 budget-data/
+
+# AYQ desktop build output.
+ayq/*/dist/
