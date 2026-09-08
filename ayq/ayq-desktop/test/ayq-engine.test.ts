@@ -1,6 +1,6 @@
-// The engine half of the slice, exercised without a window.
+// The engine half of the application, exercised without a window.
 //
-// The built engine is forked as a child and asked the same request the
+// The built engine is forked as a child and asked the same requests the
 // renderer sends. It answers from a real budget it opens or creates, so a pass
 // here means the Actual API really ran — Electron only has to carry the
 // message afterwards.
@@ -11,6 +11,9 @@
 // fail with ERR_DLOPEN_FAILED. Electron as Node is the same runtime the
 // utilityProcess engine gets, minus the window — so this exercises the ABI
 // that ships rather than a second one that does not.
+//
+// The fixture is invented, and deliberately so: a real statement never enters
+// this repository, never reaches CI and never lands in an artifact.
 
 import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
@@ -23,35 +26,37 @@ import { test } from 'node:test';
 
 import { buildZip } from '../../ayq-camt/test/ayq-zip-writer.ts';
 import type {
-  AyqEngineStatus,
-  AyqImportSummary,
-  AyqLedger,
   AyqRequest,
+  AyqRequestBody,
   AyqResponse,
+  AyqResults,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 // `require('electron')` resolves to the binary's path, not to Electron's own
 // module surface, which is exactly what is wanted here.
 const electronPath = createRequire(import.meta.url)('electron') as string;
 
-const enginePath = join(
-  dirname(fileURLToPath(import.meta.url)),
+const here = dirname(fileURLToPath(import.meta.url));
+const enginePath = join(here, '..', 'dist', 'ayq-engine.js');
+const fixture = join(
+  here,
   '..',
-  'dist',
-  'ayq-engine.js',
+  '..',
+  'ayq-camt',
+  'test',
+  'fixtures',
+  'ayq-abn-month.xml',
 );
 
-async function ask(
+let counter = 0;
+
+async function send(
   request: AyqRequest,
   dataDir: string,
 ): Promise<AyqResponse> {
   const child = fork(enginePath, [], {
     execPath: electronPath,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      AYQ_DATA_DIR: dataDir,
-    },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', AYQ_DATA_DIR: dataDir },
     stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
   });
 
@@ -73,81 +78,69 @@ async function ask(
   }
 }
 
-/** Asks for the status and insists the engine answered that, not something else. */
-async function askStatus(
-  id: string,
+/**
+ * Asks one question and insists the engine answered that question.
+ *
+ * Every test reads through this, so a response of the wrong kind — or an error
+ * where a result was expected — fails where it happened rather than three
+ * assertions later.
+ */
+async function ask<K extends keyof AyqResults>(
   dataDir: string,
-): Promise<AyqEngineStatus> {
-  const answer = await ask({ id, kind: 'engine.status' }, dataDir);
+  body: AyqRequestBody & { kind: K },
+): Promise<AyqResults[K]> {
+  counter += 1;
+  const id = `test-${counter}`;
+  const answer = await send({ ...body, id }, dataDir);
+
+  assert.equal(answer.id, id, 'the correlation id comes back untouched');
   assert.equal(answer.ok, true, `engine said: ${JSON.stringify(answer)}`);
-  assert.ok(answer.ok && answer.kind === 'engine.status');
-  return answer.result;
+  assert.ok(answer.ok && answer.kind === body.kind);
+  return answer.result as AyqResults[K];
 }
 
-/** Reads the ledger and insists the engine answered that. */
-async function askLedger(id: string, dataDir: string): Promise<AyqLedger> {
-  const answer = await ask({ id, kind: 'transactions.list' }, dataDir);
-  assert.equal(answer.ok, true, `engine said: ${JSON.stringify(answer)}`);
-  assert.ok(answer.ok && answer.kind === 'transactions.list');
-  return answer.result;
-}
-
-/** Imports one CAMT file and insists on an import answer. */
-async function askImport(
-  id: string,
-  dataDir: string,
-  path: string,
-): Promise<AyqImportSummary> {
-  const answer = await ask({ id, kind: 'import.camt', path }, dataDir);
-  assert.equal(answer.ok, true, `engine said: ${JSON.stringify(answer)}`);
-  assert.ok(answer.ok && answer.kind === 'import.camt');
-  return answer.result;
+async function budget(): Promise<string> {
+  return mkdtemp(join(tmpdir(), 'ayq-desktop-'));
 }
 
 test('a fresh budget is created, and it is empty', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
-  const answer = await ask({ id: 'test-1', kind: 'engine.status' }, dataDir);
+  const dataDir = await budget();
+  const status = await ask(dataDir, { kind: 'engine.status' });
 
-  assert.equal(answer.id, 'test-1', 'the correlation id comes back untouched');
-  assert.equal(answer.ok, true, `engine said: ${JSON.stringify(answer)}`);
-  if (!answer.ok || answer.kind !== 'engine.status') return;
-
-  const status = answer.result;
   assert.match(status.apiVersion, /^\d+\.\d+\.\d+/, 'a real API version');
   assert.equal(status.engineHost, 'node child_process fork');
   assert.equal(status.budgetCreated, true, 'nothing existed in a fresh dir');
   assert.ok(status.budgetId.length > 0);
+  assert.equal(status.storeVersion, 1, 'the AYQ store declares its version');
 
-  // Empty means empty: no demo account, no invented entries. Both numbers are
-  // the engine's own, one from its spreadsheet and one from its query language.
-  assert.deepEqual(status.accounts, [], 'no account was invented');
-  assert.equal(status.transactionCount, 0, 'and no transaction either');
-});
+  // Empty means empty: no demo account, no invented entries.
+  assert.deepEqual(await ask(dataDir, { kind: 'accounts.list' }), []);
 
-test('the ledger of an empty budget is empty', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
-  const ledger = await askLedger('empty', dataDir);
-
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
   assert.deepEqual(ledger.rows, []);
   assert.equal(ledger.total, 0);
-  assert.equal(ledger.shown, 0);
+
+  const summary = await ask(dataDir, { kind: 'summary' });
+  assert.equal(summary.transactionCount, 0);
+  assert.equal(summary.totalBalanceCents, 0);
+  assert.equal(summary.month, null);
+  assert.equal(summary.lastImportAt, null);
 });
 
 test('a second launch reopens the budget instead of creating another', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
+  const dataDir = await budget();
 
-  const first = await askStatus('a', dataDir);
+  const first = await ask(dataDir, { kind: 'engine.status' });
   assert.equal(first.budgetCreated, true);
 
-  const second = await askStatus('b', dataDir);
+  const second = await ask(dataDir, { kind: 'engine.status' });
   assert.equal(second.budgetCreated, false, 'reopened, not recreated');
   assert.equal(second.budgetId, first.budgetId);
-  assert.equal(second.transactionCount, 0, 'and still empty');
 });
 
 test('an unknown request kind is refused, not guessed at', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
-  const answer = await ask(
+  const dataDir = await budget();
+  const answer = await send(
     { id: 'c', kind: 'engine.nonsense' } as unknown as AyqRequest,
     dataDir,
   );
@@ -158,28 +151,9 @@ test('an unknown request kind is refused, not guessed at', async () => {
   assert.match(answer.message, /unknown request kind/);
 });
 
-/**
- * The fixture is invented, and deliberately so: a real statement never enters
- * this repository, never reaches CI and never lands in an artifact. Fourteen
- * entries, three merchants, one direct debit, one salary — all fictional.
- */
-const fixture = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  'ayq-camt',
-  'test',
-  'fixtures',
-  'ayq-abn-month.xml',
-);
-
 test('a CAMT.053 file is imported through the real API', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
-
-  const before = await askStatus('before', dataDir);
-  assert.equal(before.transactionCount, 0, 'the budget starts empty');
-
-  const summary = await askImport('import-1', dataDir, fixture);
+  const dataDir = await budget();
+  const summary = await ask(dataDir, { kind: 'import.camt', path: fixture });
 
   assert.equal(summary.files, 1, 'one CAMT document in the file');
   assert.equal(summary.records, 14, 'the parser produced every entry');
@@ -194,67 +168,57 @@ test('a CAMT.053 file is imported through the real API', async () => {
   // the last four, so two accounts stay distinguishable without the number
   // travelling into the interface, a screenshot or a CI log.
   assert.equal(summary.accountName, 'AYQ NL…6789');
-  assert.ok(summary.accountId.length > 0);
-  assert.equal(summary.budgetName, 'AYQ');
 
-  // And the transactions are really in the budget, counted by the engine's own
-  // query language rather than by the summary that just claimed them.
-  const after = await askStatus('after', dataDir);
-  assert.equal(after.transactionCount, 14);
-  assert.equal(after.accounts.length, 1, 'the one account the statement named');
+  const accounts = await ask(dataDir, { kind: 'accounts.list' });
+  assert.equal(accounts.length, 1);
   // 741.31 net across the month, balanced by the engine's spreadsheet.
-  assert.equal(after.accounts[0].balanceCents, 74131);
+  assert.equal(accounts[0].balanceCents, 74131);
+  assert.equal(accounts[0].transactionCount, 14);
 });
 
 test('the imported transactions come back as ledger rows', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
-  await askImport('fill', dataDir, fixture);
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
 
-  const ledger = await askLedger('rows', dataDir);
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
   assert.equal(ledger.total, 14, "the engine's count, not the list's length");
-  assert.equal(ledger.shown, 14);
   assert.equal(ledger.rows.length, 14);
 
   // Newest first, and the fixture's own month decides what that means.
-  assert.deepEqual(
-    ledger.rows.map(row => row.date),
-    [
-      '2026-06-30',
-      '2026-06-27',
-      '2026-06-25',
-      '2026-06-24',
-      '2026-06-21',
-      '2026-06-18',
-      '2026-06-17',
-      '2026-06-14',
-      '2026-06-11',
-      '2026-06-09',
-      '2026-06-05',
-      '2026-06-04',
-      '2026-06-03',
-      '2026-06-02',
-    ],
-  );
+  assert.deepEqual(ledger.rows.map(row => row.date), [
+    '2026-06-30',
+    '2026-06-27',
+    '2026-06-25',
+    '2026-06-24',
+    '2026-06-21',
+    '2026-06-18',
+    '2026-06-17',
+    '2026-06-14',
+    '2026-06-11',
+    '2026-06-09',
+    '2026-06-05',
+    '2026-06-04',
+    '2026-06-03',
+    '2026-06-02',
+  ]);
 
-  // The values are the fixture's, in cents, signed by CdtDbtInd.
   const [newest] = ledger.rows;
   assert.equal(newest.amountCents, -6190);
   assert.equal(newest.payee, 'Testenergie Nederland B.V.');
   assert.equal(newest.account, 'AYQ NL…6789');
-  assert.ok(newest.accountId.length > 0);
   assert.equal(newest.cleared, true, 'the statement booked it');
-  assert.equal(newest.category, null, 'nothing categorises anything yet');
+  assert.equal(newest.categoryId, null, 'nothing categorises anything yet');
 
   const salary = ledger.rows.find(row => row.amountCents > 0);
   assert.equal(salary?.date, '2026-06-24');
   assert.equal(salary?.amountCents, 125000);
   assert.equal(salary?.payee, 'Testwerkgever B.V.');
 
-  // The counterparty is the resolver's, not the bank's string. Every card
-  // entry in this fixture arrives as "BEA, Betaalpas   ALBERT HEIJN 1234,PAS42…"
-  // and none of that reaches the row.
-  const card = ledger.rows.find(row => row.date === '2026-06-21');
-  assert.equal(card?.payee, 'Albert Heijn 1234');
+  // The counterparty is canonical, not the terminal's variant: six Albert
+  // Heijn visits across three store numbers are one counterparty.
+  const albert = ledger.rows.filter(row => row.payee === 'Albert Heijn');
+  assert.equal(albert.length, 6, 'every store number collapsed into one name');
+
   for (const row of ledger.rows) {
     assert.ok(row.payee !== null, 'every row names a counterparty');
     assert.ok(
@@ -271,65 +235,254 @@ test('the imported transactions come back as ledger rows', async () => {
 });
 
 test('a second read of an unchanged budget returns the same order', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
-  await askImport('fill', dataDir, fixture);
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
 
-  const first = await askLedger('once', dataDir);
-  const second = await askLedger('twice', dataDir);
+  const first = await ask(dataDir, { kind: 'transactions.list' });
+  const second = await ask(dataDir, { kind: 'transactions.list' });
 
   assert.deepEqual(
     second.rows.map(row => row.id),
     first.rows.map(row => row.id),
-    'the ordering is the engine\'s, and it is total',
+    "the ordering is the engine's, and it is total",
   );
 });
 
-test('a limit returns the newest rows, and still counts them all', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
-  await askImport('fill', dataDir, fixture);
+test('the ledger can be searched and filtered', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
 
-  const answer = await ask(
-    { id: 'limited', kind: 'transactions.list', limit: 3 },
-    dataDir,
-  );
-  assert.ok(answer.ok && answer.kind === 'transactions.list');
+  const search = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { search: 'albert' },
+  });
+  assert.equal(search.total, 6, 'the counterparty, case-blind');
 
-  assert.equal(answer.result.shown, 3);
-  assert.equal(answer.result.total, 14, 'the budget still holds fourteen');
-  assert.deepEqual(
-    answer.result.rows.map(row => row.date),
-    ['2026-06-30', '2026-06-27', '2026-06-25'],
+  // What the bank said is searchable too, even though it is not shown.
+  const raw = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { search: 'apple pay' },
+  });
+  assert.equal(raw.total, 1);
+
+  const dated = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { from: '2026-06-20', to: '2026-06-27' },
+  });
+  assert.deepEqual(dated.rows.map(row => row.date), [
+    '2026-06-27',
+    '2026-06-25',
+    '2026-06-24',
+    '2026-06-21',
+  ]);
+
+  const uncategorised = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { uncategorised: true },
+  });
+  assert.equal(uncategorised.total, 14, 'nothing has a category yet');
+
+  const limited = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { limit: 3 },
+  });
+  assert.equal(limited.shown, 3);
+  assert.equal(limited.total, 14, 'the budget still holds fourteen');
+});
+
+test('a transaction explains where its name came from', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const card = ledger.rows.find(row => row.date === '2026-06-21');
+  assert.ok(card);
+
+  const detail = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: card.id,
+  });
+
+  assert.equal(detail.row.payee, 'Albert Heijn');
+  // The variant the terminal printed is kept, and it is not what is shown.
+  assert.match(detail.importedPayee ?? '', /ALBERT HEIJN 1234/);
+  assert.ok(detail.importedId && detail.importedId.length > 0);
+
+  const provenance = detail.provenance;
+  assert.ok(provenance, 'the import remembered what Actual has no field for');
+  assert.equal(provenance.counterpartyKey, 'ALBERT HEIJN');
+  assert.equal(provenance.resolvedBy, 'description');
+  assert.equal(provenance.kind, 'card-terminal');
+  assert.equal(provenance.bankTransactionCode, 'PMNT/CCRD/POSD');
+  assert.equal(provenance.valueDate, '2026-06-21');
+  assert.equal(provenance.file, 'ayq-abn-month.xml');
+
+  // The direct debit carries its mandate, which is what makes it a
+  // subscription rather than a habit.
+  const debit = ledger.rows.find(row => row.date === '2026-06-30');
+  const debitDetail = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: debit?.id ?? '',
+  });
+  assert.equal(debitDetail.provenance?.kind, 'direct-debit');
+  assert.ok(debitDetail.provenance?.mandateId);
+});
+
+test('a category can be set, remembered, and applied to the rest', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  assert.ok(categories.length > 0, 'Actual seeds its own categories');
+  const groceries = categories.find(category => !category.isIncome);
+  assert.ok(groceries);
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const albert = ledger.rows.filter(row => row.payee === 'Albert Heijn');
+  assert.equal(albert.length, 6);
+
+  // One decision, and the rule carries it to the other five.
+  const updated = await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: albert[0].id,
+    categoryId: groceries.id,
+    createRule: true,
+  });
+  assert.equal(updated.categoryId, groceries.id);
+
+  const rules = await ask(dataDir, { kind: 'rules.list' });
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].counterpartyKey, 'ALBERT HEIJN');
+  assert.equal(rules[0].categoryName, groceries.name);
+
+  const after = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { search: 'albert' },
+  });
+  assert.equal(
+    after.rows.filter(row => row.categoryId === groceries.id).length,
+    6,
+    'every visit to that shop, not just the one that was clicked',
   );
+
+  const others = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { uncategorised: true },
+  });
+  assert.equal(others.total, 8, 'and nothing else was touched');
+
+  // A category can be taken off again.
+  const cleared = await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: albert[0].id,
+    categoryId: null,
+  });
+  assert.equal(cleared.categoryId, null);
+
+  // Forgetting the rule leaves the categories it already set alone.
+  const remaining = await ask(dataDir, {
+    kind: 'rules.remove',
+    ruleId: rules[0].id,
+  });
+  assert.deepEqual(remaining, []);
+});
+
+test('rules survive a restart and are applied to a later import', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const category = categories.find(candidate => !candidate.isIncome);
+  assert.ok(category);
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const fuel = ledger.rows.find(row => row.payee === 'Testfuel');
+  assert.ok(fuel, 'the fuel stops are one counterparty too');
+
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: fuel.id,
+    categoryId: category.id,
+    createRule: true,
+  });
+
+  // A new engine process, reading the store from disk.
+  const rules = await ask(dataDir, { kind: 'rules.list' });
+  assert.equal(rules.length, 1);
+
+  const applied = await ask(dataDir, { kind: 'rules.apply' });
+  assert.equal(applied.categorised, 0, 'the import already applied them');
+
+  const fuelRows = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { search: 'testfuel' },
+  });
+  assert.equal(fuelRows.total, 4);
+  assert.ok(
+    fuelRows.rows.every(row => row.categoryId === category.id),
+    'all four, from one decision',
+  );
+});
+
+test('the recurring view finds the mandate and the rhythm', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const recurring = await ask(dataDir, { kind: 'recurring.list' });
+  const names = recurring.map(entry => entry.name);
+
+  // Six Albert Heijn visits across June are a habit with a rhythm; the salary
+  // is income and belongs in the summary, not here.
+  assert.ok(!names.includes('Testwerkgever B.V.'), 'income is not a subscription');
+  assert.ok(recurring.length > 0, 'something recurs in a month of shopping');
+
+  for (const entry of recurring) {
+    assert.ok(entry.occurrences >= 3, 'twice is a coincidence');
+    assert.ok(entry.averageAmountCents < 0, 'money going out');
+    assert.ok(entry.firstDate <= entry.lastDate);
+  }
+});
+
+test('the import history records what happened', async () => {
+  const dataDir = await budget();
+  assert.deepEqual(await ask(dataDir, { kind: 'imports.list' }), []);
+
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const history = await ask(dataDir, { kind: 'imports.list' });
+  assert.equal(history.length, 2, 'both runs, newest first');
+  assert.ok(history[0].at >= history[1].at);
+
+  assert.equal(history[1].imported, 14, 'the first put fourteen in');
+  assert.equal(history[0].imported, 0, 'the second put none in');
+  assert.equal(history[0].duplicates, 14);
+  assert.equal(history[0].file, 'ayq-abn-month.xml');
+  assert.equal(history[0].accountName, 'AYQ NL…6789');
+
+  const summary = await ask(dataDir, { kind: 'summary' });
+  assert.equal(summary.lastImportAt, history[0].at);
 });
 
 test('importing the same file twice does not duplicate anything', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
+  const dataDir = await budget();
 
-  const first = await askImport('once', dataDir, fixture);
+  const first = await ask(dataDir, { kind: 'import.camt', path: fixture });
   assert.equal(first.imported, 14);
 
-  const second = await askImport('twice', dataDir, fixture);
-
+  const second = await ask(dataDir, { kind: 'import.camt', path: fixture });
   assert.equal(second.records, 14, 'the same file was read again in full');
-  assert.equal(second.prepared, 14, 'and mapped again in full');
   assert.equal(second.imported, 0, 'but nothing new was added');
   assert.equal(second.duplicates, 14, 'every row matched one already there');
-  assert.equal(second.failed, 0);
-  assert.equal(
-    second.transactionCountAfter,
-    first.transactionCountAfter,
-    'the budget holds exactly what it held before the second import',
-  );
-  assert.equal(second.accountId, first.accountId, 'the same account, not a new one');
+  assert.equal(second.transactionCountAfter, first.transactionCountAfter);
+  assert.equal(second.accountId, first.accountId, 'the same account');
 
-  // And the ledger a person is looking at did not grow either.
-  const ledger = await askLedger('after', dataDir);
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
   assert.equal(ledger.total, 14);
-  assert.equal(ledger.rows.length, 14);
 });
 
 test('a ZIP of statements is imported without being extracted', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ayq-desktop-'));
+  const dataDir = await budget();
   const statement = await readFile(fixture, 'utf8');
 
   // The same fictional month, twice over, under the names an export would give
@@ -344,14 +497,29 @@ test('a ZIP of statements is imported without being extracted', async () => {
     ]),
   );
 
-  const summary = await askImport('zip', dataDir, archive);
-
+  const summary = await ask(dataDir, { kind: 'import.camt', path: archive });
   assert.equal(summary.file, 'ayq-statements.zip');
   assert.equal(summary.files, 2, 'both documents were read out of the archive');
   assert.equal(summary.records, 28, 'and both were parsed');
   assert.equal(summary.prepared, 14, 'the second copy of each was collapsed');
-  assert.equal(summary.failed, 0);
   assert.equal(summary.imported, 14, 'the fourteen distinct entries');
   assert.equal(summary.duplicates, 14, 'the second copy of each');
   assert.equal(summary.transactionCountAfter, 14);
+});
+
+test('the summary adds up what the ledger holds', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const summary = await ask(dataDir, { kind: 'summary' });
+  assert.equal(summary.transactionCount, 14);
+  assert.equal(summary.totalBalanceCents, 74131);
+  assert.equal(summary.month, '2026-06');
+  assert.equal(summary.monthIncomeCents, 125000);
+  // Everything that went out in June: the balance minus the salary.
+  assert.equal(summary.monthExpenseCents, 74131 - 125000);
+  assert.equal(summary.uncategorisedCount, 14);
+  assert.equal(summary.accounts.length, 1);
+  assert.ok(summary.counterpartyCount >= 5, 'the shops collapsed into a few');
+  assert.ok(summary.counterpartyCount < 14, 'and fewer than the rows');
 });

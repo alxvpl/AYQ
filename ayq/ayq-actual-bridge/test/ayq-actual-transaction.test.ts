@@ -53,7 +53,9 @@ test('a card entry gets the resolved payee and keeps what the bank said', () => 
     ayqResolveCounterparty(entry),
   );
 
-  assert.equal(transaction?.payee_name, 'ALBERT HEIJN 1234');
+  // Canonical, not the terminal's variant: the store number is stripped so
+  // every Albert Heijn is one counterparty.
+  assert.equal(transaction?.payee_name, 'ALBERT HEIJN');
   assert.equal(
     transaction?.imported_payee,
     'BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM',

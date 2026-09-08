@@ -6,47 +6,104 @@
       content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
 <title>AYQ</title>
 <style>
-  :root { --bg:#fbfbfa; --panel:#fff; --ink:#16171a; --muted:#6b6f76; --line:#e4e4e1; --accent:#1b4d3e; --in:#1b4d3e; }
+  :root {
+    --bg:#fbfbfa; --panel:#fff; --sunk:#f4f4f2; --ink:#16171a; --muted:#6b6f76;
+    --line:#e4e4e1; --accent:#1b4d3e; --in:#1b4d3e; --out:#3a3d42; --warn:#b3261e;
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#121316; --panel:#191a1e; --ink:#e8e8e6; --muted:#9a9ea6; --line:#2a2c31; --accent:#7fc4a8; --in:#7fc4a8; }
+    :root {
+      --bg:#121316; --panel:#191a1e; --sunk:#1f2126; --ink:#e8e8e6; --muted:#9a9ea6;
+      --line:#2a2c31; --accent:#7fc4a8; --in:#7fc4a8; --out:#c6c9cf; --warn:#f2b8b5;
+    }
   }
   * { box-sizing: border-box; }
   body {
     margin:0; background:var(--bg); color:var(--ink);
-    font:14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font:13.5px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing:antialiased;
   }
-  main { max-width:760px; margin:0 auto; padding:36px 28px 48px; }
-  .bar { display:flex; align-items:baseline; justify-content:space-between; gap:20px; margin:0 0 4px; }
-  h1 { font-size:22px; font-weight:600; letter-spacing:-.01em; margin:0; }
+  main { max-width:1080px; margin:0 auto; padding:26px 26px 44px; }
+
+  .bar { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+  h1 { font-size:20px; font-weight:600; letter-spacing:-.01em; margin:0; }
+  h2 { font-size:15px; font-weight:600; margin:0 0 10px; }
+  h3 { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:500; margin:16px 0 6px; }
+
   button {
     font:inherit; font-weight:550; color:var(--panel); background:var(--accent);
-    border:1px solid transparent; border-radius:3px; padding:8px 14px; cursor:pointer;
+    border:1px solid transparent; border-radius:3px; padding:7px 13px; cursor:pointer;
   }
   button:disabled { opacity:.55; cursor:default; }
+  button.quiet { background:transparent; color:var(--accent); border-color:var(--line); }
+  button.small { padding:3px 8px; font-size:12px; font-weight:500; }
 
-  #ayq-import-result { min-height:20px; margin:10px 0 22px; font-size:12.5px; color:var(--muted); }
-  .import-done { color:var(--ink); border-left:2px solid var(--accent); padding-left:10px; margin:0; }
-  .waiting, .muted { margin:0; color:var(--muted); }
-
-  .ledger { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:3px; }
-  .ledger th {
-    text-align:left; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
-    font-weight:500; color:var(--muted); padding:10px 12px; border-bottom:1px solid var(--line);
+  #ayq-problem {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin:14px 0 0; padding:9px 12px; border:1px solid var(--warn); border-radius:3px;
+    color:var(--warn); font-size:12.5px;
   }
-  .ledger td { padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
-  .ledger tr:last-child td { border-bottom:0; }
-  .col-date { white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--muted); width:1%; }
-  .col-account { white-space:nowrap; color:var(--muted); width:1%; }
+  #ayq-problem .problem-text { flex:1 1 320px; white-space:pre-wrap; }
+  #ayq-problem button { color:var(--warn); border-color:var(--warn); }
+
+  #ayq-import-result { min-height:18px; margin:9px 0 0; font-size:12.5px; color:var(--muted); }
+  .import-done { color:var(--ink); }
+
+  #ayq-summary { display:flex; flex-wrap:wrap; gap:10px; margin:18px 0 0; }
+  .figure {
+    display:flex; flex-direction:column; gap:2px; min-width:118px;
+    padding:9px 12px; background:var(--panel); border:1px solid var(--line); border-radius:3px;
+  }
+  .figure-label { font-size:10.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
+  .figure-value { font-size:16px; font-variant-numeric:tabular-nums; font-weight:550; }
+  .figure-value.in { color:var(--in); }
+
+  #ayq-tabs { display:flex; gap:2px; margin:22px 0 0; border-bottom:1px solid var(--line); }
+  .tab {
+    background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent;
+    border-radius:0; padding:8px 12px; font-weight:500;
+  }
+  .tab.current { color:var(--ink); border-bottom-color:var(--accent); font-weight:600; }
+
+  .filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:16px 0 12px; }
+  input, select {
+    font:inherit; color:var(--ink); background:var(--panel);
+    border:1px solid var(--line); border-radius:3px; padding:6px 8px;
+  }
+  input.search { flex:1 1 260px; }
+  .check { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12.5px; }
+  .check input { padding:0; }
+
+  .grid { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:3px; }
+  .grid th {
+    text-align:left; font-size:10.5px; letter-spacing:.07em; text-transform:uppercase;
+    font-weight:500; color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--line);
+  }
+  .grid td { padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .grid tr:last-child td { border-bottom:0; }
+  .grid tr.clickable { cursor:pointer; }
+  .grid tr.clickable:hover td { background:var(--sunk); }
+  .grid tr.open td { background:var(--sunk); }
+  .col-date { white-space:nowrap; color:var(--muted); width:1%; }
+  .col-account, .col-category { white-space:nowrap; color:var(--muted); width:1%; }
   .col-amount { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; width:1%; }
-  tr.in .col-amount { color:var(--in); font-weight:550; }
-  .ledger-count { margin:10px 2px 0; font-size:12px; color:var(--muted); }
+  .col-amount .in { color:var(--in); font-weight:550; }
+  .col-amount .out { color:var(--out); }
+  .count { margin:9px 2px 0; font-size:12px; color:var(--muted); }
 
-  .empty-title { margin:26px 0 6px; font-size:16px; font-weight:550; }
-  .empty-body { margin:0; max-width:46ch; color:var(--muted); }
+  .detail { margin:16px 0 0; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-radius:3px; }
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:5px 18px; margin:0; }
+  .facts dt { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); white-space:nowrap; }
+  .facts dd { margin:0; overflow-wrap:anywhere; }
+  .categorise { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  .categorise select { min-width:240px; }
+  .categorise .check { margin-top:8px; }
 
-  .error { color:#b3261e; white-space:pre-wrap; font-family:ui-monospace, Menlo, monospace; font-size:12px; }
-  footer { margin-top:36px; padding-top:12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted); }
+  .empty { padding:26px 2px; }
+  .empty-title { margin:22px 0 6px; font-size:15px; font-weight:550; }
+  .empty-body { margin:0; max-width:52ch; color:var(--muted); }
+  .muted { color:var(--muted); }
+
+  footer { margin-top:30px; padding-top:11px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -55,8 +112,14 @@
     <h1>AYQ</h1>
     <button id="ayq-import" type="button">Import CAMT.053</button>
   </div>
+
+  <div id="ayq-problem" hidden></div>
   <div id="ayq-import-result"></div>
-  <div id="ayq-body"><p class="waiting">Opening the budget…</p></div>
+  <div id="ayq-summary"></div>
+  <nav id="ayq-tabs"></nav>
+
+  <div id="ayq-body"><p class="muted">Opening the budget…</p></div>
+
   <footer id="ayq-engine-note"></footer>
 </main>
 <script type="module" src="./ayq-client.js"></script>

@@ -259,6 +259,31 @@ export function ayqParseSepaDescription(
  * in the key ("Testwinkel 24" -> "TESTWINKEL"). The key is only ever used for
  * grouping; the display name stays as the bank gave it.
  */
+/**
+ * The counterparty's canonical display name.
+ *
+ * `ayqNormaliseKey` answers "are these the same shop?"; this answers "what do
+ * we call it?". Same rule, applied to the name itself so the punctuation and
+ * the casing survive: "ALBERT HEIJN 1234" and "ALBERT HEIJN 5678" both become
+ * "ALBERT HEIJN", while "TESTENERGIE NEDERLAND B.V." keeps its full stops.
+ *
+ * A shop with a store number is one shop. The variant the bank printed is not
+ * thrown away — it stays on the transaction as what the bank said.
+ */
+export function ayqCanonicalName(value: string | null): string | null {
+  if (!value) return null;
+  const cleaned = value.replace(/\s+/g, ' ').trim();
+  if (cleaned.length === 0) return null;
+
+  let name = cleaned;
+  for (let index = 0; index < 3; index += 1) {
+    const trimmed = name.replace(TRAILING_NOISE, '').trim();
+    if (trimmed === name || trimmed.length === 0) break;
+    name = trimmed;
+  }
+  return name.length > 0 ? name : cleaned;
+}
+
 export function ayqNormaliseKey(value: string | null): string | null {
   if (!value) return null;
   const folded = value

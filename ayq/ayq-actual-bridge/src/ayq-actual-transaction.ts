@@ -10,6 +10,7 @@
 
 import type { AyqBankEntry } from '../../ayq-camt/src/ayq-types.ts';
 import { ayqToLegacyTransaction } from '../../ayq-camt/src/ayq-legacy.ts';
+import { ayqCanonicalName } from '../../ayq-camt/src/counterparty/ayq-description.ts';
 import type { AyqCounterparty } from '../../ayq-camt/src/counterparty/ayq-counterparty-types.ts';
 
 /** A transaction in the shape `@actual-app/api` accepts. */
@@ -96,7 +97,11 @@ export function ayqToActualTransaction(
     cleared: entry.status === null ? undefined : entry.status === 'BOOK',
   };
 
-  const payee = counterparty.name ?? legacy.payee_name;
+  // The canonical name, not the variant the terminal printed: "ALBERT HEIJN
+  // 1234" and "ALBERT HEIJN 5678" are one shop, and a ledger that lists them
+  // as two counterparties is the problem this whole exercise exists to solve.
+  // The variant survives as `imported_payee`.
+  const payee = ayqCanonicalName(counterparty.name) ?? legacy.payee_name;
   if (payee !== null && payee !== undefined) transaction.payee_name = payee;
   if (legacy.payee_name !== null) transaction.imported_payee = legacy.payee_name;
   if (legacy.notes !== null) transaction.notes = legacy.notes;

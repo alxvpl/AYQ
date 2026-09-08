@@ -9,7 +9,7 @@
 // The shape follows the one Actual's shipped desktop app already uses: a single
 // generic channel carrying correlated request/response messages, rather than a
 // channel per feature. Adding a capability means adding a member to the request
-// union, not a new channel and a new preload entry.
+// union and a line to the result map, not a new channel and a new preload entry.
 //
 // Everything crossing the boundary is structured-clone safe. Amounts are
 // integer cents, as the engine stores them; formatting is the renderer's job.
@@ -23,6 +23,8 @@ export type AyqAccountSummary = {
   name: string;
   /** Signed integer cents, computed by the engine, not by the renderer. */
   balanceCents: number;
+  /** Transactions the budget holds for it. */
+  transactionCount: number;
 };
 
 /** Proof of life from the engine, computed from a real budget. */
@@ -35,10 +37,173 @@ export type AyqEngineStatus = {
   budgetCreated: boolean;
   budgetId: string;
   budgetName: string;
-  accounts: AyqAccountSummary[];
-  /** Counted by the engine's own query language, not by the renderer. */
-  transactionCount: number;
+  /** Where the budget and the AYQ store live. */
+  dataDir: string;
+  /** The AYQ store's schema version, so an upgrade can be reasoned about. */
+  storeVersion: number;
   answeredAt: string;
+};
+
+/**
+ * One row of the ledger, as the screen needs it.
+ *
+ * `payee` is the canonical counterparty — the point of the whole CAMT exercise
+ * — and not the bank's raw string. The engine reads these from the budget; the
+ * renderer formats them and nothing more.
+ */
+export type AyqLedgerRow = {
+  id: string;
+  /** YYYY-MM-DD, the booking date the import chose. */
+  date: string;
+  /** The canonical counterparty, null only when the budget has no payee. */
+  payee: string | null;
+  /** Signed integer cents, as the engine stores them. */
+  amountCents: number;
+  account: string;
+  accountId: string;
+  category: string | null;
+  categoryId: string | null;
+  /** Booked rather than pending, as the statement said. */
+  cleared: boolean;
+};
+
+/** What to show. Everything is optional; nothing means "the newest of all". */
+export type AyqLedgerFilter = {
+  /** Matched against the counterparty and what the bank said, case-blind. */
+  search?: string;
+  accountId?: string;
+  /** Inclusive YYYY-MM-DD bounds. */
+  from?: string;
+  to?: string;
+  /** Only transactions with no category. */
+  uncategorised?: boolean;
+  /** One canonical counterparty, by its grouping key. */
+  counterpartyKey?: string;
+  limit?: number;
+};
+
+export type AyqLedger = {
+  /** Newest first. */
+  rows: AyqLedgerRow[];
+  /** Transactions matching the filter, counted by the engine. */
+  total: number;
+  /** How many of them this answer carries. */
+  shown: number;
+};
+
+/**
+ * What the bank said and what AYQ made of it, for one transaction.
+ *
+ * Actual's schema has nowhere for a bank transaction code, a counterparty IBAN
+ * or a SEPA mandate, so they are kept beside the budget and joined back here.
+ */
+export type AyqProvenance = {
+  importId: string;
+  counterpartyKey: string | null;
+  /** The layer of the resolver that pronounced the name. */
+  resolvedBy: string;
+  /** The payment kind read off BkTxCd. */
+  kind: string;
+  counterpartyIban: string | null;
+  intermediary: string | null;
+  mandateId: string | null;
+  endToEndId: string | null;
+  bankTransactionCode: string | null;
+  valueDate: string | null;
+  /** What the bank actually wrote, verbatim. */
+  description: string | null;
+  file: string | null;
+};
+
+export type AyqTransactionDetail = {
+  row: AyqLedgerRow;
+  /** The variant the bank printed, before the canonical name replaced it. */
+  importedPayee: string | null;
+  notes: string | null;
+  importedId: string | null;
+  provenance: AyqProvenance | null;
+};
+
+export type AyqCategory = {
+  id: string;
+  name: string;
+  groupId: string;
+  groupName: string;
+  isIncome: boolean;
+};
+
+/** A standing decision: this counterparty belongs in that category. */
+export type AyqCategoryRule = {
+  id: string;
+  counterpartyKey: string;
+  /** Kept by name: a category id is a budget's, a rule outlives one. */
+  categoryName: string;
+  createdAt: string;
+};
+
+export type AyqRecurring = {
+  /** The canonical counterparty key. */
+  key: string;
+  name: string;
+  occurrences: number;
+  /** weekly | monthly | quarterly | yearly | irregular. */
+  cadence: string;
+  /** Whether every charge was the same, within a quarter. */
+  amountVaries: boolean;
+  averageAmountCents: number;
+  lastAmountCents: number;
+  firstDate: string;
+  lastDate: string;
+  /** Last date plus the median interval. Null when the cadence is irregular. */
+  nextExpectedDate: string | null;
+  /** A SEPA mandate makes it a subscription rather than a habit. */
+  mandateId: string | null;
+};
+
+export type AyqImportRecord = {
+  id: string;
+  /** ISO timestamp. */
+  at: string;
+  file: string;
+  files: number;
+  records: number;
+  prepared: number;
+  imported: number;
+  duplicates: number;
+  skipped: number;
+  failed: number;
+  accountId: string;
+  accountName: string;
+  /** Categories the rules assigned during this import. */
+  categorised: number;
+};
+
+/**
+ * What a CAMT import did.
+ *
+ * Counts and identifiers only. No descriptions, no counterparty names, no
+ * amounts, no IBAN: this crosses into the interface and from there into
+ * screenshots and CI logs, and bank statements are not for either. The account
+ * name is masked at the engine before it ever reaches here.
+ */
+export type AyqImportSummary = AyqImportRecord & {
+  budgetId: string;
+  budgetName: string;
+  /** Counted by the engine after the import. */
+  transactionCountAfter: number;
+};
+
+export type AyqSummary = {
+  accounts: AyqAccountSummary[];
+  totalBalanceCents: number;
+  /** The month the ledger's newest transaction falls in, YYYY-MM. */
+  month: string | null;
+  monthIncomeCents: number;
+  monthExpenseCents: number;
+  transactionCount: number;
+  uncategorisedCount: number;
+  counterpartyCount: number;
+  lastImportAt: string | null;
 };
 
 /**
@@ -50,94 +215,65 @@ export type AyqEngineStatus = {
  */
 export type AyqPickedFile = { path: string | null };
 
-/**
- * What a CAMT import did.
- *
- * Counts and identifiers only. No descriptions, no counterparty names, no
- * amounts, no IBAN: this crosses into the interface and from there into
- * screenshots and CI logs, and bank statements are not for either. The account
- * name is masked at the engine before it ever reaches here.
- */
-export type AyqImportSummary = {
-  /** The base name of what was picked. Never a full path. */
-  file: string;
-  /** CAMT documents read — a ZIP usually holds several. */
-  files: number;
-  /** Records the parser produced across those documents. */
-  records: number;
-  /** Rows sent to the engine — records that mapped, repeats collapsed. */
-  prepared: number;
-  /** Records with no usable date or amount, so nothing was sent. */
-  skipped: number;
-  /** Transactions the engine actually added. */
-  imported: number;
-  /**
-   * Records that did not become a new transaction: rows the budget already
-   * had, and repeats within the file itself, both matched on the import key.
-   */
-  duplicates: number;
-  /** Documents the parser could not read, plus rows the engine rejected. */
-  failed: number;
-  budgetId: string;
-  budgetName: string;
-  accountId: string;
-  /** Masked: a country code and the last four, never the account number. */
-  accountName: string;
-  /** Counted by the engine after the import, through its own query language. */
-  transactionCountAfter: number;
+/** What the engine answers to each request kind. */
+export type AyqResults = {
+  'engine.status': AyqEngineStatus;
+  'accounts.list': AyqAccountSummary[];
+  'transactions.list': AyqLedger;
+  'transaction.detail': AyqTransactionDetail;
+  'transaction.categorise': AyqLedgerRow;
+  'categories.list': AyqCategory[];
+  'rules.list': AyqCategoryRule[];
+  'rules.remove': AyqCategoryRule[];
+  'rules.apply': { categorised: number };
+  'recurring.list': AyqRecurring[];
+  'imports.list': AyqImportRecord[];
+  summary: AyqSummary;
+  'import.pick': AyqPickedFile;
+  'import.camt': AyqImportSummary;
 };
 
 /**
  * A request without its correlation id — what the renderer writes.
  *
- * Adding a capability means adding a member here, not a new IPC channel: there
- * is one channel, and the host relays it.
+ * Adding a capability means adding a member here and a line to AyqResults, not
+ * a new IPC channel: there is one channel, and the host relays it.
  */
-/**
- * One row of the ledger, as the screen needs it.
- *
- * `payee` is the resolved counterparty — the point of the whole CAMT exercise —
- * and not the bank's raw string. The engine reads these from the budget; the
- * renderer formats them and nothing more.
- */
-export type AyqLedgerRow = {
-  id: string;
-  /** YYYY-MM-DD, the booking date the import chose. */
-  date: string;
-  /** The normalised counterparty, null only when the budget has no payee. */
-  payee: string | null;
-  /** Signed integer cents, as the engine stores them. */
-  amountCents: number;
-  account: string;
-  accountId: string;
-  category: string | null;
-  /** Booked rather than pending, as the statement said. */
-  cleared: boolean;
-};
-
-export type AyqLedger = {
-  /** Newest first. */
-  rows: AyqLedgerRow[];
-  /** Every transaction in the budget, counted by the engine. */
-  total: number;
-  /** How many of them this answer carries. */
-  shown: number;
-};
-
 export type AyqRequestBody =
   | { kind: 'engine.status' }
+  | { kind: 'accounts.list' }
+  | { kind: 'transactions.list'; filter?: AyqLedgerFilter }
+  | { kind: 'transaction.detail'; transactionId: string }
+  | {
+      kind: 'transaction.categorise';
+      transactionId: string;
+      /** null clears the category. */
+      categoryId: string | null;
+      /** Also remember it for this counterparty, from now on. */
+      createRule?: boolean;
+    }
+  | { kind: 'categories.list' }
+  | { kind: 'rules.list' }
+  | { kind: 'rules.remove'; ruleId: string }
+  | { kind: 'rules.apply' }
+  | { kind: 'recurring.list' }
+  | { kind: 'imports.list' }
+  | { kind: 'summary' }
   | { kind: 'import.pick' }
-  | { kind: 'import.camt'; path: string }
-  | { kind: 'transactions.list'; limit?: number };
+  | { kind: 'import.camt'; path: string };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };
 
 export type AyqResponse =
-  | { id: string; ok: true; kind: 'engine.status'; result: AyqEngineStatus }
-  | { id: string; ok: true; kind: 'import.pick'; result: AyqPickedFile }
-  | { id: string; ok: true; kind: 'import.camt'; result: AyqImportSummary }
-  | { id: string; ok: true; kind: 'transactions.list'; result: AyqLedger }
+  | {
+      [K in keyof AyqResults]: {
+        id: string;
+        ok: true;
+        kind: K;
+        result: AyqResults[K];
+      };
+    }[keyof AyqResults]
   | { id: string; ok: false; kind: 'error'; message: string };
 
 /**

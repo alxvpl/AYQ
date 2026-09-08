@@ -49,6 +49,7 @@ export {
   ayqClassify,
 } from './counterparty/ayq-resolve.ts';
 export {
+  ayqCanonicalName,
   ayqNormaliseKey,
   ayqParseCardDescription,
   ayqParseSepaDescription,

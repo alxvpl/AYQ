@@ -112,9 +112,17 @@ test('the built bundle carries no engine or host code', async () => {
     assert.ok(!bundle.includes(banned), `the bundle contains ${banned}`);
   }
 
-  // Nothing external survived as an import either: the renderer is one bundle.
-  assert.ok(
-    !/\bfrom\s*["'][^.]/.test(bundle),
+  // Nothing external survived as an import either: the renderer is one bundle,
+  // so there should be no import statement in it at all. The check reads the
+  // unminified source and anchors to the start of a line, because esbuild puts
+  // any surviving import there — and because "Imported from" is a perfectly
+  // good column heading that a looser check would flag.
+  const statements = [...source.matchAll(/^\s*import\b[^\n]*/gm)].map(match =>
+    match[0].trim(),
+  );
+  assert.deepEqual(
+    statements,
+    [],
     'the bundle still imports something from outside itself',
   );
   // `require` and `process` would mean Node crept into a renderer that has

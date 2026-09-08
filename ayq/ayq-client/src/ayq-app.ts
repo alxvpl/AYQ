@@ -1,143 +1,71 @@
-// The AYQ screen.
+// The AYQ application shell.
 //
-// A ledger and one action. What the person came for is the list of their own
-// transactions, so that is the page; which process answered and which version
-// of the engine it was are true, useful, and a footnote.
+// A summary, four views and one action. What a person came for is their own
+// money — the ledger, what recurs, where it is filed and what has been imported
+// — so that is the screen. Which process answered and which version of the
+// engine it was are true, useful, and a footnote.
 //
-// Everything here is drawing. The rows are the engine's, the counterparty on
-// each row is the one the CAMT resolver decided at import time, and the totals
-// are counted by the engine's own query language. The renderer computes no
-// money.
+// Everything here is drawing and asking. The rows are the engine's, the
+// counterparty on each row is the one the CAMT resolver decided at import time,
+// and every total is counted by the engine's own query language. The renderer
+// computes no money.
 
 import { ayqAsk } from './ayq-bridge.ts';
+import { ayqElement } from './ayq-dom.ts';
+import { ayqEuro, ayqMoment, ayqMonth } from './ayq-format.ts';
 import type {
+  AyqCategoryRule,
   AyqEngineStatus,
+  AyqImportRecord,
   AyqImportSummary,
-  AyqLedger,
-  AyqLedgerRow,
+  AyqRecurring,
+  AyqSummary,
 } from './ayq-ipc-contract.ts';
+import {
+  ayqRenderImports,
+  ayqRenderRecurring,
+  ayqRenderRules,
+} from './ayq-other-views.ts';
+import {
+  ayqEmptyTransactionsState,
+  ayqRenderTransactions,
+  type AyqTransactionsState,
+} from './ayq-transactions.ts';
 
-const euro = (cents: number): string =>
-  (cents / 100).toLocaleString('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-  });
+type AyqView = 'transactions' | 'recurring' | 'rules' | 'imports';
 
-function element(tag: string, className?: string, text?: string): HTMLElement {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
+const VIEWS: Array<{ id: AyqView; label: string }> = [
+  { id: 'transactions', label: 'Transactions' },
+  { id: 'recurring', label: 'Recurring' },
+  { id: 'rules', label: 'Rules' },
+  { id: 'imports', label: 'Imports' },
+];
+
+type AyqState = {
+  view: AyqView;
+  status: AyqEngineStatus | null;
+  summary: AyqSummary | null;
+  transactions: AyqTransactionsState;
+  recurring: AyqRecurring[];
+  rules: AyqCategoryRule[];
+  imports: AyqImportRecord[];
+};
+
+const state: AyqState = {
+  view: 'transactions',
+  status: null,
+  summary: null,
+  transactions: ayqEmptyTransactionsState(),
+  recurring: [],
+  rules: [],
+  imports: [],
+};
+
+function byId(id: string): HTMLElement | null {
+  return document.getElementById(id);
 }
 
-function body(): HTMLElement | null {
-  return document.getElementById('ayq-body');
-}
-
-/**
- * What an empty AYQ says.
- *
- * A new budget is genuinely empty — no invented account, no invented entries —
- * so the screen has to say what is true and what to do about it, and the button
- * that does it is already in the bar above.
- */
-function renderEmpty(): void {
-  const target = body();
-  if (!target) return;
-
-  target.replaceChildren(
-    element('p', 'empty-title', 'No transactions yet.'),
-    element(
-      'p',
-      'empty-body',
-      'Import a CAMT.053 statement from your bank — an .xml file or a .zip of ' +
-        'them — and it will appear here. Nothing leaves this machine.',
-    ),
-  );
-}
-
-function renderLedger(ledger: AyqLedger): void {
-  const target = body();
-  if (!target) return;
-
-  if (ledger.rows.length === 0) {
-    renderEmpty();
-    return;
-  }
-
-  const table = element('table', 'ledger');
-
-  const headRow = element('tr');
-  const columns: Array<[string, string]> = [
-    ['Date', 'col-date'],
-    ['Counterparty', 'col-payee'],
-    ['Account', 'col-account'],
-    ['Amount', 'col-amount'],
-  ];
-  for (const [label, className] of columns) {
-    headRow.append(element('th', className, label));
-  }
-  const head = element('thead');
-  head.append(headRow);
-  table.append(head);
-
-  const rows = element('tbody');
-  for (const row of ledger.rows) rows.append(renderRow(row));
-  table.append(rows);
-
-  target.replaceChildren(table);
-  target.append(
-    element(
-      'p',
-      'ledger-count',
-      ledger.shown === ledger.total
-        ? `${ledger.total} transactions`
-        : `${ledger.shown} of ${ledger.total} transactions`,
-    ),
-  );
-}
-
-function renderRow(row: AyqLedgerRow): HTMLElement {
-  const line = element('tr', row.amountCents < 0 ? 'out' : 'in');
-  line.append(element('td', 'col-date', row.date));
-  // The resolved counterparty, never the bank's raw string: that is the whole
-  // point of the resolver, and the raw string stays in the record.
-  line.append(element('td', 'col-payee', row.payee ?? 'Unknown'));
-  line.append(element('td', 'col-account', row.account));
-  line.append(element('td', 'col-amount', euro(row.amountCents)));
-  return line;
-}
-
-/** The engine's own particulars, kept to a footnote rather than a screen. */
-function renderEngineNote(status: AyqEngineStatus): void {
-  const note = document.getElementById('ayq-engine-note');
-  if (!note) return;
-  note.textContent =
-    `${status.budgetName} · @actual-app/api ${status.apiVersion} · ` +
-    `${status.engineHost}`;
-}
-
-function renderError(message: string): void {
-  body()?.replaceChildren(element('pre', 'error', message));
-}
-
-function renderImport(node: HTMLElement | null): void {
-  const target = document.getElementById('ayq-import-result');
-  if (!target) return;
-  if (node === null) target.replaceChildren();
-  else target.replaceChildren(node);
-}
-
-/** The result of an import, as counts. Nothing from the statement itself. */
-function renderSummary(summary: AyqImportSummary): void {
-  const line =
-    `${summary.file}: ${summary.imported} imported, ` +
-    `${summary.duplicates} already there` +
-    (summary.skipped > 0 ? `, ${summary.skipped} skipped` : '') +
-    (summary.failed > 0 ? `, ${summary.failed} failed` : '') +
-    ` — ${summary.accountName}`;
-  renderImport(element('p', 'import-done', line));
-}
+/* ---------------------------------------------------------------- reporting */
 
 /**
  * The outcome, published for the acceptance run.
@@ -146,42 +74,254 @@ function renderSummary(summary: AyqImportSummary): void {
  * screen's optimism, so state and counts are set from the answers — never
  * before them.
  */
-function markState(state: 'ready' | 'error', engineHost?: string): void {
-  document.body.dataset.ayqState = state;
-  if (engineHost !== undefined) document.body.dataset.ayqEngineHost = engineHost;
+function markState(value: 'ready' | 'error'): void {
+  document.body.dataset.ayqState = value;
+  if (state.status) document.body.dataset.ayqEngineHost = state.status.engineHost;
 }
 
-function markLedger(ledger: AyqLedger): void {
-  document.body.dataset.ayqLedgerTotal = String(ledger.total);
-  document.body.dataset.ayqLedgerRows = String(ledger.rows.length);
+function markLedger(): void {
+  const ledger = state.transactions.ledger;
+  document.body.dataset.ayqLedgerTotal = String(
+    state.summary?.transactionCount ?? ledger?.total ?? 0,
+  );
+  document.body.dataset.ayqLedgerRows = String(ledger?.rows.length ?? 0);
 }
 
 function markImport(
-  state: 'working' | 'done' | 'cancelled' | 'error',
+  value: 'working' | 'done' | 'cancelled' | 'error',
   summary?: AyqImportSummary,
 ): void {
-  document.body.dataset.ayqImportState = state;
+  document.body.dataset.ayqImportState = value;
   if (summary) document.body.dataset.ayqImportSummary = JSON.stringify(summary);
 }
 
-async function loadLedger(): Promise<void> {
-  const answer = await ayqAsk({ kind: 'transactions.list' });
-  if (!answer.ok) throw new Error(answer.message);
-  if (answer.kind !== 'transactions.list') {
-    throw new Error('the engine answered the wrong request');
-  }
-  renderLedger(answer.result);
-  markLedger(answer.result);
+/**
+ * Says what went wrong, above everything else, and stays until it is dismissed.
+ *
+ * An engine that cannot answer is not a blank screen: the message is the
+ * engine's own, and the one thing that reliably helps — trying again — is right
+ * there beside it.
+ */
+function showProblem(message: string): void {
+  const bar = byId('ayq-problem');
+  if (!bar) return;
+
+  bar.replaceChildren(ayqElement('span', 'problem-text', message));
+
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'quiet small';
+  retry.textContent = 'Try again';
+  retry.addEventListener('click', () => void refresh(true));
+  bar.append(retry);
+
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'quiet small';
+  dismiss.textContent = 'Dismiss';
+  dismiss.addEventListener('click', () => clearProblem());
+  bar.append(dismiss);
+
+  bar.hidden = false;
 }
 
-async function loadStatus(): Promise<void> {
-  const answer = await ayqAsk({ kind: 'engine.status' });
+function clearProblem(): void {
+  const bar = byId('ayq-problem');
+  if (!bar) return;
+  bar.replaceChildren();
+  bar.hidden = true;
+}
+
+/* ------------------------------------------------------------------ loading */
+
+/** Asks the engine, and turns a refusal into an exception with its words. */
+async function need<K extends Parameters<typeof ayqAsk>[0]['kind']>(
+  body: Parameters<typeof ayqAsk>[0] & { kind: K },
+): Promise<Extract<Awaited<ReturnType<typeof ayqAsk>>, { ok: true; kind: K }>> {
+  const answer = await ayqAsk(body);
   if (!answer.ok) throw new Error(answer.message);
-  if (answer.kind !== 'engine.status') {
-    throw new Error('the engine answered the wrong request');
+  if (answer.kind !== body.kind) {
+    throw new Error('the engine answered a different request');
   }
-  renderEngineNote(answer.result);
-  markState('ready', answer.result.engineHost);
+  return answer as Extract<
+    Awaited<ReturnType<typeof ayqAsk>>,
+    { ok: true; kind: K }
+  >;
+}
+
+/** Everything the shell shows, whichever view is open. */
+async function loadShell(): Promise<void> {
+  state.status = (await need({ kind: 'engine.status' })).result;
+  state.summary = (await need({ kind: 'summary' })).result;
+  state.transactions.accounts = state.summary.accounts;
+}
+
+async function loadView(): Promise<void> {
+  switch (state.view) {
+    case 'transactions': {
+      if (state.transactions.categories.length === 0) {
+        state.transactions.categories = (
+          await need({ kind: 'categories.list' })
+        ).result;
+      }
+      state.transactions.ledger = (
+        await need({
+          kind: 'transactions.list',
+          filter: state.transactions.filter,
+        })
+      ).result;
+      return;
+    }
+    case 'recurring':
+      state.recurring = (await need({ kind: 'recurring.list' })).result;
+      return;
+    case 'rules':
+      state.rules = (await need({ kind: 'rules.list' })).result;
+      return;
+    case 'imports':
+      state.imports = (await need({ kind: 'imports.list' })).result;
+      return;
+  }
+}
+
+let loading = false;
+
+async function refresh(reload: boolean): Promise<void> {
+  if (reload) {
+    if (loading) return;
+    loading = true;
+    try {
+      await loadShell();
+      await loadView();
+      clearProblem();
+      markState('ready');
+    } catch (error) {
+      showProblem(error instanceof Error ? error.message : String(error));
+      markState('error');
+    } finally {
+      loading = false;
+    }
+  }
+  draw();
+}
+
+/* ------------------------------------------------------------------ drawing */
+
+function draw(): void {
+  drawSummary();
+  drawTabs();
+  drawView();
+  drawFooter();
+  markLedger();
+}
+
+function drawSummary(): void {
+  const target = byId('ayq-summary');
+  if (!target) return;
+  const summary = state.summary;
+  if (summary === null) {
+    target.replaceChildren();
+    return;
+  }
+
+  const figures: Array<[string, string, string?]> = [
+    ['Balance', ayqEuro(summary.totalBalanceCents)],
+    ['Transactions', String(summary.transactionCount)],
+    ['Counterparties', String(summary.counterpartyCount)],
+    ['Uncategorised', String(summary.uncategorisedCount)],
+  ];
+
+  if (summary.month !== null) {
+    figures.splice(
+      1,
+      0,
+      [`In · ${ayqMonth(summary.month)}`, ayqEuro(summary.monthIncomeCents), 'in'],
+      [
+        `Out · ${ayqMonth(summary.month)}`,
+        ayqEuro(summary.monthExpenseCents),
+        'out',
+      ],
+    );
+  }
+
+  target.replaceChildren();
+  for (const [label, value, tone] of figures) {
+    const cell = ayqElement('div', 'figure');
+    cell.append(
+      ayqElement('span', 'figure-label', label),
+      ayqElement('span', `figure-value ${tone ?? ''}`.trim(), value),
+    );
+    target.append(cell);
+  }
+}
+
+function drawTabs(): void {
+  const target = byId('ayq-tabs');
+  if (!target) return;
+  target.replaceChildren();
+
+  for (const view of VIEWS) {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = view.id === state.view ? 'tab current' : 'tab';
+    tab.textContent = view.label;
+    tab.dataset.ayqTab = view.id;
+    tab.addEventListener('click', () => {
+      if (state.view === view.id) return;
+      state.view = view.id;
+      void refresh(true);
+    });
+    target.append(tab);
+  }
+}
+
+function drawView(): void {
+  const target = byId('ayq-body');
+  if (!target) return;
+
+  switch (state.view) {
+    case 'transactions':
+      ayqRenderTransactions(state.transactions, target, reload =>
+        void refresh(reload),
+      );
+      return;
+    case 'recurring':
+      ayqRenderRecurring(state.recurring, target);
+      return;
+    case 'rules':
+      ayqRenderRules(state.rules, target, () => void refresh(true));
+      return;
+    case 'imports':
+      ayqRenderImports(state.imports, target);
+      return;
+  }
+}
+
+function drawFooter(): void {
+  const note = byId('ayq-engine-note');
+  if (!note) return;
+  const status = state.status;
+  if (status === null) {
+    note.textContent = '';
+    return;
+  }
+
+  const parts = [
+    `${status.budgetName} · @actual-app/api ${status.apiVersion} · ${status.engineHost}`,
+  ];
+  if (state.summary?.lastImportAt) {
+    parts.push(`last import ${ayqMoment(state.summary.lastImportAt)}`);
+  }
+  note.textContent = parts.join(' · ');
+}
+
+/* ------------------------------------------------------------------- import */
+
+function renderImportLine(node: HTMLElement | null): void {
+  const target = byId('ayq-import-result');
+  if (!target) return;
+  if (node === null) target.replaceChildren();
+  else target.replaceChildren(node);
 }
 
 /**
@@ -189,63 +329,66 @@ async function loadStatus(): Promise<void> {
  *
  * Two calls, both across the same channel: the host opens the native picker and
  * answers with a path, then the engine reads that path. The renderer never
- * touches the filesystem — it has none — and never parses anything. It asks,
- * shows what came back, and reloads the ledger it just changed.
+ * touches the filesystem — it has none — and never parses anything.
  */
 async function importCamt(): Promise<void> {
-  const button = document.getElementById('ayq-import');
+  const button = byId('ayq-import');
   if (button instanceof HTMLButtonElement) button.disabled = true;
   markImport('working');
-  renderImport(element('p', 'waiting', 'Waiting for a file…'));
+  renderImportLine(ayqElement('span', 'muted', 'Waiting for a file…'));
 
   try {
-    const picked = await ayqAsk({ kind: 'import.pick' });
-    if (!picked.ok) throw new Error(picked.message);
-    if (picked.kind !== 'import.pick') {
-      throw new Error('the host answered the wrong request');
-    }
-
+    const picked = await need({ kind: 'import.pick' });
     const path = picked.result.path;
     if (path === null) {
-      renderImport(element('p', 'muted', 'No file chosen; nothing was imported.'));
+      renderImportLine(
+        ayqElement('span', 'muted', 'No file chosen; nothing was imported.'),
+      );
       markImport('cancelled');
       return;
     }
 
-    renderImport(element('p', 'waiting', 'Reading and importing…'));
-    const done = await ayqAsk({ kind: 'import.camt', path });
-    if (!done.ok) throw new Error(done.message);
-    if (done.kind !== 'import.camt') {
-      throw new Error('the engine answered the wrong request');
-    }
+    renderImportLine(ayqElement('span', 'muted', 'Reading and importing…'));
+    const done = await need({ kind: 'import.camt', path });
+    const summary = done.result;
 
-    renderSummary(done.result);
+    renderImportLine(
+      ayqElement(
+        'span',
+        'import-done',
+        `${summary.file}: ${summary.imported} imported, ` +
+          `${summary.duplicates} already there` +
+          (summary.categorised > 0
+            ? `, ${summary.categorised} categorised by rules`
+            : '') +
+          (summary.skipped > 0 ? `, ${summary.skipped} skipped` : '') +
+          (summary.failed > 0 ? `, ${summary.failed} failed` : '') +
+          ` — ${summary.accountName}`,
+      ),
+    );
 
     // The ledger is what just changed, so it is reloaded before the import is
-    // called done — a person sees their transactions without asking twice, and
+    // called done: a person sees their transactions without asking twice, and
     // nothing starts a second import while this one still has a question out.
-    await loadLedger();
-    markImport('done', done.result);
+    state.view = 'transactions';
+    await refresh(true);
+    markImport('done', summary);
   } catch (error) {
-    renderImport(element('pre', 'error', String(error)));
+    const message = error instanceof Error ? error.message : String(error);
+    renderImportLine(null);
+    showProblem(`The import failed. ${message}`);
     markImport('error');
   } finally {
     if (button instanceof HTMLButtonElement) button.disabled = false;
   }
 }
 
-async function start(): Promise<void> {
-  document.getElementById('ayq-import')?.addEventListener('click', () => {
-    void importCamt();
-  });
+/* -------------------------------------------------------------------- start */
 
-  try {
-    await loadStatus();
-    await loadLedger();
-  } catch (error) {
-    renderError(String(error));
-    markState('error');
-  }
+async function start(): Promise<void> {
+  byId('ayq-import')?.addEventListener('click', () => void importCamt());
+  clearProblem();
+  await refresh(true);
 }
 
 void start();

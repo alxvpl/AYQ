@@ -4,33 +4,38 @@
 // its own process, forked by the host, exactly as Actual's shipped desktop app
 // forks its core into a `utilityProcess` and talks to it over one channel.
 //
-// It answers the contract `ayq-client` declares, and it answers from the real
-// budget: accounts come from the engine, balances are computed by the engine's
-// spreadsheet, and the transaction count comes from the engine's own query
-// language. Nothing here is fabricated for the benefit of the interface.
+// It owns the budget's lifecycle and dispatches the contract; the work itself
+// lives in the modules beside it. Nothing here is fabricated for the benefit of
+// the interface: every number is the engine's own.
 
 import { mkdirSync, readFileSync } from 'node:fs';
-import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import api from '@actual-app/api';
 
 import type {
-  AyqAccountSummary,
   AyqEngineStatus,
-  AyqImportSummary,
-  AyqLedger,
-  AyqLedgerRow,
   AyqRequest,
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
-import { ayqParseCamt } from '../../ayq-camt/src/ayq-camt053.ts';
-import { ayqLoadTargets } from '../../ayq-camt/src/ayq-files.ts';
-import type { AyqBankEntry } from '../../ayq-camt/src/ayq-types.ts';
+import { ayqImportCamt, ayqImports } from './ayq-camt-import.ts';
 import {
-  ayqPrepare,
-  ayqWithAccount,
-} from '../../ayq-actual-bridge/src/ayq-prepare.ts';
+  ayqAccounts,
+  ayqDetail,
+  ayqLedger,
+  ayqSummary,
+} from './ayq-ledger.ts';
+import { ayqRecurring } from './ayq-recurring.ts';
+import { ayqSettle } from './ayq-settle.ts';
+import {
+  ayqApplyRules,
+  ayqCategories,
+  ayqForgetRule,
+  ayqKeyOfTransaction,
+  ayqRememberRule,
+  ayqRules,
+} from './ayq-rules.ts';
+import { AYQ_STORE_VERSION, ayqReadStore } from './ayq-store.ts';
 
 const BUDGET_NAME = 'AYQ';
 
@@ -135,209 +140,15 @@ async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
 
 async function status(dataDir: string): Promise<AyqEngineStatus> {
   const budget = await openBudget(dataDir);
-
-  const accounts: AyqAccountSummary[] = [];
-  for (const account of await api.getAccounts()) {
-    accounts.push({
-      id: account.id,
-      name: account.name,
-      // Computed by the engine's spreadsheet, not summed by the renderer.
-      balanceCents: (await api.getAccountBalance(account.id)) ?? 0,
-    });
-  }
-
   return {
     apiVersion: apiVersion(),
     engineHost: channel.name,
     budgetCreated: budget.created,
     budgetId: budget.budgetId,
     budgetName: BUDGET_NAME,
-    accounts,
-    // Counted through the engine's own query language, so the number is the
-    // engine's answer rather than the length of a list we happened to fetch.
-    transactionCount: await transactionCount(),
+    dataDir,
+    storeVersion: ayqReadStore(dataDir).version,
     answeredAt: new Date().toISOString(),
-  };
-}
-
-/** Counts transactions through the engine's own query language. */
-async function transactionCount(): Promise<number> {
-  const counted = (await api.aqlQuery(
-    api.q('transactions').calculate({ $count: 'id' }),
-  )) as { data?: number };
-  return Number(counted.data ?? 0);
-}
-
-/** How many rows the screen is given when it does not ask for a number. */
-const LEDGER_LIMIT = 200;
-
-/**
- * The ledger, newest first.
- *
- * One AQL query rather than a fetch per account: the engine's own query
- * language joins the payee, the account and the category, so what comes back is
- * already the row the screen draws. `payee` is the counterparty the CAMT
- * resolver decided at import time — the bank's raw string stays in the record
- * and is not what a person is shown.
- *
- * The ordering is the engine's: date descending, then Actual's own intra-day
- * `sort_order`. The id breaks the last tie, so two runs over an unchanged
- * budget return the same list in the same order rather than whatever SQLite
- * felt like.
- */
-async function ledger(dataDir: string, limit: number): Promise<AyqLedger> {
-  await openBudget(dataDir);
-
-  const answer = (await api.aqlQuery(
-    api
-      .q('transactions')
-      .select([
-        'id',
-        'date',
-        'amount',
-        'cleared',
-        'sort_order',
-        { payee: 'payee.name' },
-        { account: 'account.name' },
-        { accountId: 'account.id' },
-        { category: 'category.name' },
-      ])
-      .orderBy([{ date: 'desc' }, { sort_order: 'desc' }])
-      .limit(limit),
-  )) as { data?: AyqQueriedRow[] };
-
-  const rows = (answer.data ?? [])
-    .slice()
-    .sort(compareRows)
-    .map(
-      (row): AyqLedgerRow => ({
-        id: String(row.id),
-        date: String(row.date),
-        payee: row.payee ?? null,
-        amountCents: Number(row.amount ?? 0),
-        account: row.account ?? '',
-        accountId: String(row.accountId ?? ''),
-        category: row.category ?? null,
-        cleared: row.cleared === true,
-      }),
-    );
-
-  return { rows, total: await transactionCount(), shown: rows.length };
-}
-
-/** What the query hands back, before it is narrowed to what the screen needs. */
-type AyqQueriedRow = {
-  id: string;
-  date: string;
-  amount: number;
-  cleared: boolean;
-  sort_order: number | null;
-  payee: string | null;
-  account: string | null;
-  accountId: string | null;
-  category: string | null;
-};
-
-function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
-  if (left.date !== right.date) return left.date < right.date ? 1 : -1;
-  const leftOrder = left.sort_order ?? 0;
-  const rightOrder = right.sort_order ?? 0;
-  if (leftOrder !== rightOrder) return rightOrder - leftOrder;
-  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
-}
-
-/**
- * The name the imported account gets, masked.
- *
- * An IBAN identifies a person's account, and this name travels into the
- * interface, into screenshots and into CI logs. A country code and the last
- * four are enough to tell two accounts apart and to recognise your own; the
- * rest never leaves the record. The masking is deterministic, which is what
- * makes a second import land in the same account rather than a new one.
- */
-function ayqMaskAccount(entries: AyqBankEntry[]): string {
-  for (const entry of entries) {
-    const iban = entry.statement.accountIban;
-    if (iban !== null && iban.length >= 6) {
-      return `AYQ ${iban.slice(0, 2)}…${iban.slice(-4)}`;
-    }
-  }
-  return 'AYQ imported account';
-}
-
-/** The account by that name, created if the budget has not seen it before. */
-async function accountFor(name: string): Promise<string> {
-  const existing = (await api.getAccounts()).find(
-    account => account.name === name,
-  );
-  if (existing) return existing.id;
-  return api.createAccount({ name, offbudget: false }, 0);
-}
-
-/**
- * Imports a CAMT.053 file or ZIP into the open budget.
- *
- * The whole pipeline, and every step of it already existed: `ayq-camt` reads
- * the file (a ZIP in memory, never extracted) and parses it into lossless
- * records, the bridge resolves the counterparty and maps each record onto an
- * Actual transaction, and `@actual-app/api` takes them. Nothing here parses
- * CAMT itself.
- *
- * Deduplication is not done here either. Every mapped transaction carries an
- * `imported_id` — the bank's AcctSvcrRef when it gave one, the record's own
- * stable key otherwise — and Actual matches on it, so importing the same
- * export twice adds nothing the second time. The count says so out loud.
- */
-async function importCamt(
-  dataDir: string,
-  path: string,
-): Promise<AyqImportSummary> {
-  const budget = await openBudget(dataDir);
-
-  const files = await ayqLoadTargets([path]);
-  if (files.length === 0) {
-    throw new Error('that file holds no CAMT document');
-  }
-
-  const records: AyqBankEntry[] = [];
-  let failed = 0;
-  for (const file of files) {
-    try {
-      records.push(...(await ayqParseCamt(file.content, { file: file.name })));
-    } catch {
-      // The reason would quote the document. The count is what travels.
-      failed += 1;
-    }
-  }
-
-  const { transactions, skipped } = ayqPrepare(records);
-  const accountName = ayqMaskAccount(records);
-  const accountId = await accountFor(accountName);
-
-  const result = await api.importTransactions(
-    accountId,
-    ayqWithAccount(transactions, accountId),
-  );
-  const added = result.added?.length ?? 0;
-  const errors = result.errors?.length ?? 0;
-
-  return {
-    file: basename(path),
-    files: files.length,
-    records: records.length,
-    prepared: transactions.length,
-    skipped,
-    imported: added,
-    // Everything the file held that did not become a new transaction: rows the
-    // budget already had, and repeats within the file itself. Both are the
-    // same thing to the person importing.
-    duplicates: records.length - skipped - added,
-    failed: failed + errors,
-    budgetId: budget.budgetId,
-    budgetName: BUDGET_NAME,
-    accountId,
-    accountName,
-    transactionCountAfter: await transactionCount(),
   };
 }
 
@@ -386,6 +197,138 @@ function explain(message: string): string {
 
 const dataDir = process.env.AYQ_DATA_DIR ?? '';
 
+/**
+ * Answers one request.
+ *
+ * Every kind opens the budget first, because every kind reads or writes it.
+ * The one exception would be a request about the host, and the host answers
+ * those itself rather than sending them here.
+ */
+async function answer(request: AyqRequest): Promise<AyqResponse> {
+  const id = request.id;
+
+  if (request.kind === 'engine.status') {
+    return { id, ok: true, kind: 'engine.status', result: await status(dataDir) };
+  }
+
+  const budget = await openBudget(dataDir);
+
+  switch (request.kind) {
+    case 'accounts.list':
+      return { id, ok: true, kind: 'accounts.list', result: await ayqAccounts() };
+
+    case 'transactions.list':
+      return {
+        id,
+        ok: true,
+        kind: 'transactions.list',
+        result: await ayqLedger(dataDir, request.filter ?? {}),
+      };
+
+    case 'transaction.detail':
+      return {
+        id,
+        ok: true,
+        kind: 'transaction.detail',
+        result: await ayqDetail(dataDir, request.transactionId),
+      };
+
+    case 'transaction.categorise': {
+      // Actual clears a category by writing null — that is what its own
+      // interface does — but the published type admits only a string. The
+      // mismatch is stated here rather than worked around by leaving a
+      // category no one can remove.
+      await api.updateTransaction(request.transactionId, {
+        category: request.categoryId,
+      } as unknown as Parameters<typeof api.updateTransaction>[1]);
+
+      if (request.createRule === true && request.categoryId !== null) {
+        const detail = await ayqDetail(dataDir, request.transactionId);
+        const key = ayqKeyOfTransaction(dataDir, detail.importedId);
+        const category = (await ayqCategories()).find(
+          candidate => candidate.id === request.categoryId,
+        );
+        if (key !== null && category) {
+          ayqRememberRule(dataDir, key, category.name);
+          await ayqApplyRules(dataDir);
+        }
+      }
+
+      // Read back only once the budget agrees: the write lands after the call
+      // that queued it returns, so the first read can still hold the old value.
+      const updated = await ayqSettle(
+        () => ayqDetail(dataDir, request.transactionId),
+        detail => detail.row.categoryId === request.categoryId,
+        'the category',
+      );
+
+      return {
+        id,
+        ok: true,
+        kind: 'transaction.categorise',
+        result: updated.row,
+      };
+    }
+
+    case 'categories.list':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.list',
+        result: await ayqCategories(),
+      };
+
+    case 'rules.list':
+      return { id, ok: true, kind: 'rules.list', result: ayqRules(dataDir) };
+
+    case 'rules.remove':
+      return {
+        id,
+        ok: true,
+        kind: 'rules.remove',
+        result: ayqForgetRule(dataDir, request.ruleId),
+      };
+
+    case 'rules.apply':
+      return {
+        id,
+        ok: true,
+        kind: 'rules.apply',
+        result: await ayqApplyRules(dataDir),
+      };
+
+    case 'recurring.list':
+      return {
+        id,
+        ok: true,
+        kind: 'recurring.list',
+        result: await ayqRecurring(dataDir),
+      };
+
+    case 'imports.list':
+      return { id, ok: true, kind: 'imports.list', result: ayqImports(dataDir) };
+
+    case 'summary':
+      return { id, ok: true, kind: 'summary', result: await ayqSummary(dataDir) };
+
+    case 'import.camt':
+      return {
+        id,
+        ok: true,
+        kind: 'import.camt',
+        result: await ayqImportCamt(dataDir, request.path, {
+          budgetId: budget.budgetId,
+          budgetName: BUDGET_NAME,
+        }),
+      };
+
+    default:
+      throw new Error(
+        `unknown request kind: ${String((request as { kind?: unknown }).kind)}`,
+      );
+  }
+}
+
 channel.onMessage(message => {
   void (async () => {
     const request = message as AyqRequest;
@@ -394,30 +337,7 @@ channel.onMessage(message => {
       if (dataDir === '') {
         throw new Error('AYQ_DATA_DIR was not set by the host');
       }
-      if (request?.kind === 'engine.status') {
-        response = {
-          id: request.id,
-          ok: true,
-          kind: 'engine.status',
-          result: await status(dataDir),
-        };
-      } else if (request?.kind === 'transactions.list') {
-        response = {
-          id: request.id,
-          ok: true,
-          kind: 'transactions.list',
-          result: await ledger(dataDir, request.limit ?? LEDGER_LIMIT),
-        };
-      } else if (request?.kind === 'import.camt') {
-        response = {
-          id: request.id,
-          ok: true,
-          kind: 'import.camt',
-          result: await importCamt(dataDir, request.path),
-        };
-      } else {
-        throw new Error(`unknown request kind: ${String(request?.kind)}`);
-      }
+      response = await answer(request);
     } catch (error) {
       response = {
         id: request?.id ?? 'unknown',
