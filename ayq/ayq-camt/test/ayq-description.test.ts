@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  ayqCanonicalName,
   ayqNormaliseKey,
   ayqParseCardDescription,
   ayqParseSepaDescription,
@@ -88,4 +89,30 @@ test('normalisation strips diacritics without breaking the word', () => {
   assert.equal(ayqNormaliseKey('Jansen & Zn.'), 'JANSEN & ZN');
   assert.equal(ayqNormaliseKey('   '), null);
   assert.equal(ayqNormaliseKey(null), null);
+});
+
+test('the canonical name keeps the shop and drops the branch', () => {
+  // Grouping and naming follow the same rule, so a ledger cannot show two
+  // names for one key.
+  for (const [raw, expected] of [
+    ['ALBERT HEIJN 1234', 'ALBERT HEIJN'],
+    ['ALBERT HEIJN 5678', 'ALBERT HEIJN'],
+    ['TESTFUEL 22', 'TESTFUEL'],
+    // Punctuation and casing survive, which the normalised key cannot do.
+    ['TESTENERGIE NEDERLAND B.V.', 'TESTENERGIE NEDERLAND B.V.'],
+    ['Koffiehuis de Test', 'Koffiehuis de Test'],
+    // A name that is only a number keeps it rather than becoming nothing.
+    ['12345', '12345'],
+  ] as Array<[string, string]>) {
+    assert.equal(ayqCanonicalName(raw), expected, raw);
+  }
+
+  assert.equal(ayqCanonicalName(null), null);
+  assert.equal(ayqCanonicalName('   '), null);
+
+  // The two agree on identity even when they disagree on presentation.
+  assert.equal(
+    ayqNormaliseKey(ayqCanonicalName('ALBERT HEIJN 1234')),
+    ayqNormaliseKey(ayqCanonicalName('ALBERT HEIJN 9012')),
+  );
 });

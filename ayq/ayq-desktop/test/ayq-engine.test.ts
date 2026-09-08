@@ -433,17 +433,28 @@ test('rules survive a restart and are applied to a later import', async () => {
   );
 });
 
-test('the recurring view finds the mandate and the rhythm', async () => {
+test('the recurring view finds a rhythm and leaves coincidences out', async () => {
   const dataDir = await budget();
   await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const recurring = await ask(dataDir, { kind: 'recurring.list' });
-  const names = recurring.map(entry => entry.name);
 
-  // Six Albert Heijn visits across June are a habit with a rhythm; the salary
-  // is income and belongs in the summary, not here.
-  assert.ok(!names.includes('Testwerkgever B.V.'), 'income is not a subscription');
-  assert.ok(recurring.length > 0, 'something recurs in a month of shopping');
+  // The fixture decides this exactly: Albert Heijn six times and Testfuel
+  // four, both often enough to be a rhythm. The two coffees are twice, which
+  // is a coincidence; the energy bill is once; and the salary is income, which
+  // belongs in the summary rather than among the things you pay.
+  assert.deepEqual(
+    recurring.map(entry => `${entry.name} ${entry.occurrences}× ${entry.cadence}`),
+    ['Albert Heijn 6× weekly', 'Testfuel 4× weekly'],
+  );
+
+  const [albert] = recurring;
+  assert.equal(albert.firstDate, '2026-06-02');
+  assert.equal(albert.lastDate, '2026-06-27');
+  assert.equal(albert.nextExpectedDate, '2026-07-02', 'the last date plus the median gap');
+  assert.equal(albert.lastAmountCents, -944);
+  assert.equal(albert.amountVaries, true, '9.44 and 63.90 are not the same charge');
+  assert.equal(albert.mandateId, null, 'a card payment carries no mandate');
 
   for (const entry of recurring) {
     assert.ok(entry.occurrences >= 3, 'twice is a coincidence');
