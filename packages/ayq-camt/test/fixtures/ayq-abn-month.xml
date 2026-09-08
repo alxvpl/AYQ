@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An invented month, built to show the one thing the measurement made the case
+  for: the same merchant arriving under a different raw string every single
+  time, because the string carries the terminal, the date, the time and the
+  card number.
+
+  Fourteen entries, three merchants, one direct debit and one salary. Every
+  card string is unique; the normalised key is not. The IBANs, names and
+  amounts belong to no one.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-202606-month</MsgId>
+      <CreDtTm>2026-07-01T03:04:05</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0123456789.2026-06</Id>
+      <LglSeqNb>160</LglSeqNb>
+      <CreDtTm>2026-07-01T03:04:05</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-06-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-06-30T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL00TEST0123456789</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+
+      <!-- Six visits to one supermarket chain, three different branches. -->
+      <Ntry>
+        <Amt Ccy="EUR">18.72</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-02</Dt></BookgDt><ValDt><Dt>2026-06-02</Dt></ValDt>
+        <AcctSvcrRef>2026060200000101</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A101, 02.06.26/17:41   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">7.15</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-05</Dt></BookgDt><ValDt><Dt>2026-06-05</Dt></ValDt>
+        <AcctSvcrRef>2026060500000102</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 5678,PAS421 NR:00A102, 05.06.26/08:12   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">42.30</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-09</Dt></BookgDt><ValDt><Dt>2026-06-09</Dt></ValDt>
+        <AcctSvcrRef>2026060900000103</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Apple Pay   ALBERT HEIJN 1234,PAS421 NR:00A103, 09.06.26/19:55   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">11.08</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-14</Dt></BookgDt><ValDt><Dt>2026-06-14</Dt></ValDt>
+        <AcctSvcrRef>2026061400000104</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 9012,PAS421 NR:00A104, 14.06.26/12:03   HAARLEM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">63.90</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-21</Dt></BookgDt><ValDt><Dt>2026-06-21</Dt></ValDt>
+        <AcctSvcrRef>2026062100000105</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A105, 21.06.26/16:20   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">9.44</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-27</Dt></BookgDt><ValDt><Dt>2026-06-27</Dt></ValDt>
+        <AcctSvcrRef>2026062700000106</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Google Pay   ALBERT HEIJN 5678,PAS421 NR:00A106, 27.06.26/21:38   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+
+      <!-- Four fuel stops, same brand, three different stations. -->
+      <Ntry>
+        <Amt Ccy="EUR">71.40</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-03</Dt></BookgDt><ValDt><Dt>2026-06-03</Dt></ValDt>
+        <AcctSvcrRef>2026060300000107</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTFUEL 22,PAS421 NR:00B101, 03.06.26/07:15   UTRECHT</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">68.10</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-11</Dt></BookgDt><ValDt><Dt>2026-06-11</Dt></ValDt>
+        <AcctSvcrRef>2026061100000108</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTFUEL 108,PAS421 NR:00B102, 11.06.26/07:02   BREUKELEN</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">74.85</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-18</Dt></BookgDt><ValDt><Dt>2026-06-18</Dt></ValDt>
+        <AcctSvcrRef>2026061800000109</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTFUEL 22,PAS421 NR:00B103, 18.06.26/06:58   UTRECHT</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">70.05</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-25</Dt></BookgDt><ValDt><Dt>2026-06-25</Dt></ValDt>
+        <AcctSvcrRef>2026062500000110</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTFUEL 341,PAS421 NR:00B104, 25.06.26/07:44   AMERSFOORT</AddtlNtryInf>
+      </Ntry>
+
+      <!-- Two coffees, the merchant behind an acquirer prefix. -->
+      <Ntry>
+        <Amt Ccy="EUR">4.60</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-04</Dt></BookgDt><ValDt><Dt>2026-06-04</Dt></ValDt>
+        <AcctSvcrRef>2026060400000111</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   CCV*KOFFIEHUIS DE TEST,PAS421 NR:00C101, 04.06.26/09:21   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">5.20</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-17</Dt></BookgDt><ValDt><Dt>2026-06-17</Dt></ValDt>
+        <AcctSvcrRef>2026061700000112</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   CCV*KOFFIEHUIS DE TEST,PAS421 NR:00C102, 17.06.26/09:05   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+
+      <!-- A direct debit under the same mandate as the previous month. -->
+      <Ntry>
+        <Amt Ccy="EUR">61.90</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-30</Dt></BookgDt><ValDt><Dt>2026-06-29</Dt></ValDt>
+        <AcctSvcrRef>2026063000000113</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>RDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-ENERGIE-202606</EndToEndId>
+              <MndtId>MANDAAT-4471902</MndtId>
+            </Refs>
+            <RltdPties>
+              <Cdtr><Nm>TESTENERGIE NEDERLAND B.V.</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>NL00TEST0987654321</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>Termijnbedrag juni 2026 klantnummer 990011</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+        <AddtlNtryInf>SEPA Incasso algemeen doorlopend</AddtlNtryInf>
+      </Ntry>
+
+      <!-- Salary. -->
+      <Ntry>
+        <Amt Ccy="EUR">1250.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-24</Dt></BookgDt><ValDt><Dt>2026-06-24</Dt></ValDt>
+        <AcctSvcrRef>2026062400000114</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>SALARIS-202606</EndToEndId></Refs>
+            <RltdPties>
+              <Dbtr><Nm>TESTWERKGEVER B.V.</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>NL00TEST0555000111</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>Salaris juni 2026</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

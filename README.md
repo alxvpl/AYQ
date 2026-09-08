@@ -35,8 +35,16 @@ no sync server, no monorepo build — and reads the ledger back out. Amounts,
 resolved payees and deduplication across re-exports are asserted end to end.
 What Actual has no field for travels beside the budget as provenance.
 
-Step 5 — one screen of our own against the same API, listing transactions by
-normalised counterparty — has not been started.
+**Step 5.** [`packages/ayq-screen`](packages/ayq-screen) is one screen of our
+own — not an Actual screen — against the same engine, listing transactions
+grouped by normalised counterparty. The screen never imports the Actual API: it
+sends a request over a single channel and receives an answer, which is the same
+boundary Electron IPC will carry after the fork. On the invented month it
+reports 14 distinct bank descriptions collapsing into 5 counterparties.
+
+With that the spike is technically complete. What remains is not spike work:
+forking the Actual monorepo, `ayq-client` and `ayq-desktop`, and the typed IPC
+that replaces the spike's HTTP host.
 
 ## Rules
 

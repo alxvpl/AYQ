@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AYQ — counterparties</title>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --ink: #16171a;
+    --muted: #6b6f76;
+    --line: #e4e4e1;
+    --accent: #1b4d3e;
+    --out: #8c2f24;
+    --in: #1b5e3f;
+    --chip: #f1f1ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121316;
+      --panel: #191a1e;
+      --ink: #e8e8e6;
+      --muted: #9a9ea6;
+      --line: #2a2c31;
+      --accent: #7fc4a8;
+      --out: #e58b7e;
+      --in: #7fc4a8;
+      --chip: #23252a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 24px; }
+  .eyebrow {
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 6px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+  .period { color: var(--muted); font-size: 13px; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 28px; margin-top: 20px; }
+  .stat .value {
+    font-size: 22px; font-weight: 600; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label { font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .stat .note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .collapse {
+    margin-top: 18px; padding: 10px 14px; border-left: 2px solid var(--accent);
+    background: var(--chip); font-size: 13px; color: var(--ink);
+  }
+  .collapse b { font-variant-numeric: tabular-nums; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 11px; font-weight: 500; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted);
+    padding: 0 12px 8px; border-bottom: 1px solid var(--line);
+  }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr.group { cursor: pointer; }
+  tbody tr.group:hover { background: var(--panel); }
+  tbody tr.group[aria-expanded="true"] { background: var(--panel); }
+
+  .name { font-weight: 550; }
+  .key { font-size: 11.5px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .chips { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip {
+    font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+    background: var(--chip); color: var(--muted); padding: 2px 6px; border-radius: 2px;
+  }
+  .chip.layer-description { color: var(--accent); }
+  .chip.layer-unresolved { color: var(--out); }
+  .out { color: var(--out); }
+  .in { color: var(--in); }
+  .variants { font-size: 12px; color: var(--muted); }
+
+  tr.detail td { background: var(--panel); padding: 0 12px 14px; }
+  .detail-inner { border-left: 2px solid var(--line); padding-left: 14px; }
+  .line { display: grid; grid-template-columns: 92px 1fr 110px; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .line:last-child { border-bottom: 0; }
+  .line .date { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .line .raw {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px; color: var(--muted); word-break: break-word; margin-top: 3px;
+  }
+  .line .amt { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  footer { margin-top: 32px; font-size: 12px; color: var(--muted); }
+  footer code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">AYQ · spike step 5</p>
+    <h1 id="account">Loading…</h1>
+    <div class="period" id="period"></div>
+    <div class="stats" id="stats"></div>
+    <div class="collapse" id="collapse" hidden></div>
+  </header>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Counterparty</th>
+        <th class="num">Transactions</th>
+        <th class="num">Out</th>
+        <th class="num">In</th>
+        <th class="num">Net</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="empty" id="empty" hidden>No transactions in this period.</div>
+
+  <footer>
+    The screen asks <code>POST /ask</code> and nothing else. It never sees
+    Actual: the same requests will travel over Electron IPC to the engine
+    process without a line of this page changing.
+  </footer>
+</div>
+
+<script>
+const FROM = '1900-01-01';
+const TO = '2999-12-31';
+
+async function ask(request) {
+  const response = await fetch('/ask', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return response.json();
+}
+
+const euro = cents =>
+  (cents / 100).toLocaleString('nl-NL', {
+    style: 'currency', currency: 'EUR', minimumFractionDigits: 2,
+  });
+
+const el = (tag, className, text) => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+function renderStats(totals) {
+  const stats = document.getElementById('stats');
+  stats.replaceChildren();
+  const add = (label, value, note) => {
+    const box = el('div', 'stat');
+    box.append(el('div', 'value', value), el('div', 'label', label));
+    if (note) box.append(el('div', 'note', note));
+    stats.append(box);
+  };
+  add('Transactions', String(totals.transactions));
+  add('Counterparties', String(totals.counterparties));
+  add('Out', euro(totals.outflowCents));
+  add('In', euro(totals.inflowCents));
+  add('Net', euro(totals.inflowCents + totals.outflowCents));
+
+  const collapse = document.getElementById('collapse');
+  if (totals.rawVariants > totals.counterparties) {
+    collapse.replaceChildren();
+    collapse.append(
+      document.createTextNode('The bank wrote '),
+      el('b', null, String(totals.rawVariants)),
+      document.createTextNode(' distinct descriptions for '),
+      el('b', null, String(totals.counterparties)),
+      document.createTextNode(' counterparties. Normalisation did the rest.'),
+    );
+    collapse.hidden = false;
+  } else {
+    collapse.hidden = true;
+  }
+}
+
+function detailRow(rows) {
+  const cell = el('td');
+  cell.colSpan = 5;
+  const inner = el('div', 'detail-inner');
+  for (const row of rows) {
+    const line = el('div', 'line');
+    line.append(el('div', 'date', row.date));
+
+    const middle = el('div');
+    middle.append(el('div', null, row.notes || row.payee || '—'));
+    if (row.raw && row.raw !== row.notes) {
+      middle.append(el('div', 'raw', row.raw));
+    }
+    const chips = el('div', 'chips');
+    if (row.bankTransactionCode) chips.append(el('span', 'chip', row.bankTransactionCode));
+    if (row.resolvedBy) chips.append(el('span', 'chip layer-' + row.resolvedBy, row.resolvedBy));
+    if (chips.childElementCount) middle.append(chips);
+    line.append(middle);
+
+    line.append(
+      el('div', 'amt ' + (row.amountCents < 0 ? 'out' : 'in'), euro(row.amountCents)),
+    );
+    inner.append(line);
+  }
+  cell.append(inner);
+  const tr = el('tr', 'detail');
+  tr.append(cell);
+  return tr;
+}
+
+function renderGroups(groups) {
+  const body = document.getElementById('rows');
+  body.replaceChildren();
+  document.getElementById('empty').hidden = groups.length > 0;
+
+  for (const group of groups) {
+    const tr = el('tr', 'group');
+    tr.setAttribute('aria-expanded', 'false');
+    tr.tabIndex = 0;
+
+    const first = el('td');
+    first.append(el('div', 'name', group.name));
+    first.append(el('div', 'key', group.key));
+    const chips = el('div', 'chips');
+    for (const layer of group.resolvedBy) {
+      chips.append(el('span', 'chip layer-' + layer, layer));
+    }
+    if (group.intermediary) chips.append(el('span', 'chip', 'via ' + group.intermediary));
+    if (group.mandateId) chips.append(el('span', 'chip', 'mandate'));
+    if (group.iban) chips.append(el('span', 'chip', 'IBAN'));
+    if (chips.childElementCount) first.append(chips);
+    if (group.rawVariants > 1) {
+      first.append(
+        el('div', 'variants', group.rawVariants + ' raw descriptions collapsed'),
+      );
+    }
+    tr.append(first);
+
+    tr.append(el('td', 'num', String(group.transactions)));
+    tr.append(el('td', 'num out', group.outflowCents ? euro(group.outflowCents) : '—'));
+    tr.append(el('td', 'num in', group.inflowCents ? euro(group.inflowCents) : '—'));
+    tr.append(
+      el('td', 'num ' + (group.totalCents < 0 ? 'out' : 'in'), euro(group.totalCents)),
+    );
+
+    let detail = null;
+    const toggle = async () => {
+      if (detail) {
+        detail.remove();
+        detail = null;
+        tr.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      const answer = await ask({
+        kind: 'transactions', from: FROM, to: TO, counterpartyKey: group.key,
+      });
+      if (answer.kind !== 'transactions') return;
+      detail = detailRow(answer.rows);
+      tr.after(detail);
+      tr.setAttribute('aria-expanded', 'true');
+    };
+
+    tr.addEventListener('click', toggle);
+    tr.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        void toggle();
+      }
+    });
+
+    body.append(tr);
+  }
+}
+
+(async () => {
+  const answer = await ask({ kind: 'overview', from: FROM, to: TO });
+  if (answer.kind !== 'overview') {
+    document.getElementById('account').textContent = 'Error';
+    document.getElementById('period').textContent =
+      answer.kind === 'error' ? answer.message : 'unexpected answer';
+    return;
+  }
+  const { overview } = answer;
+  document.getElementById('account').textContent = overview.accountName;
+  document.getElementById('period').textContent =
+    overview.groups.length === 0
+      ? 'no transactions'
+      : overview.groups.reduce((a, g) => (g.firstDate < a ? g.firstDate : a), '9999') +
+        ' — ' +
+        overview.groups.reduce((a, g) => (g.lastDate > a ? g.lastDate : a), '0000');
+  renderStats(overview.totals);
+  renderGroups(overview.groups);
+})();
+</script>
+</body>
+</html>
