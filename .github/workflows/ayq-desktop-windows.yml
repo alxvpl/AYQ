@@ -76,6 +76,7 @@ jobs:
       # database under Electron rather than merely importing.
       - name: Prepare the native engine dependency
         working-directory: ayq/ayq-desktop
+        timeout-minutes: 15
         run: node setup.mjs
 
       - name: Typecheck
@@ -86,6 +87,7 @@ jobs:
 
       - name: Tests
         working-directory: ayq/ayq-desktop
+        timeout-minutes: 20
         run: |
           npm test
           npm --prefix ../ayq-client test
@@ -98,6 +100,7 @@ jobs:
       # invented is there.
       - name: Production smoke
         working-directory: ayq/ayq-desktop
+        timeout-minutes: 10
         env:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-budget
         run: >
@@ -114,6 +117,7 @@ jobs:
       # never reaches CI, an artifact or a log — only counts travel.
       - name: CAMT.053 import acceptance
         working-directory: ayq/ayq-desktop
+        timeout-minutes: 10
         env:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-import-budget
         run: >
@@ -126,10 +130,16 @@ jobs:
       # installed application driving itself through the same acceptance.
       - name: Package the Windows installer
         working-directory: ayq/ayq-desktop
-        run: npm run package
+        timeout-minutes: 20
+        env:
+          # Nothing is published from here; saying so keeps electron-builder
+          # from reaching for a release API it has no business calling.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run package -- --publish never
 
       - name: Install it and run what was installed
         shell: pwsh
+        timeout-minutes: 15
         env:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-installed-budget
           AYQ_SMOKE: '1'
