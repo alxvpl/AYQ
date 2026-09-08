@@ -36,4 +36,5 @@ against the same API) have not been started.
 - Everything new is named `ayq-*`.
 - CIVION is not touched. When the AYQ-to-CIVION contract comes up: AYQ is an
   untrusted source, entering as a candidate, never as an accepted payment.
-- Documents and code are written in English.
+- English is the language of this repository: documentation, code,
+  comments, tool output, reports and commit messages.
