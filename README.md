@@ -76,6 +76,14 @@ reach it with; a test enforces that on the source and on the built bundle. One
 request, `engine.status`, is answered from a real budget: balances computed by
 the engine's spreadsheet, the transaction count by its own query language.
 
+**CAMT.053 import.** The first real feature: a button, the host's native
+picker, and the engine reading the file. `.xml` and `.zip` both, the ZIP never
+extracted. The parsing is the spike's `ayq-camt` unchanged, the mapping the
+bridge's, the import `@actual-app/api`'s — and importing the same export twice
+adds nothing, because every transaction carries the record's own stable key.
+The screen shows counts. Nothing from a statement travels further than the
+machine it was imported on.
+
 ## Rules
 
 - Real bank data never enter this repository and are never uploaded anywhere.

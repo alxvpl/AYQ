@@ -13,16 +13,11 @@ import { join } from 'node:path';
 import api from '@actual-app/api';
 
 import type { AyqBankEntry } from '../../ayq-camt/src/ayq-types.ts';
-import { ayqResolveCounterparty } from '../../ayq-camt/src/counterparty/ayq-resolve.ts';
 import type { AyqResolveOptions } from '../../ayq-camt/src/counterparty/ayq-counterparty-types.ts';
-import {
-  ayqToActualTransaction,
-  type AyqActualTransaction,
-} from './ayq-actual-transaction.ts';
-import {
-  ayqProvenanceRecord,
-  type AyqProvenanceRecord,
-} from './ayq-provenance.ts';
+import { ayqPrepare, ayqWithAccount } from './ayq-prepare.ts';
+import type { AyqProvenanceRecord } from './ayq-provenance.ts';
+
+export { ayqPrepare } from './ayq-prepare.ts';
 
 export type AyqImportRequest = {
   /** Where the budget lives on disk. Nothing leaves this directory. */
@@ -49,47 +44,6 @@ export type AyqImportResult = {
   /** Where the provenance file was written, when it was. */
   provenanceFile: string | null;
 };
-
-/**
- * Adds the account id Actual requires on every row.
- *
- * The mapping itself does not know which account it is filling — that is only
- * decided at import time — so the id is attached here rather than carried
- * through AyqActualTransaction.
- */
-function withAccount(
-  transactions: AyqActualTransaction[],
-  accountId: string,
-): Array<AyqActualTransaction & { account: string }> {
-  return transactions.map(transaction => ({ ...transaction, account: accountId }));
-}
-
-/** Turns records into Actual transactions plus the provenance beside them. */
-export function ayqPrepare(
-  entries: AyqBankEntry[],
-  options: AyqResolveOptions = {},
-): {
-  transactions: AyqActualTransaction[];
-  provenance: AyqProvenanceRecord[];
-  skipped: number;
-} {
-  const transactions: AyqActualTransaction[] = [];
-  const provenance: AyqProvenanceRecord[] = [];
-  let skipped = 0;
-
-  for (const entry of entries) {
-    const counterparty = ayqResolveCounterparty(entry, options);
-    const transaction = ayqToActualTransaction(entry, counterparty);
-    if (transaction === null) {
-      skipped += 1;
-      continue;
-    }
-    transactions.push(transaction);
-    provenance.push(ayqProvenanceRecord(entry, counterparty));
-  }
-
-  return { transactions, provenance, skipped };
-}
 
 /**
  * Creates a budget, an account, and imports the records into it.
@@ -122,7 +76,7 @@ export async function ayqImportToActual(
       );
       result = await api.importTransactions(
         accountId,
-        withAccount(transactions, accountId),
+        ayqWithAccount(transactions, accountId),
       );
     });
 
@@ -216,7 +170,7 @@ export async function ayqImportAgain(
     await api.loadBudget(budgetId);
     const result = await api.importTransactions(
       accountId,
-      withAccount(transactions, accountId),
+      ayqWithAccount(transactions, accountId),
     );
     return {
       added: result.added?.length ?? 0,

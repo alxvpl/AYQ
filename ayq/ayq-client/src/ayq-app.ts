@@ -5,7 +5,10 @@
 // UI, no Actual import, one typed call across the boundary — not a design.
 
 import { ayqAsk } from './ayq-bridge.ts';
-import type { AyqEngineStatus } from './ayq-ipc-contract.ts';
+import type {
+  AyqEngineStatus,
+  AyqImportSummary,
+} from './ayq-ipc-contract.ts';
 
 const euro = (cents: number): string =>
   (cents / 100).toLocaleString('nl-NL', {
@@ -77,14 +80,113 @@ function markState(state: 'ready' | 'error', engineHost?: string): void {
   if (engineHost !== undefined) document.body.dataset.ayqEngineHost = engineHost;
 }
 
-async function start(): Promise<void> {
+/**
+ * Imports a CAMT.053 file.
+ *
+ * Two calls, both across the same channel: the host opens the native picker
+ * and answers with a path, then the engine reads that path. The renderer never
+ * touches the filesystem — it has none — and never parses anything. It asks,
+ * and it shows what came back.
+ */
+async function importCamt(): Promise<void> {
+  const button = document.getElementById('ayq-import');
+  if (button instanceof HTMLButtonElement) button.disabled = true;
+  markImport('working');
+  renderImport(element('p', 'waiting', 'Waiting for a file…'));
+
   try {
-    const answer = await ayqAsk('engine.status');
-    if (answer.ok) {
+    const picked = await ayqAsk({ kind: 'import.pick' });
+    if (!picked.ok) throw new Error(picked.message);
+    if (picked.kind !== 'import.pick') throw new Error('the host answered the wrong request');
+
+    const path = picked.result.path;
+    if (path === null) {
+      renderImport(element('p', 'note', 'No file chosen; nothing was imported.'));
+      markImport('cancelled');
+      return;
+    }
+
+    renderImport(element('p', 'waiting', 'Reading and importing…'));
+    const done = await ayqAsk({ kind: 'import.camt', path });
+    if (!done.ok) throw new Error(done.message);
+    if (done.kind !== 'import.camt') throw new Error('the engine answered the wrong request');
+
+    renderSummary(done.result);
+
+    // The counts came from the engine; the screen above them is now stale.
+    // Refreshed before the import is called done, so that nothing — a person
+    // clicking twice, or the acceptance run doing the same — starts a second
+    // import while this one still has a question outstanding.
+    await refreshStatus();
+    markImport('done', done.result);
+  } catch (error) {
+    renderImport(element('pre', 'error', String(error)));
+    markImport('error');
+  } finally {
+    if (button instanceof HTMLButtonElement) button.disabled = false;
+  }
+}
+
+function renderImport(node: HTMLElement): void {
+  document.getElementById('ayq-import-result')?.replaceChildren(node);
+}
+
+/** The result, as counts. Nothing from the statement itself is shown. */
+function renderSummary(summary: AyqImportSummary): void {
+  const facts: Array<[string, string]> = [
+    ['File', summary.file],
+    ['Documents', String(summary.files)],
+    ['Imported', String(summary.imported)],
+    ['Duplicates', String(summary.duplicates)],
+    ['Skipped', String(summary.skipped)],
+    ['Failed', String(summary.failed)],
+    ['Account', summary.accountName],
+    ['Budget', summary.budgetName],
+    ['Transactions now', String(summary.transactionCountAfter)],
+  ];
+
+  const table = element('dl', 'facts');
+  for (const [label, value] of facts) {
+    table.append(element('dt', undefined, label), element('dd', undefined, value));
+  }
+  renderImport(table);
+}
+
+/**
+ * Published for the same reason the engine host is: the acceptance run has to
+ * be able to prove what the import did, from the outcome rather than from the
+ * screen's optimism. Counts only, which is all the summary carries.
+ */
+function markImport(
+  state: 'working' | 'done' | 'cancelled' | 'error',
+  summary?: AyqImportSummary,
+): void {
+  document.body.dataset.ayqImportState = state;
+  if (summary) document.body.dataset.ayqImportSummary = JSON.stringify(summary);
+}
+
+async function refreshStatus(): Promise<void> {
+  const answer = await ayqAsk({ kind: 'engine.status' });
+  if (answer.ok && answer.kind === 'engine.status') {
+    renderStatus(answer.result);
+    markState('ready', answer.result.engineHost);
+  }
+}
+
+async function start(): Promise<void> {
+  document.getElementById('ayq-import')?.addEventListener('click', () => {
+    void importCamt();
+  });
+
+  try {
+    const answer = await ayqAsk({ kind: 'engine.status' });
+    if (answer.ok && answer.kind === 'engine.status') {
       renderStatus(answer.result);
       markState('ready', answer.result.engineHost);
     } else {
-      renderError(answer.message);
+      renderError(
+        answer.ok ? 'the engine answered the wrong request' : answer.message,
+      );
       markState('error');
     }
   } catch (error) {

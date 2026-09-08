@@ -7,7 +7,7 @@
 
 import {
   type AyqBridge,
-  type AyqRequest,
+  type AyqRequestBody,
   type AyqResponse,
 } from './ayq-ipc-contract.ts';
 
@@ -25,9 +25,7 @@ function nextId(): string {
   return `ayq-${Date.now().toString(36)}-${counter}`;
 }
 
-export async function ayqAsk(
-  kind: AyqRequest['kind'],
-): Promise<AyqResponse> {
+export async function ayqAsk(body: AyqRequestBody): Promise<AyqResponse> {
   const bridge = window.ayq;
   if (!bridge) {
     throw new Error(
@@ -35,5 +33,5 @@ export async function ayqAsk(
         'AYQ Electron host, and there is no other way to reach the engine.',
     );
   }
-  return bridge.request({ id: nextId(), kind });
+  return bridge.request({ ...body, id: nextId() });
 }

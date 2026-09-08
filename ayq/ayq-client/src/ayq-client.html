@@ -31,6 +31,12 @@
   }
   .accounts .amount { font-variant-numeric:tabular-nums; color:var(--accent); font-weight:550; }
   .note { color:var(--muted); font-size:12.5px; border-left:2px solid var(--accent); padding-left:10px; }
+  button {
+    font:inherit; font-weight:550; color:var(--panel); background:var(--accent);
+    border:1px solid transparent; border-radius:3px; padding:8px 14px; cursor:pointer;
+  }
+  button:disabled { opacity:.55; cursor:default; }
+  .actions { margin:26px 0 0; }
   .error { color:#b3261e; white-space:pre-wrap; font-family:ui-monospace, Menlo, monospace; font-size:12px; }
   .waiting { color:var(--muted); }
   footer { margin-top:32px; font-size:11.5px; color:var(--muted); line-height:1.6; }
@@ -42,6 +48,13 @@
   <p class="eyebrow">AYQ desktop</p>
   <h1>Engine status</h1>
   <div id="ayq-body"><p class="waiting">Asking the engine…</p></div>
+
+  <h2>Import</h2>
+  <p class="actions">
+    <button id="ayq-import" type="button">Import CAMT.053</button>
+  </p>
+  <div id="ayq-import-result"></div>
+
   <footer>
     This renderer imports no Actual code. It asks
     <code>window.ayq.request()</code>, the host forwards it to the engine

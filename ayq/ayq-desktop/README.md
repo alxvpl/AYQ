@@ -52,6 +52,39 @@ single account and two invented entries. The response says so
 (`budgetCreated: true`) and the screen prints it, because a number whose origin
 is unclear is worse than no number.
 
+## Importing a statement
+
+The first real feature, and it crosses every layer without breaking any of
+them:
+
+```
+Import CAMT.053  ──▶  import.pick   host opens the native picker, answers a path
+                 ──▶  import.camt   engine reads it, parses, maps, imports
+```
+
+The renderer never touches the filesystem — it has none — and never parses
+anything. `.xml` and `.zip` are both accepted; a ZIP is read in memory and
+never extracted. The parsing is `ayq-camt`'s, unchanged: the same lossless
+records and the same counterparty resolution the spike proved over 212 real
+files. The mapping is the bridge's. The import is `@actual-app/api`'s.
+
+The account is named from the statement's IBAN, masked to a country code and
+the last four. That is enough to tell two accounts apart and to recognise your
+own; it is also what makes a second import land in the same account. Nothing
+else from the statement crosses into the interface: the result is counts.
+
+**Duplicate protection** is the record's own key. Every mapped transaction
+carries `imported_id` — the bank's `AcctSvcrRef` when it gave one, the record's
+stable `ayqKey` otherwise, and neither depends on the file name, which ABN AMRO
+derives from the moment of download. Actual matches on it, so importing the
+same export twice adds nothing the second time.
+
+Actual matches an import against what the budget already holds, but not
+against itself, so repeats *within* one import are collapsed before the rows
+are sent. That is not hypothetical: a ZIP of daily statements overlaps by
+construction, and without it the first import would already double every
+overlapping day.
+
 ## Running it
 
 One command from a clean checkout:
@@ -127,7 +160,11 @@ node start.mjs --smoke --require-host "electron utilityProcess"
 
 which launches the real window, waits for the renderer to report the outcome of
 its own request, captures the window, and exits non-zero unless the engine that
-answered was the Electron utility process.
+answered was the Electron utility process. A second run adds `--import` with an
+invented fixture: it clicks the button, imports, imports the same file again,
+and fails unless the second round adds nothing. Real bank data never appear
+there — the fixtures in this repository are the only statements CI ever sees,
+and only counts are printed.
 
 ## Tests
 

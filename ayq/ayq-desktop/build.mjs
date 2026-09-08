@@ -40,6 +40,15 @@ await build({
   // The engine keeps its dependency external: @actual-app/api carries a native
   // SQLite binding and must be loaded from node_modules, not inlined.
   external: ['@actual-app/api'],
+  // The CAMT parser's XML dependency is CommonJS and calls `require` at load
+  // time. An ES module has no `require`, and esbuild's stand-in throws rather
+  // than guess — so the bundle is given a real one built from its own URL.
+  banner: {
+    js: [
+      "import { createRequire as __ayqCreateRequire } from 'node:module';",
+      'const require = __ayqCreateRequire(import.meta.url);',
+    ].join('\n'),
+  },
 });
 
 await build({

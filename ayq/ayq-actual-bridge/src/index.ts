@@ -10,6 +10,10 @@ export {
 } from './ayq-provenance.ts';
 export {
   ayqPrepare,
+  ayqWithAccount,
+  type AyqPrepared,
+} from './ayq-prepare.ts';
+export {
   ayqImportToActual,
   ayqImportAgain,
   ayqReadLedger,

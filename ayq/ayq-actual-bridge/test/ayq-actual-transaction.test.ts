@@ -117,3 +117,26 @@ test('the intermediary payment does not land under the PSP', () => {
     'MOLLIE',
   );
 });
+
+test('a batch carrying the same entry twice sends it once', () => {
+  // Two exports of overlapping days, which is what a ZIP of daily statements
+  // holds. Actual deduplicates an import against what the budget already has;
+  // it does not deduplicate a batch against itself, so this has to happen
+  // before the rows are sent — otherwise every overlapping day is imported
+  // twice on the very first import.
+  const once = ayqPrepare(entries);
+  const twice = ayqPrepare([...entries, ...entries]);
+
+  assert.equal(once.repeated, 0, 'nothing repeats in a single export');
+  assert.equal(twice.repeated, once.transactions.length);
+  assert.equal(
+    twice.transactions.length,
+    once.transactions.length,
+    'the same rows, not twice over',
+  );
+  assert.deepEqual(
+    twice.transactions.map(transaction => transaction.imported_id),
+    once.transactions.map(transaction => transaction.imported_id),
+    'and the first occurrence of each is the one that was kept',
+  );
+});

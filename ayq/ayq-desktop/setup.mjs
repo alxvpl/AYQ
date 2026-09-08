@@ -166,6 +166,13 @@ await runNpm(installArgs(clientDir), 'installing renderer dependencies', {
   cwd: clientDir,
 });
 
+// The engine bundles the CAMT parser, which brings its own XML dependency, so
+// that package has to be installed for the host to build or typecheck at all.
+const camtDir = join(here, '..', 'ayq-camt');
+await runNpm(installArgs(camtDir), 'installing CAMT parser dependencies', {
+  cwd: camtDir,
+});
+
 await runNpm(
   [
     'exec',

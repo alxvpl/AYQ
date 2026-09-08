@@ -102,10 +102,28 @@ jobs:
           --require-host "electron utilityProcess"
           --screenshot "${{ runner.temp }}\ayq-desktop-windows.png"
 
+      # The first real user feature, end to end on Windows: the renderer's own
+      # button, the host's picker, the CAMT parser, and the Actual API taking
+      # the rows. It imports twice and requires the second to add nothing.
+      #
+      # The fixture is invented and lives in this repository. A real statement
+      # never reaches CI, an artifact or a log — only counts travel.
+      - name: CAMT.053 import acceptance
+        working-directory: ayq/ayq-desktop
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-import-budget
+        run: >
+          node start.mjs --smoke
+          --require-host "electron utilityProcess"
+          --import ../ayq-camt/test/fixtures/ayq-abn-month.xml
+          --screenshot "${{ runner.temp }}\ayq-desktop-import.png"
+
       - name: Upload the window capture
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ayq-desktop-windows-window
-          path: ${{ runner.temp }}\ayq-desktop-windows.png
+          path: |
+            ${{ runner.temp }}\ayq-desktop-windows.png
+            ${{ runner.temp }}\ayq-desktop-import.png
           if-no-files-found: warn

@@ -10,10 +10,14 @@
 // `--require-host "<name>"` makes the smoke fail unless that engine host is
 // the one that answered, so the production acceptance test cannot be satisfied
 // by the development fallback.
+//
+// `--import <file>` answers the smoke run's file picker with that file and
+// requires a second import of it to add nothing. Only fictional fixtures are
+// ever named here: a real statement stays on the machine it came from.
 
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -33,6 +37,10 @@ const shot = flag('screenshot');
 if (shot) env.AYQ_SMOKE_SCREENSHOT = shot;
 const requireHost = flag('require-host');
 if (requireHost) env.AYQ_SMOKE_REQUIRE_HOST = requireHost;
+// Resolved here rather than left relative: the engine that opens it runs in a
+// process forked twice over, and its working directory is nobody's business.
+const importFile = flag('import');
+if (importFile) env.AYQ_SMOKE_IMPORT = resolve(importFile);
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

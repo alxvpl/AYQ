@@ -41,14 +41,70 @@ export type AyqEngineStatus = {
   answeredAt: string;
 };
 
-export type AyqRequest = {
-  /** Correlation id; the host echoes it back untouched. */
-  id: string;
-  kind: 'engine.status';
+/**
+ * The file the host's picker returned, or null when the person cancelled.
+ *
+ * A path, not contents: the renderer never reads it, and never could — it has
+ * no filesystem. It hands the path back to the host, which is the side that
+ * opened the dialog in the first place.
+ */
+export type AyqPickedFile = { path: string | null };
+
+/**
+ * What a CAMT import did.
+ *
+ * Counts and identifiers only. No descriptions, no counterparty names, no
+ * amounts, no IBAN: this crosses into the interface and from there into
+ * screenshots and CI logs, and bank statements are not for either. The account
+ * name is masked at the engine before it ever reaches here.
+ */
+export type AyqImportSummary = {
+  /** The base name of what was picked. Never a full path. */
+  file: string;
+  /** CAMT documents read — a ZIP usually holds several. */
+  files: number;
+  /** Records the parser produced across those documents. */
+  records: number;
+  /** Rows sent to the engine — records that mapped, repeats collapsed. */
+  prepared: number;
+  /** Records with no usable date or amount, so nothing was sent. */
+  skipped: number;
+  /** Transactions the engine actually added. */
+  imported: number;
+  /**
+   * Records that did not become a new transaction: rows the budget already
+   * had, and repeats within the file itself, both matched on the import key.
+   */
+  duplicates: number;
+  /** Documents the parser could not read, plus rows the engine rejected. */
+  failed: number;
+  budgetId: string;
+  budgetName: string;
+  accountId: string;
+  /** Masked: a country code and the last four, never the account number. */
+  accountName: string;
+  /** Counted by the engine after the import, through its own query language. */
+  transactionCountAfter: number;
 };
+
+/**
+ * A request without its correlation id — what the renderer writes.
+ *
+ * Adding a capability means adding a member here, not a new IPC channel: there
+ * is one channel, and the host relays it.
+ */
+export type AyqRequestBody =
+  | { kind: 'engine.status' }
+  | { kind: 'import.pick' }
+  | { kind: 'import.camt'; path: string };
+
+/** Correlation id; the host echoes it back untouched. */
+export type AyqRequest = AyqRequestBody & { id: string };
 
 export type AyqResponse =
   | { id: string; ok: true; kind: 'engine.status'; result: AyqEngineStatus }
+  | { id: string; ok: true; kind: 'import.pick'; result: AyqPickedFile }
+  | { id: string; ok: true; kind: 'import.camt'; result: AyqImportSummary }
   | { id: string; ok: false; kind: 'error'; message: string };
 
 /**

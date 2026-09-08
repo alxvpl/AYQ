@@ -17,10 +17,12 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { app, BrowserWindow, ipcMain, utilityProcess } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, utilityProcess } from 'electron';
 
 import {
   AYQ_IPC_CHANNEL,
+  type AyqImportSummary,
+  type AyqPickedFile,
   type AyqRequest,
   type AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -29,6 +31,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 /** Where the budget lives. Nothing is written outside it. */
 const dataDir = process.env.AYQ_DATA_DIR ?? join(app.getPath('userData'), 'budget');
+
+/**
+ * The file the automated acceptance run imports.
+ *
+ * A native dialog cannot be answered by CI, so in smoke mode the host answers
+ * its own picker with this. It is read only when AYQ_SMOKE=1, so it is not a
+ * way into a shipped app — and everything after the picker is the real path:
+ * the renderer asks, the engine reads the file, the Actual API takes the rows.
+ */
+const smokeImport = process.env.AYQ_SMOKE_IMPORT ?? '';
 
 /** Requests waiting on the engine, by correlation id. */
 const pending = new Map<string, (response: AyqResponse) => void>();
@@ -96,7 +108,51 @@ function startEngine(): EngineHandle {
 
 let engine: EngineHandle | null = null;
 
-function ask(request: AyqRequest): Promise<AyqResponse> {
+/**
+ * Opens the native picker.
+ *
+ * This is the host's job. The renderer has no filesystem — giving it one would
+ * be the first hole in the boundary — and the engine has no window. So the
+ * host asks the person, and hands back a path for the engine to open.
+ */
+async function pickCamtFile(): Promise<AyqPickedFile> {
+  if (process.env.AYQ_SMOKE === '1' && smokeImport !== '') {
+    return { path: smokeImport };
+  }
+
+  const chosen = await dialog.showOpenDialog({
+    title: 'Import CAMT.053',
+    properties: ['openFile'],
+    filters: [
+      { name: 'CAMT.053 statement', extensions: ['xml', 'zip'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+
+  return { path: chosen.canceled ? null : (chosen.filePaths[0] ?? null) };
+}
+
+async function ask(request: AyqRequest): Promise<AyqResponse> {
+  // The one request the host answers itself, because it is about this window
+  // and not about the budget. Everything else is relayed untouched.
+  if (request?.kind === 'import.pick') {
+    try {
+      return {
+        id: request.id,
+        ok: true,
+        kind: 'import.pick',
+        result: await pickCamtFile(),
+      };
+    } catch (error) {
+      return {
+        id: request.id,
+        ok: false,
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   if (!engine) {
     return Promise.resolve({
       id: request.id,
@@ -149,6 +205,87 @@ function createWindow(): BrowserWindow {
 }
 
 /**
+ * Runs one import the way a person would: by clicking the button.
+ *
+ * The click is the only thing the smoke does — the picker, the IPC, the
+ * parsing and the API call are the product's own. It then reads the counts the
+ * renderer published, which are the engine's, not the screen's.
+ */
+async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
+  await window.webContents.executeJavaScript(
+    'document.body.dataset.ayqImportState = ""; ' +
+      'document.getElementById("ayq-import").click(); true',
+  );
+
+  const deadline = Date.now() + 240_000;
+  let state = '';
+  while (Date.now() < deadline) {
+    state = String(
+      await window.webContents.executeJavaScript(
+        'document.body.dataset.ayqImportState || ""',
+      ),
+    );
+    if (state !== '' && state !== 'working') break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
+  if (state !== 'done') {
+    throw new Error(`the import ended as ${state || 'timeout'}`);
+  }
+
+  return JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(
+        'document.body.dataset.ayqImportSummary || ""',
+      ),
+    ),
+  ) as AyqImportSummary;
+}
+
+/**
+ * The import acceptance run: import once, import the same file again, and
+ * require the second to add nothing.
+ *
+ * Only counts are printed. The fixture is invented, but the rule holds
+ * whatever the file is: a statement's contents do not belong in a CI log.
+ */
+async function checkImport(window: BrowserWindow): Promise<boolean> {
+  try {
+    const first = await importOnce(window);
+    const second = await importOnce(window);
+
+    const report = (round: string, summary: AyqImportSummary): void => {
+      process.stdout.write(
+        `[ayq-smoke] import ${round}: ${summary.files} document(s), ` +
+          `${summary.records} records, ${summary.imported} imported, ` +
+          `${summary.duplicates} duplicates, ${summary.skipped} skipped, ` +
+          `${summary.failed} failed, ` +
+          `${summary.transactionCountAfter} transactions in the budget\n`,
+      );
+    };
+    report('1', first);
+    report('2', second);
+
+    const held =
+      first.imported > 0 &&
+      first.failed === 0 &&
+      second.imported === 0 &&
+      second.duplicates === first.prepared &&
+      second.transactionCountAfter === first.transactionCountAfter;
+
+    process.stdout.write(
+      `[ayq-smoke] duplicate protection: ${held ? 'HOLDS' : 'FAILED'}\n`,
+    );
+    return held;
+  } catch (error) {
+    process.stdout.write(
+      `[ayq-smoke] import failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return false;
+  }
+}
+
+/**
  * A launch that verifies itself.
  *
  * With AYQ_SMOKE=1 the host waits for the renderer to report the outcome of its
@@ -172,6 +309,9 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     if (state !== '') break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
+
+  // Before the capture, so the window in the artifact shows the outcome.
+  const importOk = smokeImport === '' || (await checkImport(window));
 
   const engineHost = String(
     await window.webContents.executeJavaScript(
@@ -203,7 +343,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   process.stdout.write(`[ayq-smoke] rendered:\n${body}\n`);
 
   engine?.stop();
-  app.exit(state === 'ready' && hostOk ? 0 : 1);
+  app.exit(state === 'ready' && hostOk && importOk ? 0 : 1);
 }
 
 void app.whenReady().then(() => {
