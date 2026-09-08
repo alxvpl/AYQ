@@ -23,9 +23,13 @@ export type AyqMeasurement = {
   entries: number;
   /** Брой междинни записа — един на <TxDtls>, или един на <Ntry> без такъв. */
   records: number;
+  /** <Ntry> с поне един <TxDtls>. Измереното в r001: 350. */
   withTxDtls: number;
+  /** <Ntry> без <TxDtls> изобщо. Измереното в r001: 217. */
   withoutTxDtls: number;
-  /** Записи, при които един <Ntry> е носил повече от един <TxDtls>. */
+  /** Междинни записи, произлезли от <TxDtls>. Различава се от withTxDtls само при batch. */
+  recordsWithTxDtls: number;
+  /** <Ntry>, носили повече от един <TxDtls>. Измереното в r001: 0. */
   batched: number;
 
   /** Наличност на полетата, които оригиналният парсър изхвърля. */
@@ -100,6 +104,7 @@ export function ayqMeasure(
   const statements = new Set<string>();
   let withTxDtls = 0;
   let withoutTxDtls = 0;
+  let recordsWithTxDtls = 0;
   let batched = 0;
   let cardRecords = 0;
 
@@ -108,9 +113,17 @@ export function ayqMeasure(
       `${entry.statement.file ?? ''}#${entry.position.statementIndex}`,
     );
 
-    if (entry.position.transactionCount > 0) withTxDtls += 1;
-    else withoutTxDtls += 1;
-    if (entry.position.transactionCount > 1) batched += 1;
+    // Тези три броят <Ntry>, не междинни записи: критерият 350/217 е за
+    // <Ntry>. При batch един <Ntry> дава няколко записа, така че броенето по
+    // записи би дало число над 350 — и то тъкмо когато batch се появи, тоест
+    // тъкмо когато числото трябва да е вярно. Първият запис на всеки <Ntry>
+    // има transactionIndex 0, а при липсващ <TxDtls> — -1.
+    if (entry.position.transactionIndex <= 0) {
+      if (entry.position.transactionCount > 0) withTxDtls += 1;
+      else withoutTxDtls += 1;
+      if (entry.position.transactionCount > 1) batched += 1;
+    }
+    if (entry.position.transactionCount > 0) recordsWithTxDtls += 1;
 
     const isDebit = entry.creditDebitIndicator === 'DBIT';
     const party = isDebit ? entry.creditor : entry.debtor;
@@ -176,6 +189,7 @@ export function ayqMeasure(
     records: entries.length,
     withTxDtls,
     withoutTxDtls,
+    recordsWithTxDtls,
     batched,
     present,
     bankTransactionCodes: sortByCount(bankTransactionCodes),

@@ -179,3 +179,36 @@ test('непокрит XML път не проваля, а иска решени�
   assert.equal(advisory?.passed, false);
   assert.equal(advisory?.actual, '1');
 });
+
+test('броенията 350/217 са за <Ntry>, не за междинни записи', async () => {
+  // Един <Ntry> с два <TxDtls> плюс един с един: два записа с TxDtls,
+  // но три междинни записа. Критерият е за <Ntry> и трябва да види 2.
+  const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
+  const entries = await ayqParseCamt(batchAndFx, { file: 'batch.xml' });
+  const measurement = ayqMeasure(entries, 1);
+
+  assert.equal(measurement.entries, 2);
+  assert.equal(measurement.records, 3);
+  assert.equal(measurement.withTxDtls, 2, 'брои <Ntry>, не записи');
+  assert.equal(measurement.recordsWithTxDtls, 3, 'записите се броят отделно');
+  assert.equal(measurement.withoutTxDtls, 0);
+  assert.equal(measurement.batched, 1);
+});
+
+test('batch не проваля спайка, но се съобщава', async () => {
+  const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
+  const entries = await ayqParseCamt(batchAndFx, { file: 'batch.xml' });
+  const verdict = ayqEvaluateSpike(
+    ayqMeasure(entries, 1),
+    await ayqAuditCoverage([batchAndFx]),
+    0,
+    { files: 1, entries: 2, withTxDtls: 2, withoutTxDtls: 0 },
+  );
+  assert.equal(verdict.passed, true);
+
+  const advisory = verdict.checks.find(
+    check => check.name === '<Ntry> с повече от един <TxDtls>',
+  );
+  assert.equal(advisory?.advisory, true);
+  assert.equal(advisory?.actual, '1');
+});

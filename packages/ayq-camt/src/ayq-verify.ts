@@ -84,6 +84,9 @@ export function ayqEvaluateSpike(
       measurement.present.bothDates,
     ),
     check('непрочетени XML пътища', 0, uncovered.length, true),
+    // r001 измери нула batch записа. Появи ли се такъв, това е точно случаят,
+    // от който r003 §11.4 се опасяваше — и се вижда, вместо да се слее тихо.
+    check('<Ntry> с повече от един <TxDtls>', 0, measurement.batched, true),
   ];
 
   return {

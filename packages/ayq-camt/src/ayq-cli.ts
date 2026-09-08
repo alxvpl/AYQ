@@ -112,10 +112,11 @@ function reportMeasurement(
     'файлове с грешка': loaded.failed.length,
     извлечения: measurement.statements,
     'записи (Ntry)': measurement.entries,
+    '  с TxDtls': measurement.withTxDtls,
+    '  без TxDtls': measurement.withoutTxDtls,
+    '  batch (>1 TxDtls)': measurement.batched,
     'междинни записа': measurement.records,
-    'с TxDtls': measurement.withTxDtls,
-    'без TxDtls': measurement.withoutTxDtls,
-    'batch (>1 TxDtls)': measurement.batched,
+    '  от TxDtls': measurement.recordsWithTxDtls,
   });
 
   heading(out, 'Обявена кодировка');
@@ -124,7 +125,7 @@ function reportMeasurement(
   heading(out, 'Наличност на полетата, които оригиналният парсър изхвърля');
   table(out, measurement.present);
 
-  heading(out, 'BkTxCd');
+  heading(out, 'BkTxCd, по междинен запис');
   table(out, measurement.bankTransactionCodes);
 
   heading(out, 'Записи без TxDtls, по BkTxCd');
@@ -204,9 +205,10 @@ function buildJsonReport(
       statements: measurement.statements,
       entries: measurement.entries,
       records: measurement.records,
-      withTxDtls: measurement.withTxDtls,
-      withoutTxDtls: measurement.withoutTxDtls,
-      batched: measurement.batched,
+      entriesWithTxDtls: measurement.withTxDtls,
+      entriesWithoutTxDtls: measurement.withoutTxDtls,
+      recordsFromTxDtls: measurement.recordsWithTxDtls,
+      batchedEntries: measurement.batched,
     },
     declaredEncodings: loaded.encodings,
     fieldPresence: measurement.present,
