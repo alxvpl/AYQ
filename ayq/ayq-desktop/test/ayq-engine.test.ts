@@ -1,13 +1,21 @@
-// The engine half of the slice, exercised without Electron.
+// The engine half of the slice, exercised without a window.
 //
-// The built engine is forked as a plain Node child and asked the same request
-// the renderer sends. It answers from a real budget it opens or creates, so a
-// pass here means the Actual API really ran — Electron only has to carry the
+// The built engine is forked as a child and asked the same request the
+// renderer sends. It answers from a real budget it opens or creates, so a pass
+// here means the Actual API really ran — Electron only has to carry the
 // message afterwards.
+//
+// The child runs the Electron binary with ELECTRON_RUN_AS_NODE, not this Node.
+// After `setup.mjs` the engine's SQLite binding is built for Electron's ABI,
+// which is the whole point of that step; loading it into a plain Node would
+// fail with ERR_DLOPEN_FAILED. Electron as Node is the same runtime the
+// utilityProcess engine gets, minus the window — so this exercises the ABI
+// that ships rather than a second one that does not.
 
 import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +25,10 @@ import type {
   AyqRequest,
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
+
+// `require('electron')` resolves to the binary's path, not to Electron's own
+// module surface, which is exactly what is wanted here.
+const electronPath = createRequire(import.meta.url)('electron') as string;
 
 const enginePath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -30,7 +42,12 @@ async function ask(
   dataDir: string,
 ): Promise<AyqResponse> {
   const child = fork(enginePath, [], {
-    env: { ...process.env, AYQ_DATA_DIR: dataDir },
+    execPath: electronPath,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      AYQ_DATA_DIR: dataDir,
+    },
     stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
   });
 
