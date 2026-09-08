@@ -79,7 +79,8 @@ function byId(id: string): HTMLElement | null {
  */
 function markState(value: 'ready' | 'error'): void {
   document.body.dataset.ayqState = value;
-  if (state.status) document.body.dataset.ayqEngineHost = state.status.engineHost;
+  if (state.status)
+    document.body.dataset.ayqEngineHost = state.status.engineHost;
 }
 
 function markLedger(): void {
@@ -265,7 +266,11 @@ function drawSummary(): void {
     figures.splice(
       1,
       0,
-      [`In · ${ayqMonth(summary.month)}`, ayqEuro(summary.monthIncomeCents), 'in'],
+      [
+        `In · ${ayqMonth(summary.month)}`,
+        ayqEuro(summary.monthIncomeCents),
+        'in',
+      ],
       [
         `Out · ${ayqMonth(summary.month)}`,
         ayqEuro(summary.monthExpenseCents),
@@ -322,8 +327,10 @@ function drawView(): void {
 
   switch (state.view) {
     case 'transactions':
-      ayqRenderTransactions(state.transactions, target, reload =>
-        void refresh(reload),
+      ayqRenderTransactions(
+        state.transactions,
+        target,
+        reload => void refresh(reload),
       );
       return;
     case 'recurring':
@@ -414,7 +421,8 @@ async function importCamt(): Promise<void> {
     const done = await need({ kind: 'import.camt', paths });
     const summary = done.result;
 
-    renderImportLine(
+    const outcome = ayqElement('div', 'import-outcome');
+    outcome.append(
       ayqElement(
         'span',
         'import-done',
@@ -428,6 +436,19 @@ async function importCamt(): Promise<void> {
           ` — ${summary.accountName}`,
       ),
     );
+
+    // A count of failures tells a person that something went wrong and not
+    // which thing. The files that could not be used are named, once each.
+    for (const problem of summary.problems) {
+      outcome.append(
+        ayqElement(
+          'span',
+          'import-problem',
+          `${problem.name} — ${problem.reason}`,
+        ),
+      );
+    }
+    renderImportLine(outcome);
 
     // The ledger is what just changed, so it is reloaded before the import is
     // called done: a person sees their transactions without asking twice, and

@@ -203,6 +203,22 @@ export type AyqImportRecord = {
   accountName: string;
   /** Categories the rules assigned during this import. */
   categorised: number;
+  /**
+   * What was chosen and could not be used, said plainly.
+   *
+   * A file that would not open, an archive that would not unpack, a document
+   * that is not CAMT: each is named once with a reason, so the person can see
+   * which of the eight files they picked was the problem instead of being told
+   * only that a number failed.
+   */
+  problems: AyqImportProblem[];
+};
+
+/** One chosen thing AYQ could not use, and why. */
+export type AyqImportProblem = {
+  /** The base name of what was chosen; the path stays on the machine. */
+  name: string;
+  reason: string;
 };
 
 /**

@@ -73,12 +73,14 @@ export type {
 } from './counterparty/ayq-counterparty-types.ts';
 
 export {
+  ayqCollectTargets,
   ayqLoadTargets,
   ayqReadCamtFile,
   ayqReadCamtZip,
   ayqDecodeCamt,
   type AyqLoadedFile,
   type AyqFailedFile,
+  type AyqUnreadable,
 } from './ayq-files.ts';
 export { ayqReadZip, type AyqZipEntry } from './ayq-zip.ts';
 export {

@@ -32,7 +32,8 @@ export type AyqFailedFile = {
   reason: string;
 };
 
-const XML_DECLARATION_ENCODING = /<\?xml[^>]*\bencoding\s*=\s*["']([^"']+)["']/i;
+const XML_DECLARATION_ENCODING =
+  /<\?xml[^>]*\bencoding\s*=\s*["']([^"']+)["']/i;
 
 /**
  * Decodes content according to the encoding it declares.
@@ -92,15 +93,39 @@ export async function ayqReadCamtZip(path: string): Promise<AyqLoadedFile[]> {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** One thing that could not be read, and why, named the way a person named it. */
+export type AyqUnreadable = {
+  /** The base name of what was chosen. A full path is nobody else's business. */
+  name: string;
+  reason: string;
+};
+
+/** What a plain Error, or anything else thrown, has to say for itself. */
+function reasonOf(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  // Node states the code and repeats the whole path; neither helps a person
+  // looking at a file they just chose themselves.
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === 'ENOENT') return 'it is no longer there';
+  if (code === 'EACCES' || code === 'EPERM')
+    return 'AYQ is not allowed to read it';
+  if (code === 'EISDIR') return 'it is a folder, not a file';
+  return error.message;
+}
+
 /**
  * Collects the input: a directory (recursively), a single XML file, or a ZIP.
  *
- * The ordering is stable so that the report is stable between two runs.
+ * Every target is attempted, and one that cannot be read is reported rather
+ * than thrown: choosing eight exports and having the whole import abandoned
+ * because the third is a damaged archive is not a useful answer. The ordering
+ * is stable so that the report is stable between two runs.
  */
-export async function ayqLoadTargets(
+export async function ayqCollectTargets(
   targets: string[],
-): Promise<AyqLoadedFile[]> {
+): Promise<{ files: AyqLoadedFile[]; unreadable: AyqUnreadable[] }> {
   const files: AyqLoadedFile[] = [];
+  const unreadable: AyqUnreadable[] = [];
 
   const walk = async (target: string): Promise<void> => {
     const info = await stat(target);
@@ -115,10 +140,33 @@ export async function ayqLoadTargets(
       const child = join(target, name);
       const childInfo = await stat(child);
       if (childInfo.isDirectory()) await walk(child);
-      else if (isXml(name) || isZip(name)) await walk(child);
+      else if (isXml(name) || isZip(name)) await attempt(child);
     }
   };
 
-  for (const target of targets) await walk(target);
+  const attempt = async (target: string): Promise<void> => {
+    try {
+      await walk(target);
+    } catch (error) {
+      unreadable.push({ name: basename(target), reason: reasonOf(error) });
+    }
+  };
+
+  for (const target of targets) await attempt(target);
+  return { files, unreadable };
+}
+
+/**
+ * The same collection, for callers that want the first failure to stop them.
+ *
+ * The audit tooling reads a directory it was pointed at and has nothing to
+ * decide if part of it is unreadable; the application does.
+ */
+export async function ayqLoadTargets(
+  targets: string[],
+): Promise<AyqLoadedFile[]> {
+  const { files, unreadable } = await ayqCollectTargets(targets);
+  const first = unreadable[0];
+  if (first) throw new Error(`${first.name}: ${first.reason}`);
   return files;
 }

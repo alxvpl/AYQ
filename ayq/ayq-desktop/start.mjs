@@ -17,6 +17,9 @@
 // the machine it came from.
 //
 // `--require-empty` demands the opposite: a budget with nothing in it.
+//
+// `--hold <ms>` keeps the window open after the checks pass, which is how a
+// second launch can be made to overlap the first.
 
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -56,6 +59,10 @@ const categorise = flag('categorise');
 if (categorise) env.AYQ_SMOKE_CATEGORISE = categorise;
 const expectCategory = flag('expect-category');
 if (expectCategory) env.AYQ_SMOKE_EXPECT_CATEGORY = expectCategory;
+// `--hold <ms>` keeps a finished smoke run on screen, so a second launch can be
+// started while this one still holds the budget.
+const hold = flag('hold');
+if (hold) env.AYQ_SMOKE_HOLD_MS = hold;
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

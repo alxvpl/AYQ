@@ -15,21 +15,23 @@ import { basename } from 'node:path';
 
 import api from '@actual-app/api';
 
+import { ayqToActualTransaction } from '../../ayq-actual-bridge/src/ayq-actual-transaction.ts';
+import { ayqWithAccount } from '../../ayq-actual-bridge/src/ayq-prepare.ts';
+import { ayqParseCamt } from '../../ayq-camt/src/ayq-camt053.ts';
+import { ayqCollectTargets } from '../../ayq-camt/src/ayq-files.ts';
+import type { AyqBankEntry } from '../../ayq-camt/src/ayq-types.ts';
+import { ayqResolveCounterparty } from '../../ayq-camt/src/counterparty/ayq-resolve.ts';
 import type {
+  AyqImportProblem,
   AyqImportRecord,
   AyqImportSummary,
   AyqProvenance,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
-import { ayqParseCamt } from '../../ayq-camt/src/ayq-camt053.ts';
-import { ayqLoadTargets } from '../../ayq-camt/src/ayq-files.ts';
-import type { AyqBankEntry } from '../../ayq-camt/src/ayq-types.ts';
-import { ayqResolveCounterparty } from '../../ayq-camt/src/counterparty/ayq-resolve.ts';
-import { ayqToActualTransaction } from '../../ayq-actual-bridge/src/ayq-actual-transaction.ts';
-import { ayqWithAccount } from '../../ayq-actual-bridge/src/ayq-prepare.ts';
+
+import { ayqTransactionCount } from './ayq-ledger.ts';
 import { ayqApplyRules } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import { ayqId, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
-import { ayqTransactionCount } from './ayq-ledger.ts';
 
 /**
  * The name the imported account gets, masked.
@@ -83,24 +85,47 @@ export async function ayqImportCamt(
 ): Promise<AyqImportSummary> {
   if (paths.length === 0) throw new Error('no file was chosen');
 
-  const files = await ayqLoadTargets(paths);
-  if (files.length === 0) {
-    throw new Error(
-      paths.length === 1
-        ? 'that file holds no CAMT document'
-        : 'none of those files holds a CAMT document',
-    );
-  }
+  // One unusable file does not abandon the others. Each is reported by name so
+  // the person can see which one it was, and the readable ones still import.
+  const { files, unreadable } = await ayqCollectTargets(paths);
+  const problems: AyqImportProblem[] = [...unreadable];
 
   const records: AyqBankEntry[] = [];
-  let failed = 0;
   for (const file of files) {
     try {
-      records.push(...(await ayqParseCamt(file.content, { file: file.name })));
+      const entries = await ayqParseCamt(file.content, { file: file.name });
+      // Well-formed XML that is not a statement parses to nothing at all. That
+      // is a file the person chose and AYQ could not use, so it is named like
+      // any other, rather than disappearing into a total of zero.
+      if (entries.length === 0) {
+        problems.push({
+          name: file.name,
+          reason: 'it holds no CAMT.053 entries',
+        });
+      }
+      records.push(...entries);
     } catch {
-      // The reason would quote the document. The count is what travels.
-      failed += 1;
+      // Whatever the parser objected to would quote the document, and a
+      // statement's contents do not belong in a message. The name does.
+      problems.push({
+        name: file.name,
+        reason: 'it is not a CAMT.053 document',
+      });
     }
+  }
+
+  // Nothing readable at all is a failure, not an import of nothing: the budget
+  // is left exactly as it was and the person is told why, file by file.
+  if (records.length === 0) {
+    throw new Error(
+      problems.length === 0
+        ? paths.length === 1
+          ? 'that file holds no CAMT document'
+          : 'none of those files holds a CAMT document'
+        : problems
+            .map(problem => `${problem.name}: ${problem.reason}`)
+            .join('; '),
+    );
   }
 
   const importId = ayqId('import');
@@ -164,10 +189,7 @@ export async function ayqImportCamt(
   const record: AyqImportRecord = {
     id: importId,
     at: new Date().toISOString(),
-    file:
-      paths.length === 1
-        ? basename(paths[0])
-        : `${paths.length} files`,
+    file: paths.length === 1 ? basename(paths[0]) : `${paths.length} files`,
     files: files.length,
     records: records.length,
     prepared: transactions.length,
@@ -177,7 +199,8 @@ export async function ayqImportCamt(
     // thing to the person importing.
     duplicates: records.length - skipped - imported,
     skipped,
-    failed: failed + errors,
+    failed: problems.length + errors,
+    problems,
     accountId,
     accountName,
     categorised,

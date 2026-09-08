@@ -51,6 +51,42 @@ const dataDir =
  */
 const smokeImport = process.env.AYQ_SMOKE_IMPORT ?? '';
 
+/**
+ * One AYQ at a time.
+ *
+ * The budget is an SQLite file that this application opens for writing. A
+ * second AYQ over the same directory is not a second window on one budget —
+ * it is two processes with their own connection, their own cache and their own
+ * idea of what is in there, and the loser of that race is the person's data.
+ * Electron's lock is taken before anything is opened, so the second launch
+ * never reaches the engine at all: it brings the running window to the front,
+ * which is what a person double-clicking the icon again actually wants.
+ */
+const isPrimary = app.requestSingleInstanceLock();
+
+/** The window, kept so a second launch can raise it rather than open another. */
+let mainWindow: BrowserWindow | null = null;
+
+if (!isPrimary) {
+  process.stdout.write('[ayq] AYQ is already running; raising that window\n');
+  // The acceptance run has no console to read, so the outcome is left where
+  // the run that launched it can find it — the same report the smoke writes.
+  reportSecondInstance();
+  app.exit(0);
+}
+
+/** Says, where an automated run can read it, that this launch stood aside. */
+function reportSecondInstance(): void {
+  const report = process.env.AYQ_SMOKE_REPORT;
+  if (process.env.AYQ_SMOKE !== '1' || !report) return;
+  mkdirSync(dirname(report), { recursive: true });
+  writeFileSync(
+    report,
+    `${JSON.stringify({ passed: true, secondInstance: true, dataDir }, null, 2)}\n`,
+    'utf8',
+  );
+}
+
 /** Requests waiting on the engine, by correlation id. */
 const pending = new Map<string, (response: AyqResponse) => void>();
 
@@ -246,7 +282,13 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
   }
 
   if (state !== 'done') {
-    throw new Error(`the import ended as ${state || 'timeout'}`);
+    // Carrying the screen's own words, because "ended as error" names the
+    // outcome and not the cause, and the cause is the whole point of a log.
+    const said = await problemShown(window);
+    throw new Error(
+      `the import ended as ${state || 'timeout'}` +
+        (said === '' ? '' : ` — the screen said: ${said}`),
+    );
   }
 
   return JSON.parse(
@@ -543,9 +585,24 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     process.stdout.write(`[ayq-smoke] the screen says: ${said}\n`);
   process.stdout.write(`[ayq-smoke] ledger:\n${body}\n`);
 
+  // Held open on request, so a second launch can be started while this one is
+  // still running and the lock has something to stand aside for. Without it the
+  // two launches never overlap and the acceptance proves nothing.
+  const hold = Number(process.env.AYQ_SMOKE_HOLD_MS ?? '0');
+  if (hold > 0) {
+    process.stdout.write(`[ayq-smoke] holding the window for ${hold}ms\n`);
+    await new Promise(resolve => setTimeout(resolve, hold));
+  }
+
   engine?.stop();
   app.exit(passed ? 0 : 1);
 }
+
+app.on('second-instance', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
 
 void app.whenReady().then(() => {
   mkdirSync(dataDir, { recursive: true });
@@ -556,6 +613,7 @@ void app.whenReady().then(() => {
   );
 
   const window = createWindow();
+  mainWindow = window;
   process.stdout.write(`[ayq] window created, budget data dir: ${dataDir}\n`);
 
   if (process.env.AYQ_SMOKE === '1') {

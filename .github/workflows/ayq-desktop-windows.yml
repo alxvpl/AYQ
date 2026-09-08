@@ -126,6 +126,39 @@ jobs:
           --import ../ayq-camt/test/fixtures/ayq-abn-month.xml
           --screenshot "${{ runner.temp }}\ayq-desktop-import.png"
 
+      # A file that is not a statement. The import has to refuse it, say which
+      # file and why, and leave the budget exactly as empty as it found it.
+      - name: An unusable file is refused, and nothing is damaged
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-badimport-budget
+        run: |
+          $notCamt = Join-Path $env:RUNNER_TEMP 'not-camt.xml'
+          Set-Content -Path $notCamt -Value '<list><item>bread</item></list>' -Encoding utf8
+
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import $notCamt 2>&1 | Out-String
+          $refused = $LASTEXITCODE
+          Write-Host $said
+          if ($refused -eq 0) {
+            throw 'a file that holds no statement was accepted as one'
+          }
+          if ($said -notmatch 'not-camt\.xml') {
+            throw 'the refusal did not say which file was the problem'
+          }
+          if ($said -notmatch 'no CAMT\.053 entries') {
+            throw 'the refusal did not say what was wrong with it'
+          }
+
+          # And the budget it refused to import into is still an empty budget,
+          # which is the part that matters: a rejected file changes nothing.
+          node start.mjs --smoke --require-host "electron utilityProcess" --require-empty
+          if ($LASTEXITCODE -ne 0) {
+            throw 'the refused import left something behind in the budget'
+          }
+
       # Categorising, twice over: the first launch files the newest transaction
       # through the control in the ledger, the second launch reopens the same
       # budget and requires it to still be filed. Two processes, one directory
@@ -138,6 +171,56 @@ jobs:
         run: |
           node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --categorise Utilities
           node start.mjs --smoke --require-host "electron utilityProcess" --expect-category Utilities --screenshot "${{ runner.temp }}\ayq-desktop-categories.png"
+
+      # Two AYQs over one budget would be two writers on one SQLite file. The
+      # second launch has to stand aside while the first still holds it, and it
+      # has to do so before it opens anything.
+      - name: A second launch stands aside
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-lock-budget
+          AYQ_SMOKE_REQUIRE_HOST: electron utilityProcess
+        run: |
+          $env:AYQ_SMOKE_HOLD_MS = '40000'
+          $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-lock-first.json"
+          $first = Start-Process -FilePath 'node' -ArgumentList 'start.mjs', '--smoke' `
+            -PassThru -NoNewWindow
+
+          # Ready is the budget existing on disk, not a guess at how long a
+          # cold start takes: the engine creates it, so its presence means the
+          # first launch is holding what the second must not touch.
+          $deadline = (Get-Date).AddMinutes(4)
+          while (-not (Get-ChildItem $env:AYQ_DATA_DIR -Filter 'AYQ-*' -Directory `
+                        -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 2
+          }
+          if (-not (Get-ChildItem $env:AYQ_DATA_DIR -Filter 'AYQ-*' -Directory `
+                     -ErrorAction SilentlyContinue)) {
+            throw 'the first launch never opened a budget'
+          }
+          Write-Host 'first launch : holding the budget'
+
+          Remove-Item Env:AYQ_SMOKE_HOLD_MS
+          $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-lock-second.json"
+          $second = Start-Process -FilePath 'node' -ArgumentList 'start.mjs', '--smoke' `
+            -PassThru -NoNewWindow -Wait
+          Write-Host "second launch: exit code $($second.ExitCode)"
+          $stood = Get-Content "$env:RUNNER_TEMP\ayq-lock-second.json" | ConvertFrom-Json
+          $stood | ConvertTo-Json -Compress | Write-Host
+          if ($second.ExitCode -ne 0) { throw 'the second launch did not exit cleanly' }
+          if (-not $stood.secondInstance) {
+            throw 'the second launch opened the budget instead of standing aside'
+          }
+
+          $first.WaitForExit()
+          Write-Host "first launch : exit code $($first.ExitCode)"
+          $held = Get-Content "$env:RUNNER_TEMP\ayq-lock-first.json" | ConvertFrom-Json
+          if ($first.ExitCode -ne 0 -or -not $held.passed) {
+            throw 'the launch that held the budget did not pass its own acceptance'
+          }
+          if ($held.secondInstance) { throw 'the first launch stood aside from itself' }
 
       # The product, as a person would get it: an installer, installed, and the
       # installed application driving itself through the same acceptance.
@@ -246,4 +329,6 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-report.json
             ${{ runner.temp }}\ayq-installed-restart-report.json
+            ${{ runner.temp }}\ayq-lock-first.json
+            ${{ runner.temp }}\ayq-lock-second.json
           if-no-files-found: warn

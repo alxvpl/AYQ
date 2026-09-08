@@ -723,6 +723,70 @@ test('an empty choice is refused rather than counted as an import', async () => 
   assert.deepEqual(await ask(dataDir, { kind: 'imports.list' }), []);
 });
 
+test('a file that cannot be read is named, and the budget is left alone', async () => {
+  const dataDir = await budget();
+  const missing = join(dataDir, 'never-existed.xml');
+
+  const answer = await send(
+    { id: 'gone', kind: 'import.camt', paths: [missing] },
+    dataDir,
+  );
+
+  assert.equal(answer.ok, false);
+  if (answer.ok) return;
+  assert.match(answer.message, /never-existed\.xml/, 'says which file');
+  assert.match(
+    answer.message,
+    /no longer there/,
+    'says what was wrong with it',
+  );
+
+  // Nothing was written: no import in the history, and no transactions.
+  assert.deepEqual(await ask(dataDir, { kind: 'imports.list' }), []);
+  assert.equal((await ask(dataDir, { kind: 'transactions.list' })).total, 0);
+});
+
+test('a file that is not CAMT is refused without touching the budget', async () => {
+  const dataDir = await budget();
+  const notCamt = join(dataDir, 'shopping-list.xml');
+  await writeFile(notCamt, '<list><item>bread</item></list>', 'utf8');
+
+  const answer = await send(
+    { id: 'nonsense', kind: 'import.camt', paths: [notCamt] },
+    dataDir,
+  );
+
+  assert.equal(answer.ok, false);
+  if (answer.ok) return;
+  assert.match(answer.message, /shopping-list\.xml/);
+  assert.match(answer.message, /no CAMT\.053 entries/);
+  assert.equal((await ask(dataDir, { kind: 'transactions.list' })).total, 0);
+});
+
+test('one unusable file does not abandon the ones beside it', async () => {
+  const dataDir = await budget();
+  const broken = join(dataDir, 'truncated.xml');
+  await writeFile(broken, '<Document><BkToCstmrStmt>', 'utf8');
+  const missing = join(dataDir, 'not-here.xml');
+
+  const summary = await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [broken, fixture, missing],
+  });
+
+  assert.equal(summary.imported, 14, 'the readable statement still imported');
+  assert.equal(summary.transactionCountAfter, 14);
+
+  const named = summary.problems.map(problem => problem.name).sort();
+  assert.deepEqual(named, ['not-here.xml', 'truncated.xml']);
+  assert.equal(summary.failed, 2, 'both are counted, and both are named');
+
+  // And the history records the same thing the screen was told.
+  const history = await ask(dataDir, { kind: 'imports.list' });
+  assert.equal(history.length, 1);
+  assert.equal(history[0]?.problems.length, 2);
+});
+
 test('a fresh budget has a short, usable set of categories', async () => {
   const dataDir = await budget();
   const categories = await ask(dataDir, { kind: 'categories.list' });
