@@ -138,3 +138,7 @@ ayq/*/dist/
 # AYQ desktop packaging: the installer and the generated icon are build output.
 ayq/ayq-desktop/release/
 ayq/ayq-desktop/build/
+
+# A local copy of the engine test that forks plain Node instead of Electron,
+# used to run the suite where Electron ABI builds are unavailable.
+ayq/ayq-desktop/test/zz-local-run.ts
