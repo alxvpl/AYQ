@@ -154,10 +154,28 @@ async function need<K extends Parameters<typeof ayqAsk>[0]['kind']>(
 }
 
 /** Everything the shell shows, whichever view is open. */
+/** The damaged store already reported, so it is said once and not every redraw. */
+let damagedTold = '';
+
+/** Held until the reload finishes, because a successful reload clears the bar. */
+let damagedNotice: string | null = null;
+
 async function loadShell(): Promise<void> {
   state.status = (await need({ kind: 'engine.status' })).result;
   state.summary = (await need({ kind: 'summary' })).result;
   state.transactions.accounts = state.summary.accounts;
+
+  // Losing the rules is not a reason to refuse to open, but it is a reason to
+  // say so: the transactions are Actual's and are all there, while everything
+  // AYQ kept beside them is not. Said once per launch, and dismissible.
+  const damaged = state.status?.storeDamaged ?? null;
+  if (damaged !== null && damaged !== damagedTold) {
+    damagedTold = damaged;
+    damagedNotice =
+      'AYQ could not read what it had kept beside this budget, so its rules ' +
+      'and the record of where each name came from are gone. Your ' +
+      `transactions are untouched. The unreadable file was kept as ${damaged}.`;
+  }
 }
 
 async function loadView(): Promise<void> {
@@ -214,6 +232,11 @@ async function refresh(reload: boolean): Promise<void> {
       await loadView();
       state.failure = null;
       clearProblem();
+      // After the bar is cleared, or clearing it would take the notice with it.
+      if (damagedNotice !== null) {
+        showProblem(damagedNotice);
+        damagedNotice = null;
+      }
     } catch (error) {
       state.failure = error instanceof Error ? error.message : String(error);
       showProblem(state.failure);

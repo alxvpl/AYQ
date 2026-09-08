@@ -159,6 +159,43 @@ jobs:
             throw 'the refused import left something behind in the budget'
           }
 
+      # What AYQ keeps beside the budget can be lost; the budget cannot. A store
+      # that will not parse must not stop AYQ opening, must not be written over,
+      # and must not be a silent loss — a packaged application has no console
+      # for a warning to go to.
+      - name: A damaged store is kept aside and said out loud
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-damaged-budget
+        run: |
+          node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml
+          if ($LASTEXITCODE -ne 0) { throw 'the import this test needs did not work' }
+
+          Set-Content -Path (Join-Path $env:AYQ_DATA_DIR 'ayq-store.json') `
+            -Value '{"version": 1, "rules": [' -Encoding utf8
+
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" 2>&1 |
+            Out-String
+          $opened = $LASTEXITCODE
+          Write-Host $said
+          if ($opened -ne 0) { throw 'a damaged store stopped AYQ from opening' }
+          if ($said -notmatch 'rules .* are gone') {
+            throw 'the screen did not say that the rules were lost'
+          }
+          if ($said -notmatch 'ayq-store\.damaged-') {
+            throw 'the screen did not name the file that was kept'
+          }
+          if (-not (Get-ChildItem $env:AYQ_DATA_DIR -Filter 'ayq-store.damaged-*.json')) {
+            throw 'the unreadable store was not kept'
+          }
+          # The transactions are Actual's, and none of this was theirs to lose.
+          if ($said -notmatch '14 transactions') {
+            throw 'the ledger did not come back intact'
+          }
+
       # Categorising, twice over: the first launch files the newest transaction
       # through the control in the ledger, the second launch reopens the same
       # budget and requires it to still be filed. Two processes, one directory

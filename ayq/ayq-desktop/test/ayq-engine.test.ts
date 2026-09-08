@@ -787,6 +787,50 @@ test('one unusable file does not abandon the ones beside it', async () => {
   assert.equal(history[0]?.problems.length, 2);
 });
 
+test('a store that cannot be read is kept, not overwritten', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const coffee = ledger.rows.find(row => row.payee === 'Koffiehuis De Test');
+  assert.ok(coffee);
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const category = categories.find(candidate => !candidate.isIncome);
+  assert.ok(category);
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: coffee.id,
+    categoryId: category.id,
+    createRule: true,
+  });
+
+  // Truncated the way a half-written file or a bad sector leaves it.
+  await restart(dataDir);
+  await writeFile(
+    join(dataDir, 'ayq-store.json'),
+    '{"version": 1, "rules": [',
+    'utf8',
+  );
+
+  const status = await ask(dataDir, { kind: 'engine.status' });
+  assert.ok(status.storeDamaged, 'the engine says it had to set one aside');
+  assert.match(status.storeDamaged ?? '', /^ayq-store\.damaged-/);
+  assert.equal(status.budgetCreated, false, 'the budget itself still opened');
+
+  // The unreadable file is still there under its new name, so what was in it
+  // is recoverable by hand rather than gone.
+  const kept = await readFile(join(dataDir, status.storeDamaged ?? ''), 'utf8');
+  assert.equal(kept, '{"version": 1, "rules": [');
+
+  // And the transactions, which are Actual's, are untouched.
+  const after = await ask(dataDir, { kind: 'transactions.list' });
+  assert.equal(after.total, 14);
+
+  // The rules are gone with the file, which is the honest outcome — and the
+  // fresh store must not carry a phantom of them.
+  assert.deepEqual(await ask(dataDir, { kind: 'rules.list' }), []);
+});
+
 test('a fresh budget has a short, usable set of categories', async () => {
   const dataDir = await budget();
   const categories = await ask(dataDir, { kind: 'categories.list' });

@@ -41,6 +41,11 @@ export type AyqEngineStatus = {
   dataDir: string;
   /** The AYQ store's schema version, so an upgrade can be reasoned about. */
   storeVersion: number;
+  /**
+   * The name of a store AYQ could not read and had to set aside, if there is
+   * one. Rules and provenance from before it are gone; the file is not.
+   */
+  storeDamaged: string | null;
   answeredAt: string;
 };
 

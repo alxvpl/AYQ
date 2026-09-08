@@ -18,21 +18,16 @@ import type {
   AyqRequest,
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
+
 import { ayqImportCamt, ayqImports } from './ayq-camt-import.ts';
-import {
-  ayqAccounts,
-  ayqDetail,
-  ayqLedger,
-  ayqSummary,
-} from './ayq-ledger.ts';
 import {
   ayqCategories,
   ayqCreateCategory,
   ayqRenameCategory,
   ayqSeedCategories,
 } from './ayq-categories.ts';
+import { ayqAccounts, ayqDetail, ayqLedger, ayqSummary } from './ayq-ledger.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
-import { ayqSettle } from './ayq-settle.ts';
 import {
   ayqApplyRules,
   ayqForgetRule,
@@ -42,7 +37,8 @@ import {
   ayqRememberRule,
   ayqRules,
 } from './ayq-rules.ts';
-import { ayqReadStore, ayqWriteStore } from './ayq-store.ts';
+import { ayqSettle } from './ayq-settle.ts';
+import { ayqDamagedStore, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
 
 const BUDGET_NAME = 'AYQ';
 
@@ -158,6 +154,7 @@ async function status(dataDir: string): Promise<AyqEngineStatus> {
     budgetName: BUDGET_NAME,
     dataDir,
     storeVersion: ayqReadStore(dataDir).version,
+    storeDamaged: ayqDamagedStore(dataDir),
     answeredAt: new Date().toISOString(),
   };
 }
@@ -218,14 +215,24 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
   const id = request.id;
 
   if (request.kind === 'engine.status') {
-    return { id, ok: true, kind: 'engine.status', result: await status(dataDir) };
+    return {
+      id,
+      ok: true,
+      kind: 'engine.status',
+      result: await status(dataDir),
+    };
   }
 
   const budget = await openBudget(dataDir);
 
   switch (request.kind) {
     case 'accounts.list':
-      return { id, ok: true, kind: 'accounts.list', result: await ayqAccounts() };
+      return {
+        id,
+        ok: true,
+        kind: 'accounts.list',
+        result: await ayqAccounts(),
+      };
 
     case 'transactions.list':
       return {
@@ -381,10 +388,20 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       };
 
     case 'imports.list':
-      return { id, ok: true, kind: 'imports.list', result: ayqImports(dataDir) };
+      return {
+        id,
+        ok: true,
+        kind: 'imports.list',
+        result: ayqImports(dataDir),
+      };
 
     case 'summary':
-      return { id, ok: true, kind: 'summary', result: await ayqSummary(dataDir) };
+      return {
+        id,
+        ok: true,
+        kind: 'summary',
+        result: await ayqSummary(dataDir),
+      };
 
     case 'import.camt':
       return {

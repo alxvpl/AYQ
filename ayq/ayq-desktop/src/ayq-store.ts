@@ -10,7 +10,14 @@
 // AYQ is refused rather than quietly rewritten with fields it does not know —
 // losing a person's rules to a downgrade is not an acceptable failure mode.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import type {
@@ -92,6 +99,23 @@ function migrate(raw: unknown): AyqStore {
   };
 }
 
+const DAMAGED = /^ayq-store\.damaged-.+\.json$/;
+
+/**
+ * The most recent store AYQ had to set aside, if it ever had to.
+ *
+ * Read from the directory rather than remembered in a variable, so it still
+ * answers on the launch after the one that lost it — which is usually the
+ * launch on which somebody notices their rules are gone.
+ */
+export function ayqDamagedStore(dataDir: string): string | null {
+  if (!existsSync(dataDir)) return null;
+  const kept = readdirSync(dataDir)
+    .filter(name => DAMAGED.test(name))
+    .sort();
+  return kept.at(-1) ?? null;
+}
+
 export function ayqStorePath(dataDir: string): string {
   return join(dataDir, FILE);
 }
@@ -105,13 +129,26 @@ export function ayqReadStore(dataDir: string): AyqStore {
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8'));
   } catch (error) {
-    // A truncated file is a lost cache, not lost money: the budget itself is
-    // Actual's and is intact. Say so and carry on rather than refusing to open.
+    // A file that will not parse is a lost cache, not lost money: the budget
+    // itself is Actual's and is intact, so AYQ opens rather than refusing to.
+    //
+    // But it is not nothing either — every rule and every trace of where a
+    // name came from lived in there. So the damaged file is moved aside before
+    // anything writes over it, and its name is reported to the screen. A
+    // packaged application writes to no console: a warning on stderr is a
+    // warning nobody receives.
     process.stderr.write(
       `[ayq-store] ${path} could not be read (${
         error instanceof Error ? error.message : String(error)
-      }); starting a fresh store.\n`,
+      }); keeping it aside and starting a fresh store.\n`,
     );
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    try {
+      renameSync(path, join(dataDir, `ayq-store.damaged-${stamp}.json`));
+    } catch {
+      // Unmovable as well as unreadable. The fresh store is still returned;
+      // there is nothing further AYQ can do for the old one.
+    }
     return empty();
   }
 
