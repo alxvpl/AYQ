@@ -76,6 +76,15 @@ export type AyqParty = {
   organisationId: string | null;
   /** Id/PrvtId/Othr/Id. */
   privateId: string | null;
+  /**
+   * Id/PrvtId/Othr/SchmeNm — the scheme the private identifier belongs to.
+   *
+   * Found by the coverage audit on the real export, 8 occurrences on the
+   * creditor. There is deliberately no matching field for the organisation
+   * identifier: fields are added when the data shows them, and the audit
+   * reports the next one that appears.
+   */
+  privateIdScheme: string | null;
 };
 
 /** <RltdAgts> — the BICs of both parties' banks. */

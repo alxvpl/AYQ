@@ -137,6 +137,9 @@ function readParty(partyNode: AyqXmlNode, accountNode: AyqXmlNode): AyqParty {
     addressLines: ayqTextList(ayqChild(partyNode, 'PstlAdr'), 'AdrLine'),
     organisationId: ayqTextAt(partyNode, 'Id', 'OrgId', 'Othr', 'Id'),
     privateId: ayqTextAt(partyNode, 'Id', 'PrvtId', 'Othr', 'Id'),
+    privateIdScheme:
+      ayqTextAt(partyNode, 'Id', 'PrvtId', 'Othr', 'SchmeNm', 'Cd') ??
+      ayqTextAt(partyNode, 'Id', 'PrvtId', 'Othr', 'SchmeNm', 'Prtry'),
   };
 }
 

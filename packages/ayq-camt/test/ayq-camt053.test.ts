@@ -166,3 +166,20 @@ test('the raw node is attached only when asked for', async () => {
   const withRaw = await ayqParseCamt(day, { keepRawNode: true });
   assert.ok(withRaw[0].rawNode?.entry);
 });
+
+test("a private party's identifier keeps its scheme name", async () => {
+  // The one path the coverage audit found uncovered on the real 212-file
+  // export, 8 occurrences on the creditor.
+  const privateId = await readFixture('ayq-abn-private-id.xml');
+  const [entry] = await ayqParseCamt(privateId, {
+    file: 'ayq-abn-private-id.xml',
+  });
+
+  assert.equal(entry.creditor.name, 'K. TESTONTVANGER');
+  assert.equal(entry.creditor.privateId, 'TEST-PRIVATE-88213');
+  assert.equal(entry.creditor.privateIdScheme, 'CUST');
+  assert.equal(entry.creditor.iban, 'NL00TEST0644000777');
+
+  // A party without one is null, not an empty string.
+  assert.equal(entry.debtor.privateIdScheme, null);
+});

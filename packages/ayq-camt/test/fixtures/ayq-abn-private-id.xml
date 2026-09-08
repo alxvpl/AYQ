@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An invented transfer to a private individual whose identifier carries a
+  scheme name.
+
+  This fixture exists for one path: RltdPties/Cdtr/Id/PrvtId/Othr/SchmeNm/Prtry.
+  The coverage audit found it on the real 212-file export, 8 occurrences on the
+  creditor, and it was the only path the record did not read. The fixture pins
+  it so it cannot be dropped again.
+
+  The IBANs, names and identifiers belong to no one.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-20260702-private-id</MsgId>
+      <CreDtTm>2026-07-03T03:02:01</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0123456789.2026-07-02</Id>
+      <CreDtTm>2026-07-03T03:02:01</CreDtTm>
+      <Acct>
+        <Id><IBAN>NL00TEST0123456789</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+
+      <Ntry>
+        <Amt Ccy="EUR">85.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-07-02</Dt></BookgDt>
+        <ValDt><Dt>2026-07-02</Dt></ValDt>
+        <AcctSvcrRef>2026070200000201</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>ICDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>E2E-PRIVATE-0001</EndToEndId></Refs>
+            <RltdPties>
+              <Cdtr>
+                <Nm>K. TESTONTVANGER</Nm>
+                <Id>
+                  <PrvtId>
+                    <Othr>
+                      <Id>TEST-PRIVATE-88213</Id>
+                      <SchmeNm><Prtry>CUST</Prtry></SchmeNm>
+                    </Othr>
+                  </PrvtId>
+                </Id>
+              </Cdtr>
+              <CdtrAcct><Id><IBAN>NL00TEST0644000777</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>Aandeel gezamenlijke kosten juli</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

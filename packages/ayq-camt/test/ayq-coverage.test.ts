@@ -6,10 +6,12 @@ import { readFixture } from './ayq-fixtures.ts';
 
 const day = await readFixture('ayq-abn-day.xml');
 const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
+const month = await readFixture('ayq-abn-month.xml');
+const privateId = await readFixture('ayq-abn-private-id.xml');
 
 test('nothing in the XML is left unread', async () => {
-  const report = await ayqAuditCoverage([day, batchAndFx]);
-  assert.equal(report.entries, 11);
+  const report = await ayqAuditCoverage([day, batchAndFx, month, privateId]);
+  assert.equal(report.entries, 26);
   assert.deepEqual(
     report.uncovered,
     {},
@@ -32,4 +34,13 @@ test('the audit also counts what is read', async () => {
   assert.equal(report.covered['BkTxCd/Domn/Fmly/SubFmlyCd'], 9);
   assert.equal(report.covered['NtryDtls/TxDtls/Refs/MndtId'], 2);
   assert.equal(report.covered['__stmt__/Acct/Id/IBAN'], 1);
+});
+
+test("the private identifier's scheme is read, not merely declared", async () => {
+  const report = await ayqAuditCoverage([privateId]);
+  assert.deepEqual(report.uncovered, {});
+  assert.equal(
+    report.covered['NtryDtls/TxDtls/RltdPties/Cdtr/Id/PrvtId/Othr/SchmeNm/Prtry'],
+    1,
+  );
 });

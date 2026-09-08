@@ -24,6 +24,8 @@ function partyPaths(party: string, account: string | null): string[] {
     `RltdPties/${party}/PstlAdr/AdrLine`,
     `RltdPties/${party}/Id/OrgId/Othr/Id`,
     `RltdPties/${party}/Id/PrvtId/Othr/Id`,
+    `RltdPties/${party}/Id/PrvtId/Othr/SchmeNm/Cd`,
+    `RltdPties/${party}/Id/PrvtId/Othr/SchmeNm/Prtry`,
   ];
   if (account !== null) {
     paths.push(
