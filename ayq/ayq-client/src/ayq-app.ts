@@ -67,11 +67,14 @@ function renderError(message: string): void {
 }
 
 /**
- * The smoke run reads this attribute to decide whether the slice worked, so it
- * is set from the outcome and never optimistically.
+ * The smoke run reads these attributes to decide whether the slice worked, so
+ * they are set from the outcome and never optimistically. The engine host is
+ * published too: the production acceptance test has to be able to prove which
+ * process answered, not take the screen's word for it.
  */
-function markState(state: 'ready' | 'error'): void {
+function markState(state: 'ready' | 'error', engineHost?: string): void {
   document.body.dataset.ayqState = state;
+  if (engineHost !== undefined) document.body.dataset.ayqEngineHost = engineHost;
 }
 
 async function start(): Promise<void> {
@@ -79,7 +82,7 @@ async function start(): Promise<void> {
     const answer = await ayqAsk('engine.status');
     if (answer.ok) {
       renderStatus(answer.result);
-      markState('ready');
+      markState('ready', answer.result.engineHost);
     } else {
       renderError(answer.message);
       markState('error');

@@ -54,30 +54,64 @@ is unclear is worse than no number.
 
 ## Running it
 
-```bash
-npm install
-npm start                 # engine in Electron's utilityProcess
-npm run start:node-engine # engine in a Node fork
-npm run smoke             # launch, verify, screenshot, exit non-zero on failure
-```
-
-`npm start` is the production shape. It needs the engine's native SQLite built
-for Electron once:
+One command from a clean checkout:
 
 ```bash
-npm run rebuild:engine    # electron-rebuild -o better-sqlite3 --build-from-source -f
+cd ayq/ayq-desktop
+node setup.mjs      # or: npm run setup, once dependencies exist
+npm start           # the production path
 ```
 
-That is the same step Actual has, for the same reason: `@actual-app/api` carries
-a native binding, and Electron's Node ABI is not the system Node's. Until it is
-run, `npm start` reaches the engine, gets a real error back, and the screen
-prints a message naming the fix — which is the correct behaviour, not a
-workaround.
+`setup.mjs` installs dependencies and builds the engine's native SQLite for
+Electron's ABI, then refuses to finish unless the result actually opens a
+database under Electron.
 
-`npm run start:node-engine` forks the engine on the system Node instead, where
-the binding already matches. Same window, same preload, same contract, same
-engine, same budget; only the process manager differs, and the response reports
-which one answered so the screen never has to be taken on trust.
+It uses `@electron/rebuild` — the same tool, the same pinned version and the
+same invocation upstream Actual uses (`--only <module> --force
+--build-from-source`). There is deliberately no second dependency model: no
+`.npmrc` runtime/target/disturl block, no hand-rolled node-gyp call, no
+prebuilt-binary side channel. `better-sqlite3` publishes prebuilds for Node
+ABIs only — there is no `electron-v148` asset — so a source build against
+Electron's headers is not a preference but the only thing that exists.
+
+Determinism rests on three things, and `setup.mjs` enforces the first:
+
+- `electron` is pinned to an exact version in `package.json`, and setup exits
+  if it ever becomes a range. A range would let the ABI the module is built for
+  drift from the ABI the app runs on, which is the whole failure being
+  prevented.
+- The rebuild is passed that same version explicitly rather than sniffing it.
+- `verify-native.mjs` opens a real database under Electron afterwards.
+
+That last point is not ceremony. `better-sqlite3` binds lazily: its entry point
+imports cleanly on any ABI and only reaches for the `.node` when a database is
+opened. A gate that stops at `require` reports success while the engine is
+still broken — which is exactly what this one did until it was made to open a
+database.
+
+### The development fallback
+
+```bash
+npm run start:debug-node-engine
+```
+
+Forks the engine on the system Node, where the binding already matches, so the
+UI can be worked on without a rebuild. It is a development shortcut and not the
+shipped path: the production smoke passes `--require-host "electron
+utilityProcess"`, so this mode cannot satisfy the acceptance test.
+
+### Verified where
+
+`.github/workflows/ayq-desktop-windows.yml` runs the whole thing on
+`windows-latest`: clean checkout, `node setup.mjs`, typecheck, tests, then
+
+```bash
+node start.mjs --smoke --require-host "electron utilityProcess"
+```
+
+which launches the real window, waits for the renderer to report the outcome of
+its own request, captures the window, and exits non-zero unless the engine that
+answered was the Electron utility process.
 
 ## Tests
 

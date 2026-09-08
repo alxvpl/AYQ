@@ -4,8 +4,12 @@
 // Windows first and `VAR=value command` is not a thing in cmd.
 //
 //   node start.mjs                  engine in Electron's utilityProcess
-//   node start.mjs --engine node    engine in a Node fork
+//   node start.mjs --engine node    engine in a Node fork (development only)
 //   node start.mjs --smoke          launch, verify, screenshot, exit
+//
+// `--require-host "<name>"` makes the smoke fail unless that engine host is
+// the one that answered, so the production acceptance test cannot be satisfied
+// by the development fallback.
 
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -27,6 +31,8 @@ if (engine) env.AYQ_ENGINE_HOST = engine;
 if (argv.includes('--smoke')) env.AYQ_SMOKE = '1';
 const shot = flag('screenshot');
 if (shot) env.AYQ_SMOKE_SCREENSHOT = shot;
+const requireHost = flag('require-host');
+if (requireHost) env.AYQ_SMOKE_REQUIRE_HOST = requireHost;
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

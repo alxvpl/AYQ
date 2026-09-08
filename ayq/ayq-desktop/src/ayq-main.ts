@@ -157,7 +157,10 @@ function createWindow(): BrowserWindow {
  */
 async function runSmoke(window: BrowserWindow): Promise<void> {
   const shot = process.env.AYQ_SMOKE_SCREENSHOT;
-  const deadline = Date.now() + 120_000;
+  // The acceptance test names the host it demands; anything else is a failure
+  // even when the screen is otherwise perfectly happy.
+  const requiredHost = process.env.AYQ_SMOKE_REQUIRE_HOST ?? '';
+  const deadline = Date.now() + 180_000;
 
   let state = '';
   while (Date.now() < deadline) {
@@ -170,6 +173,11 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
 
+  const engineHost = String(
+    await window.webContents.executeJavaScript(
+      'document.body.dataset.ayqEngineHost || ""',
+    ),
+  );
   const body = String(
     await window.webContents.executeJavaScript(
       'document.getElementById("ayq-body").innerText',
@@ -183,11 +191,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     writeFileSync(shot, image.toPNG());
   }
 
+  const hostOk = requiredHost === '' || engineHost === requiredHost;
+
   process.stdout.write(`\n[ayq-smoke] renderer state: ${state || 'timeout'}\n`);
+  process.stdout.write(`[ayq-smoke] engine host: ${engineHost || 'unreported'}\n`);
+  if (requiredHost !== '') {
+    process.stdout.write(
+      `[ayq-smoke] required host: ${requiredHost} -> ${hostOk ? 'MATCH' : 'MISMATCH'}\n`,
+    );
+  }
   process.stdout.write(`[ayq-smoke] rendered:\n${body}\n`);
 
   engine?.stop();
-  app.exit(state === 'ready' ? 0 : 1);
+  app.exit(state === 'ready' && hostOk ? 0 : 1);
 }
 
 void app.whenReady().then(() => {

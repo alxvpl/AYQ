@@ -182,10 +182,11 @@ function explain(message: string): string {
   return (
     `${message}\n\n` +
     'The engine could not load its native SQLite binding. It was built for ' +
-    "Node's ABI, and this process is running on Electron's. Either rebuild it " +
-    'once with `npm run rebuild:engine`, or start with ' +
-    '`npm run start:node-engine`, which forks the engine on the system Node ' +
-    'instead. Everything else about the boundary is identical.'
+    "Node's ABI, and this process is running on Electron's. Run `npm run " +
+    'setup` once: it rebuilds the binding for this exact Electron and refuses ' +
+    'to finish unless the result loads. `npm run start:debug-node-engine` ' +
+    'sidesteps it by forking the engine on the system Node, but that is a ' +
+    'development shortcut, not the shipped path.'
   );
 }
 

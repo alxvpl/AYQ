@@ -1,0 +1,90 @@
+# The AYQ desktop production path, proved on real Windows.
+#
+# This exists because the acceptance criterion cannot be met anywhere else:
+# `better-sqlite3` must be built against Electron's ABI, and that build needs
+# Electron's headers, which our development container cannot fetch. A Windows
+# runner can, and Windows is the platform AYQ ships on first.
+#
+# The job is deliberately end to end. It does not assert that a rebuild command
+# exited zero; it launches the real application and requires the real engine to
+# answer from the Electron utility process.
+#
+# `runs-on: windows-latest` is GitHub-hosted on purpose. The inherited upstream
+# workflows ask for `depot-ubuntu-latest`, a runner fleet this repository does
+# not have, which is why they sit queued forever. AYQ's own CI uses runners
+# that exist.
+
+name: AYQ desktop (Windows)
+
+on:
+  push:
+    branches: [claude/ayq-develop]
+    paths:
+      - 'ayq/ayq-desktop/**'
+      - 'ayq/ayq-client/**'
+      - '.github/workflows/ayq-desktop-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-smoke:
+    name: utilityProcess engine on Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.2'
+
+      - name: Record the environment
+        shell: pwsh
+        run: |
+          Write-Host "os      : $((Get-CimInstance Win32_OperatingSystem).Caption)"
+          Write-Host "version : $((Get-CimInstance Win32_OperatingSystem).Version)"
+          Write-Host "arch    : $env:PROCESSOR_ARCHITECTURE"
+          Write-Host "node    : $(node --version)  (ABI $(node -p 'process.versions.modules'))"
+          Write-Host "npm     : $(npm --version)"
+
+      # One command from a clean checkout: install, rebuild the native module
+      # for the pinned Electron, and refuse to continue unless it opens a
+      # database under Electron rather than merely importing.
+      - name: Prepare the native engine dependency
+        working-directory: ayq/ayq-desktop
+        run: node setup.mjs
+
+      - name: Typecheck
+        working-directory: ayq/ayq-desktop
+        run: |
+          npm run typecheck
+          npm --prefix ../ayq-client run typecheck
+
+      - name: Tests
+        working-directory: ayq/ayq-desktop
+        run: |
+          npm test
+          npm --prefix ../ayq-client test
+
+      # The acceptance test. `--require-host` makes the development Node
+      # fallback unable to satisfy it: if anything but the Electron utility
+      # process answers, the smoke exits non-zero.
+      - name: Production smoke
+        working-directory: ayq/ayq-desktop
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-budget
+        run: >
+          node start.mjs --smoke
+          --require-host "electron utilityProcess"
+          --screenshot "${{ runner.temp }}\ayq-desktop-windows.png"
+
+      - name: Upload the window capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayq-desktop-windows-window
+          path: ${{ runner.temp }}\ayq-desktop-windows.png
+          if-no-files-found: warn
