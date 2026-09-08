@@ -4,18 +4,32 @@ A standalone personal finance application. Windows first, Android after. Its
 own product — not a module of CIVION and never becoming one: separate
 databases, no writing across the boundary.
 
+## What this repository is
+
+A fork of the whole `actualbudget/actual` monorepo, baselined at
+`db1b0ea9754191b4b505f801132f067d7bc2457b` (v26.9.0), with the AYQ spike
+alongside it. Upstream's history is merged in whole, not copied: `git log`
+reaches every one of Actual's commits, and `git merge upstream/master` keeps
+working.
+
+- `packages/` is upstream's, byte for byte. Nothing in it has been touched,
+  `desktop-client` included — it stays in the tree so upstream merges apply
+  cleanly, and is simply not built or routed.
+- `ayq/` is ours. Today it holds the spike; `ayq-client` and `ayq-desktop`
+  will join it.
+- Two files are shared and therefore resolved rather than inherited: this
+  README (upstream's is kept verbatim as `README.actual.md`) and `.gitignore`
+  (upstream's verbatim, with an AYQ block appended).
+
 ## Architecture
 
-Actual (MIT, `actualbudget/actual`, HEAD `db1b0ea`, v26.9.0) as the finance and
-sync engine, with an entirely custom AYQ interface. The stable Node API runs in
-an Electron background process and the UI talks to it over typed IPC — the same
-boundary Actual itself already uses in production.
+Actual (MIT) is the finance and sync engine; the interface is entirely ours.
+The stable Node API runs in an Electron background process and the UI talks to
+it over typed IPC — the same boundary Actual itself already uses in production.
 
 MoneyMatter is out as a code base (AGPL plus a CLA, and no offline layer). Its
 domain model is used as a specification: read it, implement our own, copy
 nothing.
-
-Forking the whole Actual monorepo comes only after the spike passes.
 
 ## Status
 
@@ -42,15 +56,20 @@ sends a request over a single channel and receives an answer, which is the same
 boundary Electron IPC will carry after the fork. On the invented month it
 reports 14 distinct bank descriptions collapsing into 5 counterparties.
 
-With that the spike is technically complete. What remains is not spike work:
-forking the Actual monorepo, `ayq-client` and `ayq-desktop`, and the typed IPC
-that replaces the spike's HTTP host.
+The spike is complete and closed: verified against the real 212-file export —
+212 files, 0 parse errors, 567 entries, 350 with `<TxDtls>`, 217 without,
+`BkTxCd` and both dates on all 567, no batched entry, and no unread XML path.
+
+The monorepo fork is in place. Next are `ayq-client` and `ayq-desktop`, and the
+typed IPC that replaces the spike's HTTP host.
 
 ## Rules
 
 - Real bank data never enter this repository and are never uploaded anywhere.
   Every fixture is invented.
 - Everything new is named `ayq-*`.
+- `packages/` is upstream's. Changes there are merge debt; AYQ code goes in
+  `ayq/`.
 - CIVION is not touched. When the AYQ-to-CIVION contract comes up: AYQ is an
   untrusted source, entering as a candidate, never as an accepted payment.
 - English is the language of this repository: documentation, code,
