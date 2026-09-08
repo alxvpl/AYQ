@@ -1,13 +1,13 @@
-// Петте полета на Actual, произведени от междинния запис.
+// Actual's five fields, produced from the intermediate record.
 //
-// Служи за две неща: доказва, че разширението е добавка, а не подмяна — старият
-// изход продължава да излиза — и дава базата за сравнение, срещу която се мери
-// колко имена свива нормализацията.
+// Serves two purposes: it proves the extension is additive rather than a
+// replacement — the old output still comes out — and it gives the baseline the
+// normalisation is measured against.
 //
-// Възпроизвежда поведението на xmlcamt2json.ts от Actual 26.9.0 (HEAD db1b0ea),
-// включително резервното използване на AddtlNtryInf като име. Единствената
-// разлика е, че името на страната идва от <Nm> на самата страна, а не от
-// рекурсивно търсене в поддървото.
+// Reproduces the behaviour of xmlcamt2json.ts from Actual 26.9.0 (HEAD
+// db1b0ea), including the fallback to AddtlNtryInf as a name. The only
+// difference is that the party name comes from the party's own <Nm> rather
+// than from a recursive search of the subtree.
 
 import type { AyqBankEntry } from './ayq-types.ts';
 
@@ -51,7 +51,7 @@ export function ayqToLegacyTransaction(
 
   const transaction: AyqLegacyTransaction = {
     amount: entry.amount.value,
-    // Actual предпочита ValDt пред BookgDt и пази само едната дата.
+    // Actual prefers ValDt over BookgDt and keeps only one of the two dates.
     date: entry.valueDate.date ?? entry.bookingDate.date,
     payee_name: payeeName,
     imported_payee: payeeName,

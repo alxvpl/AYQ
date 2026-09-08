@@ -2,10 +2,10 @@ node_modules/
 dist/
 *.log
 
-# Реални банкови данни. Стоят локално и не влизат тук при никакви обстоятелства.
+# Real bank data. They stay local and never enter this repository.
 data/
 *.zip
 /**/bankafschriften/
 
-# Отчетите от verify — агрегирани са, но не им е мястото в историята.
+# Reports from verify. Aggregate, but they do not belong in the history.
 ayq-camt-report.*

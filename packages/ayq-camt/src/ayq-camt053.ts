@@ -1,20 +1,20 @@
-// AYQ CAMT парсър — camt.053 (и .052/.054) към беззагубен междинен банков запис.
+// AYQ CAMT parser — camt.053 (and .052/.054) to a lossless intermediate record.
 //
-// Произход: loot-core/src/server/transactions/import/xmlcamt2json.ts от Actual
-// 26.9.0, HEAD db1b0ea. Копиран, не форкнат. Оригиналът дава пет полета
-// (amount, date, payee_name, imported_payee, notes) и изхвърля контрагентния
-// IBAN, BkTxCd, целия Refs блок, BIC, едната от двете дати, Sts, RvslInd, Purp
-// и RtrInf. Тук нищо не се изхвърля.
+// Origin: loot-core/src/server/transactions/import/xmlcamt2json.ts from Actual
+// 26.9.0, HEAD db1b0ea. Copied, not forked. The original yields five fields
+// (amount, date, payee_name, imported_payee, notes) and discards the
+// counterparty IBAN, BkTxCd, the whole Refs block, the BIC, one of the two
+// dates, Sts, RvslInd, Purp and RtrInf. Here nothing is discarded.
 //
-// Три поведенчески разлики спрямо оригинала:
-//   1. Един запис на <TxDtls>, а когато <TxDtls> липсва — един запис на <Ntry>.
-//      Оригиналът също слиза в TxDtls, но само при масив; при единичен TxDtls
-//      транзакционната и записовата половина се смесват.
-//   2. Имената на страните се четат от <Dbtr>/<Cdtr>/<Nm> изрично. Оригиналът
-//      търси <Nm> рекурсивно в поддървото и при страна без име взима името от
-//      пощенския адрес.
-//   3. Обходът тръгва от <Stmt>, не от сляпо търсене на <Ntry>, за да носи
-//      всеки запис контекста на извлечението и собствената сметка.
+// Three behavioural differences from the original:
+//   1. One record per <TxDtls>, and one per <Ntry> when <TxDtls> is absent.
+//      The original also descends into TxDtls, but only for an array; with a
+//      single TxDtls the transaction and entry halves get mixed together.
+//   2. Party names are read from <Dbtr>/<Cdtr>/<Nm> explicitly. The original
+//      searches for <Nm> recursively and, for a party without a name, picks up
+//      the name from the postal address.
+//   3. Traversal starts at <Stmt> rather than a blind search for <Ntry>, so
+//      every record carries the statement context and the account it belongs to.
 
 import { createHash } from 'node:crypto';
 
@@ -47,25 +47,11 @@ import type {
 } from './ayq-types.ts';
 
 export type AyqParseOptions = {
-  /** Базовото име на файла, записва се в контекста на извлечението. */
+  /** The file's base name, recorded in the statement context. */
   file?: string;
-  /** Закача разпарснатото XML поддърво към всеки запис. Изключено по подразбиране. */
+  /** Attaches the parsed XML subtree to every record. Off by default. */
   keepRawNode?: boolean;
 };
-
-function emptyParty(): AyqParty {
-  return {
-    name: null,
-    iban: null,
-    otherAccountId: null,
-    otherAccountScheme: null,
-    accountCurrency: null,
-    country: null,
-    addressLines: [],
-    organisationId: null,
-    privateId: null,
-  };
-}
 
 function toNumber(raw: string | null): number | null {
   if (raw === null) return null;
@@ -73,7 +59,7 @@ function toNumber(raw: string | null): number | null {
   return Number.isNaN(value) ? null : value;
 }
 
-/** Сума + валута + суровият низ. Знакът се прилага отделно. */
+/** Amount plus currency plus the raw string. The sign is applied separately. */
 function readAmount(node: AyqXmlNode): AyqAmount | null {
   const raw = ayqText(node);
   if (raw === null) return null;
@@ -131,10 +117,11 @@ function readReferences(node: AyqXmlNode): AyqReferences {
 }
 
 /**
- * Страна + сметката ѝ.
+ * A party and its account.
  *
- * Името се чете от <Nm> на самата страна, не рекурсивно: при страна без име,
- * но с пощенски адрес, рекурсивното търсене връща името на адреса.
+ * The name is read from the party's own <Nm>, not recursively: for a party
+ * with no name but with a postal address, a recursive search returns the name
+ * from the address.
  */
 function readParty(partyNode: AyqXmlNode, accountNode: AyqXmlNode): AyqParty {
   const accountId = ayqChild(accountNode, 'Id');
@@ -192,7 +179,7 @@ function readCurrencyExchange(node: AyqXmlNode): AyqCurrencyExchange | null {
 function readCharges(node: AyqXmlNode): AyqCharge[] {
   const charges: AyqCharge[] = [];
   for (const charge of ayqChildren(node, 'Chrgs')) {
-    // Схемата допуска и вложен <Rcrd>; и двете форми се четат.
+    // The schema also allows a nested <Rcrd>; both forms are read.
     const records = ayqChildren(charge, 'Rcrd');
     for (const record of records.length > 0 ? records : [charge]) {
       const amount = readAmount(ayqChild(record, 'Amt'));
@@ -292,18 +279,19 @@ function readStatementContext(
 }
 
 /**
- * Ключ за дедупликация, стабилен между два експорта на един и същ ден.
+ * A deduplication key, stable across two exports of the same day.
  *
- * Името на файла нарочно не участва — ABN AMRO кръщава експортите с момента на
- * сваляне, така че един и същи ден идва под различно име при повторно теглене.
+ * The file name is deliberately left out — ABN AMRO names exports after the
+ * moment of download, so the same day arrives under a different name when it
+ * is fetched again.
  */
 function buildKey(parts: (string | number | null)[]): string {
   return createHash('sha1').update(parts.join(' ')).digest('hex').slice(0, 16);
 }
 
 /**
- * Разпарсва CAMT съобщение в беззагубени междинни записи — един на <TxDtls>,
- * или един на <Ntry>, когато <TxDtls> липсва.
+ * Parses a CAMT message into lossless intermediate records — one per
+ * <TxDtls>, or one per <Ntry> when <TxDtls> is absent.
  */
 export async function ayqParseCamt(
   content: string,
@@ -313,8 +301,9 @@ export async function ayqParseCamt(
   const root = ayqChild(document, 'Document');
   const schema = ayqAttr(root, 'xmlns');
 
-  // Контейнерът зависи от вида на съобщението: Stmt (053), Rpt (052),
-  // Ntfctn (054). Търси се само коренът; самите записи се обхождат изрично.
+  // The container depends on the message kind: Stmt (053), Rpt (052),
+  // Ntfctn (054). Only the root is searched for; the entries are walked
+  // explicitly.
   const statements = [
     ...ayqFindAll(root, 'Stmt'),
     ...ayqFindAll(root, 'Rpt'),
@@ -342,8 +331,9 @@ export async function ayqParseCamt(
       const entryCharges = readCharges(entry);
       const additionalEntryInformation = ayqTextAt(entry, 'AddtlNtryInf');
 
-      // Няма <TxDtls> → един запис с празна транзакционна половина. Това е
-      // случаят при 217 от 567-те измерени записа: BEA, GEA, такси, лихва.
+      // No <TxDtls> means one record with an empty transaction half. That is
+      // the case for 217 of the 567 measured entries: card, ATM, fees,
+      // interest.
       const slots: AyqXmlNode[] =
         transactions.length > 0 ? transactions : [undefined];
 
@@ -363,9 +353,9 @@ export async function ayqParseCamt(
         const remittance = ayqChild(transaction, 'RmtInf');
         const remittanceUnstructured = ayqTextList(remittance, 'Ustrd');
 
-        // Суровото описание: редовете на Ustrd, ако ги има, иначе
-        // AddtlNtryInf. Без trim и без свиване на интервали — форматът на
-        // картовите записи се разпознава точно по тях.
+        // The raw description: the Ustrd lines when present, otherwise
+        // AddtlNtryInf. Never trimmed, whitespace never collapsed — the card
+        // format is recognised by exactly those runs of spaces.
         const rawDescription =
           remittanceUnstructured.length > 0
             ? remittanceUnstructured.join('\n')

@@ -7,7 +7,7 @@ import {
   ayqParseSepaDescription,
 } from '../src/counterparty/ayq-description.ts';
 
-test('картовият низ се разглобява на съставните си части', () => {
+test('a card string is taken apart into its constituents', () => {
   const parsed = ayqParseCardDescription(
     'BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM',
   );
@@ -20,7 +20,7 @@ test('картовият низ се разглобява на съставни�
   assert.equal(parsed?.location, 'AMSTERDAM');
 });
 
-test('и старата подредба на полетата се разглобява', () => {
+test('the older field ordering is taken apart too', () => {
   const parsed = ayqParseCardDescription(
     'BEA   NR:00A1B2   31.05.26/23:10   ALBERT HEIJN 1234,PAS421',
   );
@@ -28,7 +28,7 @@ test('и старата подредба на полетата се разгло
   assert.equal(parsed?.terminal, '00A1B2');
 });
 
-test('банкоматът се разпознава като GEA', () => {
+test('an ATM withdrawal is recognised as GEA', () => {
   const parsed = ayqParseCardDescription(
     'GEA, Betaalpas   GELDMAAT WESTERSTRAAT 7,PAS421 NR:00C3D4, 31.05.26/09:02   AMSTERDAM',
   );
@@ -36,7 +36,7 @@ test('банкоматът се разпознава като GEA', () => {
   assert.equal(parsed?.merchant, 'GELDMAAT WESTERSTRAAT 7');
 });
 
-test('префиксът на acquirer-а се сваля и се записва', () => {
+test('the acquirer prefix is stripped and recorded', () => {
   const parsed = ayqParseCardDescription(
     'BEA, Apple Pay   CCV*TESTWINKEL ONLINE,PAS421 NR:00Z9Y8, 01.06.26/14:44   www.testwinkel.example',
   );
@@ -46,12 +46,12 @@ test('префиксът на acquirer-а се сваля и се записва
   assert.equal(parsed?.location, 'www.testwinkel.example');
 });
 
-test('текст, който не е картов запис, връща null', () => {
+test('text that is not a card entry returns null', () => {
   assert.equal(ayqParseCardDescription('Salaris mei 2026'), null);
   assert.equal(ayqParseCardDescription(null), null);
 });
 
-test('SEPA със слаш-тагове', () => {
+test('SEPA with slash tags', () => {
   const parsed = ayqParseSepaDescription(
     '/TRTP/SEPA OVERBOEKING/IBAN/NL00TEST0987654321/BIC/INGBNL2A/NAME/TESTENERGIE NEDERLAND/EREF/E2E-1/REMI/Factuur 2026/05',
   );
@@ -60,11 +60,11 @@ test('SEPA със слаш-тагове', () => {
   assert.equal(parsed?.iban, 'NL00TEST0987654321');
   assert.equal(parsed?.bic, 'INGBNL2A');
   assert.equal(parsed?.reference, 'E2E-1');
-  // Стойност с наклонена черта се сглобява обратно, а не се реже.
+  // A value containing a slash is joined back together, not cut short.
   assert.equal(parsed?.remittance, 'Factuur 2026/05');
 });
 
-test('SEPA с нидерландски етикети', () => {
+test('SEPA with Dutch labels', () => {
   const parsed = ayqParseSepaDescription(
     'SEPA Incasso algemeen doorlopend Incassant: NL00ZZZ123456780000 Naam: TESTENERGIE NEDERLAND B.V. Machtiging: MANDAAT-4471902 Omschrijving: Termijnbedrag mei 2026',
   );
@@ -74,7 +74,7 @@ test('SEPA с нидерландски етикети', () => {
   assert.equal(parsed?.remittance, 'Termijnbedrag mei 2026');
 });
 
-test('нормализацията свива номера на клон и на поръчка', () => {
+test('normalisation collapses branch and order numbers', () => {
   assert.equal(ayqNormaliseKey('Albert Heijn 1234'), 'ALBERT HEIJN');
   assert.equal(ayqNormaliseKey('ALBERT HEIJN 5678'), 'ALBERT HEIJN');
   assert.equal(
@@ -83,7 +83,7 @@ test('нормализацията свива номера на клон и на
   );
 });
 
-test('нормализацията маха диакритиката, без да чупи думата', () => {
+test('normalisation strips diacritics without breaking the word', () => {
   assert.equal(ayqNormaliseKey('Café Zürich'), 'CAFE ZURICH');
   assert.equal(ayqNormaliseKey('Jansen & Zn.'), 'JANSEN & ZN');
   assert.equal(ayqNormaliseKey('   '), null);

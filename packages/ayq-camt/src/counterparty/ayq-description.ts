@@ -1,52 +1,52 @@
-// Разбор на свободния текст.
+// Parsing the free text.
 //
-// Това е слоят, който съществува само защото банката не дава друго. При 201-те
-// картови и банкоматни записа структурирано поле за търговеца няма изобщо:
-// името е в низ, който носи и терминал, и дата, и час, и номер на картата, и
-// затова 201 записа дават 201 различни имена. Тук този низ се разглобява на
-// части, от които името е една.
+// This layer exists only because the bank gives nothing else. On the 201 card
+// and ATM entries there is no structured merchant field at all: the name sits
+// inside a string that also carries the terminal, the date, the time and the
+// card number, which is why 201 entries produce 201 distinct names. Here that
+// string is taken apart, and the name is one of the parts.
 //
-// Разборът е по форма, не по банка-специфична магия: каквото не съвпадне,
-// връща null и слоят подминава, вместо да гадае.
+// Parsing is by shape, not by bank-specific magic: whatever does not match
+// returns null and the layer passes, rather than guessing.
 
 import {
   ayqStripDescriptorPrefix,
 } from './ayq-intermediaries.ts';
 
-/** Картов или банкоматен запис, разглобен на съставните си части. */
+/** A card or ATM entry, taken apart into its constituents. */
 export type AyqCardDescription = {
-  /** BEA (терминал) или GEA (банкомат). */
+  /** BEA (terminal) or GEA (ATM). */
   marker: 'BEA' | 'GEA';
-  /** Начин на плащане, ако е посочен: Betaalpas, Apple Pay, Google Pay… */
+  /** The payment method when stated: Betaalpas, Apple Pay, Google Pay… */
   method: string | null;
-  /** Търговецът както е изписан, без префикс на acquirer. */
+  /** The merchant as written, without the acquirer prefix. */
   merchant: string | null;
-  /** Разпознат acquirer от префикса на дескриптора (`CCV*…`). */
+  /** The acquirer recognised from the descriptor prefix (`CCV*…`). */
   intermediary: string | null;
-  /** Последните цифри на картата от `,PAS123`. */
+  /** The card's trailing digits, from `,PAS123`. */
   card: string | null;
-  /** Номерът на терминала от `NR:…`. */
+  /** The terminal number, from `NR:…`. */
   terminal: string | null;
-  /** Датата и часът от `31.05.26/23:10`, непроменени. */
+  /** The date and time from `31.05.26/23:10`, unchanged. */
   timestamp: string | null;
-  /** Каквото остава след часа: град или адрес на сайта. */
+  /** Whatever follows the time: a city or a website address. */
   location: string | null;
 };
 
-/** SEPA запис, разглобен по етикети или по слаш-тагове. */
+/** A SEPA entry, taken apart by labels or by slash tags. */
 export type AyqSepaDescription = {
-  /** Видът, както банката го е изписал: „SEPA Incasso“, „SEPA iDEAL“… */
+  /** The scheme as the bank wrote it: "SEPA Incasso", "SEPA iDEAL"… */
   scheme: string | null;
   name: string | null;
   iban: string | null;
   bic: string | null;
-  /** MARF / „Machtiging“ — SEPA мандатът от свободния текст. */
+  /** MARF / "Machtiging" — the SEPA mandate from the free text. */
   mandateId: string | null;
-  /** CSID / „Incassant“ — идентификаторът на кредитора при директен дебит. */
+  /** CSID / "Incassant" — the creditor identifier on a direct debit. */
   creditorId: string | null;
-  /** EREF / „Kenmerk“. */
+  /** EREF / "Kenmerk". */
   reference: string | null;
-  /** REMI / „Omschrijving“ — това, което търговецът е написал. */
+  /** REMI / "Omschrijving" — what the merchant wrote. */
   remittance: string | null;
 };
 
@@ -68,13 +68,13 @@ function tidy(value: string | null | undefined): string | null {
 }
 
 /**
- * Разглобява картов или банкоматен запис.
+ * Takes a card or ATM entry apart.
  *
- * Поддържа и двете подредби, които ABN AMRO е използвала:
+ * Supports both orderings ABN AMRO has used:
  *   BEA, Betaalpas   ALBERT HEIJN 1234,PAS123 NR:00A1B2, 31.05.26/23:10 AMSTERDAM
  *   BEA   NR:00A1B2   31.05.26/23:10   ALBERT HEIJN 1234,PAS123
  *
- * Връща null, когато низът не е картов запис — тогава слоят подминава.
+ * Returns null when the string is not a card entry — the layer then passes.
  */
 export function ayqParseCardDescription(
   raw: string | null,
@@ -91,9 +91,9 @@ export function ayqParseCardDescription(
   if (methodMatch) body = body.slice(methodMatch[0].length);
 
   const pasMatch = body.match(CARD_PAS);
-  // Текстът преди `,PAS` е търговецът; след него са техническите полета.
-  // Когато `,PAS` липсва, целият остатък се третира като кандидат и
-  // техническите полета се свалят поотделно.
+  // The text before `,PAS` is the merchant; after it come the technical
+  // fields. When `,PAS` is absent the whole remainder is treated as the
+  // candidate and the technical fields are stripped individually.
   const head = pasMatch ? body.slice(0, pasMatch.index) : body;
   const tail = pasMatch ? body.slice((pasMatch.index ?? 0) + pasMatch[0].length) : body;
 
@@ -103,7 +103,7 @@ export function ayqParseCardDescription(
     .replace(LEADING_TERMINAL, '');
 
   if (!pasMatch) {
-    // Без `,PAS` техническите полета може да са навсякъде — свалят се на място.
+    // Without `,PAS` the technical fields may sit anywhere — strip in place.
     merchantRaw = merchantRaw
       .replace(CARD_TERMINAL, ' ')
       .replace(CARD_TIMESTAMP, ' ');
@@ -133,7 +133,7 @@ export function ayqParseCardDescription(
   };
 }
 
-// Слаш-таговете на ABN AMRO: /TRTP/…/IBAN/…/NAME/…/REMI/…
+// ABN AMRO's slash tags: /TRTP/…/IBAN/…/NAME/…/REMI/…
 const SLASH_TAGS = new Set([
   'TRTP',
   'CSID',
@@ -159,14 +159,14 @@ function parseSlashTags(raw: string): Record<string, string> | null {
       current = token;
       fields[current] = '';
     } else if (current !== null) {
-      // Стойността може да съдържа наклонена черта; долепя се обратно.
+      // A value may contain a slash; it is joined back together.
       fields[current] = fields[current] ? `${fields[current]}/${token}` : token;
     }
   }
   return Object.keys(fields).length > 0 ? fields : null;
 }
 
-// Етикетите, с които ABN AMRO пише същото на нидерландски.
+// The labels ABN AMRO uses to write the same thing in Dutch.
 const LABELS: Array<[string, RegExp]> = [
   ['name', /\bNaam[:\s]/i],
   ['iban', /\bIBAN[:\s]/i],
@@ -200,15 +200,15 @@ function parseLabels(raw: string): Record<string, string> {
   return fields;
 }
 
-/** Число или референция накрая: номер на клон, на терминал, на поръчка, дата. */
+/** A trailing number or reference: branch, terminal, order number, date. */
 const TRAILING_NOISE = /\s+(?:\d{1,8}|(?=[A-Z0-9]*\d)[A-Z0-9]{5,})$/;
 
 const IBAN_ANYWHERE = /\b([A-Z]{2}\d{2}[A-Z0-9]{10,30})\b/;
 const SCHEME = /^\s*(SEPA[^,\n]{0,40}?)(?=\s{2,}|\s+(?:Incassant|Naam|IBAN|Machtiging|Omschrijving|Kenmerk)\b|[,\n]|$)/i;
 
 /**
- * Разглобява SEPA запис — и в двете форми, които банката произвежда:
- * слаш-тагове (`/TRTP/…/NAME/…`) и нидерландски етикети (`Naam: …`).
+ * Takes a SEPA entry apart, in both forms the bank produces: slash tags
+ * (`/TRTP/…/NAME/…`) and Dutch labels (`Naam: …`).
  */
 export function ayqParseSepaDescription(
   raw: string | null,
@@ -249,22 +249,22 @@ export function ayqParseSepaDescription(
 }
 
 /**
- * Нормализиран ключ за групиране.
+ * The normalised grouping key.
  *
- * Главни букви, без диакритика, без пунктуация, без опашка от номера накрая —
- * така „Albert Heijn 1234“ и „ALBERT HEIJN 5678“ падат в едно, а номерът на
- * поръчката не прави всяка покупка отделен контрагент.
+ * Upper case, no diacritics, no punctuation, no trailing run of numbers — so
+ * "Albert Heijn 1234" and "ALBERT HEIJN 5678" fall together, and an order
+ * number does not make every purchase its own counterparty.
  *
- * Цената е приета съзнателно: име, чиято последна дума е число, го губи в
- * ключа („Testwinkel 24“ → „TESTWINKEL“). Ключът се ползва само за групиране;
- * показваното име остава каквото банката го е дала.
+ * The cost is accepted knowingly: a name whose last word is a number loses it
+ * in the key ("Testwinkel 24" -> "TESTWINKEL"). The key is only ever used for
+ * grouping; the display name stays as the bank gave it.
  */
 export function ayqNormaliseKey(value: string | null): string | null {
   if (!value) return null;
   const folded = value
     .normalize('NFD')
-    // Диакритиката се маха отделно: иначе класът по-долу я заменя с интервал
-    // и „CAFÉ“ става „CAF E“.
+    // Diacritics are stripped separately: otherwise the character class
+    // below replaces them with a space and "CAFÉ" becomes "CAF E".
     .replace(/[̀-ͯ]/g, '')
     .toUpperCase();
   const cleaned = folded
@@ -273,8 +273,8 @@ export function ayqNormaliseKey(value: string | null): string | null {
     .trim();
   if (cleaned.length === 0) return null;
 
-  // Опашката от номера пада най-много три пъти: номер на клон, номер на
-  // поръчка, дата. Дума без цифра спира свалянето.
+  // The trailing run of numbers is stripped at most three times: branch
+  // number, order number, date. A word without a digit stops it.
   let key = cleaned;
   for (let index = 0; index < 3; index += 1) {
     const trimmed = key.replace(TRAILING_NOISE, '').trim();

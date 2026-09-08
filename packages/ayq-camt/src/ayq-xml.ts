@@ -1,27 +1,26 @@
-// Достъп до разпарснатото xml2js дърво без загуба на информация.
+// Access to the parsed xml2js tree without losing information.
 //
-// Ползва се същият парсър и същите опции като в Actual (xml2js,
-// explicitArray: false), за да може резултатът да влезе във форк на monorepo-то
-// без нова зависимост. Разликите са три и всяка е нарочна:
-//   1. префиксите на пространствата от имена се свалят, за да не зависи обходът
-//      от това дали банката пише <Ntry> или <ns2:Ntry>;
-//   2. текстовите възли НЕ се trim-ват — суровото описание трябва да остане
-//      непокътнато, включително вътрешните поредици от интервали, по които
-//      се разпознава BEA форматът;
-//   3. запълването с интервали до 32 500 байта се реже преди парсването.
+// The same parser and the same options as Actual (xml2js, explicitArray:
+// false), so the result can drop into a fork of the monorepo without a new
+// dependency. Three differences, each deliberate:
+//   1. namespace prefixes are stripped, so the traversal does not depend on
+//      whether the bank writes <Ntry> or <ns2:Ntry>;
+//   2. text nodes are NOT trimmed — the raw description must stay untouched,
+//      including the internal runs of spaces that identify the card format;
+//   3. the padding out to 32,500 bytes is cut before parsing.
 
 import { parseStringPromise } from 'xml2js';
 
-/** Възел от xml2js дървото: низ, обект с атрибути, или списък от такива. */
+/** A node in the xml2js tree: a string, an object with attributes, or a list. */
 export type AyqXmlNode = unknown;
 
 /**
- * Реже запълването около XML-а.
+ * Cuts the padding around the XML.
  *
- * Всеки от 212-те ABN AMRO файла е допълнен с интервали до точно 32 500 байта.
- * Това е фиксирана дължина на записа, не повреда — но означава, че две копия
- * на един и същ ден не се сравняват байт по байт, преди запълването да падне.
- * Маха се и BOM-ът, ако го има.
+ * Each of the 212 ABN AMRO files is padded with spaces to exactly 32,500
+ * bytes. That is a fixed record length, not corruption — but it means two
+ * copies of the same day do not compare byte for byte until the padding is
+ * gone. A byte-order mark is removed too.
  */
 export function ayqStripPadding(content: string): string {
   return content.replace(/^﻿/, '').trim();
@@ -41,14 +40,14 @@ function isRecord(node: AyqXmlNode): node is Record<string, unknown> {
   return typeof node === 'object' && node !== null && !Array.isArray(node);
 }
 
-/** Едно дете по име. Ако децата са няколко, връща първото. */
+/** One child by name. When there are several, the first is returned. */
 export function ayqChild(node: AyqXmlNode, name: string): AyqXmlNode {
   if (!isRecord(node)) return undefined;
   const value = node[name];
   return Array.isArray(value) ? value[0] : value;
 }
 
-/** Всички деца по име, винаги като списък. */
+/** All children by name, always as a list. */
 export function ayqChildren(node: AyqXmlNode, name: string): AyqXmlNode[] {
   if (!isRecord(node)) return [];
   const value = node[name];
@@ -56,7 +55,7 @@ export function ayqChildren(node: AyqXmlNode, name: string): AyqXmlNode[] {
   return Array.isArray(value) ? value : [value];
 }
 
-/** Слиза по път от имена, взимайки първото дете на всяка стъпка. */
+/** Walks a path of names, taking the first child at each step. */
 export function ayqPath(node: AyqXmlNode, ...names: string[]): AyqXmlNode {
   let current = node;
   for (const name of names) {
@@ -67,11 +66,12 @@ export function ayqPath(node: AyqXmlNode, ...names: string[]): AyqXmlNode {
 }
 
 /**
- * Текстът на възел, непокътнат.
+ * A node's text, untouched.
  *
- * xml2js дава низ за елемент без атрибути и { _: текст, $: атрибути } за
- * елемент с атрибути. Празен елемент дава празен низ — той се третира като
- * липсващ, за да не се получават празни низове там, където полето го няма.
+ * xml2js gives a string for an element without attributes and
+ * { _: text, $: attributes } for one with them. An empty element yields an
+ * empty string, which is treated as absent so that missing fields do not turn
+ * into empty strings.
  */
 export function ayqText(node: AyqXmlNode): string | null {
   if (typeof node === 'string') return node.length > 0 ? node : null;
@@ -81,12 +81,12 @@ export function ayqText(node: AyqXmlNode): string | null {
   return null;
 }
 
-/** Текст по път. */
+/** Text at a path. */
 export function ayqTextAt(node: AyqXmlNode, ...names: string[]): string | null {
   return ayqText(ayqPath(node, ...names));
 }
 
-/** Атрибут на възел. */
+/** An attribute of a node. */
 export function ayqAttr(node: AyqXmlNode, name: string): string | null {
   if (!isRecord(node)) return null;
   const attrs = node.$;
@@ -95,7 +95,7 @@ export function ayqAttr(node: AyqXmlNode, name: string): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-/** Всички текстове на повтарящ се елемент, ред по ред, непокътнати. */
+/** Every text of a repeating element, line by line, untouched. */
 export function ayqTextList(node: AyqXmlNode, name: string): string[] {
   const out: string[] = [];
   for (const child of ayqChildren(node, name)) {
@@ -106,12 +106,12 @@ export function ayqTextList(node: AyqXmlNode, name: string): string[] {
 }
 
 /**
- * Рекурсивно търсене на елемент по име, из цялото поддърво.
+ * Recursive search for an element by name across the whole subtree.
  *
- * Пази се само за корени, чието разположение зависи от вида на съобщението
- * (camt.053 срещу .052 срещу .054). Обходът на самия запис е изричен по път —
- * сляпото търсене е причината оригиналният парсър да взима <Nm> от пощенския
- * адрес, когато името на страната липсва.
+ * Kept only for roots whose position depends on the message kind (camt.053 vs
+ * .052 vs .054). The entry itself is walked by explicit path — blind search is
+ * exactly why the original parser picks up an <Nm> from the postal address
+ * when the party has no name of its own.
  */
 export function ayqFindAll(node: AyqXmlNode, name: string): AyqXmlNode[] {
   const out: AyqXmlNode[] = [];

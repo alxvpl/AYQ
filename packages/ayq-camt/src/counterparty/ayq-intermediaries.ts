@@ -1,13 +1,14 @@
-// Платежни посредници: когато контрагентният IBAN е техен, той не идентифицира
-// търговеца. При iDEAL и картовите плащания това е правило, не изключение —
-// парите минават през сметка на PSP-то и истинското име седи в свободния текст.
+// Payment intermediaries: when the counterparty IBAN is theirs, it does not
+// identify the merchant. For iDEAL and card payments this is the rule, not the
+// exception — the money passes through a PSP account and the real name sits in
+// the free text.
 //
-// Списъкът е по име и по префикс в картовия дескриптор. IBAN-и нарочно няма:
-// вградени непроверени IBAN-и биха давали тихи грешни отговори. Известните
-// IBAN-и се добавят от потребителя през AyqResolveOptions.intermediaryIbans,
-// след като са видени в собствените данни.
+// The list matches on names and on card-descriptor prefixes. There are
+// deliberately no IBANs: unverified built-in IBANs would produce silent wrong
+// answers. Known ones are supplied by the user through
+// AyqResolveOptions.intermediaryIbans, once seen in their own data.
 
-/** Име на посредник, търсено като подниз в нормализираното име на страната. */
+/** An intermediary name, looked for as a substring of the normalised name. */
 export const AYQ_INTERMEDIARY_NAMES: string[] = [
   'MOLLIE',
   'ADYEN',
@@ -37,9 +38,9 @@ export const AYQ_INTERMEDIARY_NAMES: string[] = [
 ];
 
 /**
- * Префикси в картовия дескриптор: `CCV*BAKKERIJ JANSEN` означава, че CCV е
- * acquirer-ът, а „BAKKERIJ JANSEN“ е търговецът. Стойността е името на
- * посредника, което се записва в AyqCounterparty.intermediary.
+ * Card-descriptor prefixes: `CCV*BAKKERIJ JANSEN` means CCV is the acquirer
+ * and "BAKKERIJ JANSEN" is the merchant. The value is the intermediary name
+ * recorded in AyqCounterparty.intermediary.
  */
 export const AYQ_DESCRIPTOR_PREFIXES: Array<[RegExp, string]> = [
   [/^CCV\s*\*/i, 'CCV'],
@@ -57,7 +58,7 @@ export const AYQ_DESCRIPTOR_PREFIXES: Array<[RegExp, string]> = [
   [/^KLARNA\s*\*/i, 'Klarna'],
 ];
 
-/** BIC на банката → четимо име. Само за случаите, в които банката е контрагент. */
+/** Bank BIC to a readable name. Only for the cases where the bank is a party. */
 export const AYQ_BANK_NAMES: Record<string, string> = {
   ABNANL2A: 'ABN AMRO Bank',
   INGBNL2A: 'ING Bank',
@@ -71,8 +72,8 @@ export const AYQ_BANK_NAMES: Record<string, string> = {
 };
 
 /**
- * Разпознава посредник по име. Търси подниз в нормализираното име, затова
- * „Stichting Mollie Payments“ и „MOLLIE B.V.“ дават един и същ отговор.
+ * Recognises an intermediary by name. Matches a substring of the normalised
+ * name, so "Stichting Mollie Payments" and "MOLLIE B.V." give the same answer.
  */
 export function ayqMatchIntermediaryName(
   normalisedName: string | null,
@@ -87,8 +88,8 @@ export function ayqMatchIntermediaryName(
 }
 
 /**
- * Сваля префикса на acquirer-а от картов дескриптор.
- * Връща и остатъка, и разпознатия посредник.
+ * Strips the acquirer prefix from a card descriptor.
+ * Returns both the remainder and the intermediary it recognised.
  */
 export function ayqStripDescriptorPrefix(descriptor: string): {
   merchant: string;
@@ -96,7 +97,10 @@ export function ayqStripDescriptorPrefix(descriptor: string): {
 } {
   for (const [pattern, name] of AYQ_DESCRIPTOR_PREFIXES) {
     if (pattern.test(descriptor)) {
-      return { merchant: descriptor.replace(pattern, '').trim(), intermediary: name };
+      return {
+        merchant: descriptor.replace(pattern, '').trim(),
+        intermediary: name,
+      };
     }
   }
   return { merchant: descriptor, intermediary: null };

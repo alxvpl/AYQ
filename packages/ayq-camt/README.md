@@ -1,47 +1,48 @@
 # ayq-camt
 
-Стъпка 3 от спайка: CAMT.053 → **беззагубен междинен банков запис**, плюс
-разрешаване на контрагента с верига от доказателства.
+Step 3 of the spike: CAMT.053 to a **lossless intermediate bank record**, plus
+counterparty resolution through a chain of evidence.
 
-Няма форк на monorepo-то. Изходната точка —
-`loot-core/src/server/transactions/import/xmlcamt2json.ts` от Actual 26.9.0
-(HEAD `db1b0ea`), 168 реда — е **копирана** и разширена.
+The monorepo is not forked. The starting point —
+`loot-core/src/server/transactions/import/xmlcamt2json.ts` from Actual 26.9.0
+(HEAD `db1b0ea`), 168 lines — was **copied** and extended.
 
 ---
 
-## Какво решава
+## What it solves
 
-Измерването върху 212 дневни файла (`AYQ_camt_measurement-r001.md`) показа две
-неща, които определят цялата конструкция:
+The measurement over 212 daily files (`AYQ_camt_measurement-r001.md`) showed
+two things that shape the whole design:
 
-1. Оригиналният парсър минава 212/212 без грешка, но дава пет полета и изхвърля
-   контрагентния IBAN, `BkTxCd`, целия `Refs` блок, BIC, едната от двете дати,
-   `Sts`, `RvslInd`, `Purp` и `RtrInf`.
-2. **201 картови и банкоматни записа произвеждат 201 различни имена**, защото
-   низът съдържа терминал, дата, час и номер на картата. Обратно, контрагентен
-   IBAN липсва при 38 % от записите.
+1. The original parser handles 212 of 212 without an error, but yields five
+   fields and discards the counterparty IBAN, `BkTxCd`, the whole `Refs` block,
+   the BIC, one of the two dates, `Sts`, `RvslInd`, `Purp` and `RtrInf`.
+2. **201 card and ATM entries produce 201 distinct names**, because the string
+   carries the terminal, the date, the time and the card number. Conversely,
+   38 % of entries have no counterparty IBAN at all.
 
-Оттам двете правила тук: записът пази всичко, което банката дава, а
-разпознаването на контрагента тръгва от `BkTxCd` — наличен при всичките 567
-записа — а не от IBAN.
+Hence the two rules here: the record keeps everything the bank gives, and
+counterparty resolution starts at `BkTxCd` — present on all 567 entries —
+rather than at the IBAN.
 
-## Инсталация и пускане
+## Install and run
 
-Node ≥ 22.18 (типовете се свалят от самия Node, билд стъпка няма).
+Node >= 22.18 (Node strips the types itself; there is no build step).
 
 ```bash
 npm install
-npm test          # 51 теста
+npm test          # 51 tests
 npm run typecheck
 ```
 
-## Проверка срещу реалния експорт
+## Verifying against the real export
 
-Една команда прави всичко: parse на всички файлове, `measure`, `audit` и
-проверка на критериите, с ясно `PASS` или `FAIL` накрая и код на изход 0 или 1.
+One command does everything: parse every file, `measure`, `audit`, and evaluate
+the criteria, ending in a plain `PASS` or `FAIL` and an exit code of 0 or 1.
 
-Входът може да е папка (обхожда се рекурсивно), единичен XML файл **или ZIP
-архивът както е свален** — той се чете в паметта и нищо не се разархивира.
+The input may be a directory (walked recursively), a single XML file, **or the
+ZIP archive exactly as downloaded** — it is read in memory and nothing is
+extracted.
 
 ```powershell
 # Windows / PowerShell
@@ -55,136 +56,140 @@ node src/ayq-cli.ts verify ~/Downloads/96293691_080926003116.zip \
   --out ~/ayq-camt-report.txt --json ~/ayq-camt-report.json
 ```
 
-Проверяваните критерии — числата по подразбиране са измерените в r001 и се
-сменят с `--expect-files=N`, `--expect-entries=N`, `--expect-txdtls=N`:
+The criteria — the defaults are what r001 measured, and they can be changed
+with `--expect-files=N`, `--expect-entries=N`, `--expect-txdtls=N`:
 
-| Критерий | Очаквано | Проваля ли |
+| Criterion | Expected | Fails the spike |
 |---|---|---|
-| файлове, прочетени без грешка | 212 | да |
-| файлове с грешка при парсване | 0 | да |
-| записи `<Ntry>` | 567 | да |
-| записи с `<TxDtls>` | 350 | да |
-| записи без `<TxDtls>` | 217 | да |
-| `BkTxCd` при всеки междинен запис | всички | да |
-| `BookgDt` **и** `ValDt` при всеки запис | всички | да |
-| непрочетени XML пътища | 0 | **не** — иска решение |
-| `<Ntry>` с повече от един `<TxDtls>` | 0 | **не** — иска решение |
+| files read without error | 212 | yes |
+| files that failed to parse | 0 | yes |
+| `<Ntry>` entries | 567 | yes |
+| entries with `<TxDtls>` | 350 | yes |
+| entries without `<TxDtls>` | 217 | yes |
+| `BkTxCd` on every intermediate record | all | yes |
+| `BookgDt` **and** `ValDt` on every record | all | yes |
+| uncovered XML paths | 0 | **no** — calls for a decision |
+| `<Ntry>` with more than one `<TxDtls>` | 0 | **no** — calls for a decision |
 
-Последните два са нарочно неблокиращи. Непокрит път не е дефект, а списък с
-решения — кое поле влиза в `AyqBankEntry` и кое остава извън него. Batch запис
-не е дефект, а точно случаят, от който r003 §11.4 се опасяваше: r001 измери
-нула такива, така че появи ли се, трябва да се види, а не да се слее тихо.
+The last two are non-blocking on purpose. An uncovered path is not a defect but
+a list of decisions — which field enters `AyqBankEntry` and which stays out. A
+batched entry is not a defect either, but exactly the case r003 §11.4 worried
+about: r001 measured zero of them, so if one appears it must be seen rather
+than merged away.
 
-Броенията 350/217 са за `<Ntry>`, не за междинни записи — при batch един
-`<Ntry>` дава няколко записа и двете числа се разминават. Отчетът показва и
-двете.
+The 350/217 counts are about `<Ntry>`, not intermediate records — in a batch
+one `<Ntry>` yields several records and the two numbers diverge. The report
+shows both.
 
-### Отчетът е безопасен за споделяне
+### The report is safe to share
 
-`verify`, `measure` и `audit` не печатат нито IBAN, нито име, нито сума, нито
-описание, нито референция, нито име на файл — само броения и имена на XML
-елементи. Файл с грешка се съобщава с пореден номер, защото имената на
-експортите носят номер на сметка. И текстовият, и JSON отчетът стават за
-изпращане както са.
+`verify`, `measure` and `audit` print no IBAN, name, amount, description,
+reference or file name — only counts and XML element names. A file that fails
+to parse is reported by ordinal, because export file names carry an account
+number. Both the text and the JSON report can be sent as they are.
 
-`parse` и `trail` печатат съдържание и остават на своята машина:
+`parse` and `trail` print content and stay on their own machine:
 
 ```bash
-node src/ayq-cli.ts measure ~/bankafschriften   # само броения
-node src/ayq-cli.ts audit   ~/bankafschriften   # какво в XML-а записът не чете
-node src/ayq-cli.ts trail   ~/bankafschriften/20260531.xml   # верига, запис по запис
-node src/ayq-cli.ts parse   ~/bankafschriften/20260531.xml   # JSON на изхода
+node src/ayq-cli.ts measure ~/bankafschriften   # counts only
+node src/ayq-cli.ts audit   ~/bankafschriften   # what the record does not read
+node src/ayq-cli.ts trail   ~/bankafschriften/20260531.xml   # chain, record by record
+node src/ayq-cli.ts parse   ~/bankafschriften/20260531.xml   # JSON on stdout
 ```
 
-`measure` възпроизвежда таблиците от измерването и добавя числото, заради което
-съществува тази стъпка: колко различни ключа остават след нормализацията срещу
-колко различни имена дават петте полета на Actual.
+`measure` reproduces the tables from the measurement and adds the number this
+step exists for: how many distinct keys survive normalisation, against how many
+distinct names Actual's five fields produce.
 
-ZIP четецът е собствен, ~110 реда върху `node:zlib`, без нова зависимост.
-Поддържа store и deflate; zip64, шифроване и непознат метод се съобщават с
-грешка, вместо да се четат наполовина.
+The ZIP reader is our own, about 110 lines over `node:zlib`, with no new
+dependency. It supports store and deflate; zip64, encryption and unknown
+methods are reported as errors rather than half-read.
 
-## Междинният запис
+## The intermediate record
 
-`AyqBankEntry` (`src/ayq-types.ts`). Един запис на `<TxDtls>`; когато `<TxDtls>`
-липсва — един на `<Ntry>`, с пълния контекст на записа. При 217 от 567-те
-измерени записа втората форма е единствената.
+`AyqBankEntry` (`src/ayq-types.ts`). One record per `<TxDtls>`; when `<TxDtls>`
+is absent, one per `<Ntry>` with the full entry context. For 217 of the 567
+measured entries the second form is the only one.
 
-| Група | Полета |
+| Group | Fields |
 |---|---|
-| Контекст | сметка (IBAN / `Othr`), валута, титуляр, BIC на банката, `Id`, `LglSeqNb`, `FrToDt`, схема, файл |
-| Позиция | индекс на извлечение, на `<Ntry>`, на `<TxDtls>`, брой `<TxDtls>` |
-| Суми | сума на транзакцията и сума на `<Ntry>` поотделно, валута, **суровият низ** |
-| Дати | `BookgDt` **и** `ValDt` поотделно, като ден и като пълен момент |
-| Класификация | `BkTxCd` — `Domn`/`Fmly`/`SubFmlyCd`, `Prtry`; и на ниво `<Ntry>`, и на ниво `<TxDtls>` |
-| Референции | `EndToEndId`, `MndtId`, `AcctSvcrRef`, `InstrId`, `MsgId`, `PmtInfId`, `TxId`, `ChqNb`, `ClrSysRef`, `Prtry` |
-| Страни | длъжник, кредитор, крайни страни: име, IBAN, `Othr`, валута, държава, адрес, идентификатори |
-| Банки | `RltdAgts` — BIC на длъжника, на кредитора, на посредника |
-| Състояние | `Sts`, `RvslInd`, `RtrInf` (причина, инициатор, оригинален `BkTxCd`) |
-| Описание | `RmtInf/Ustrd` ред по ред, `RmtInf/Strd`, `AddtlNtryInf`, `AddtlTxInf`, `NtryRef` и суровото описание непокътнато |
-| Друго | `Purp`, `AmtDtls` + `CcyXchg`, `Chrgs`, `Btch`, ключ за дедупликация |
+| Context | account (IBAN / `Othr`), currency, owner, bank BIC, `Id`, `LglSeqNb`, `FrToDt`, schema, file |
+| Position | statement index, `<Ntry>` index, `<TxDtls>` index, `<TxDtls>` count |
+| Amounts | transaction amount and `<Ntry>` amount separately, currency, **the raw string** |
+| Dates | `BookgDt` **and** `ValDt` apart, as a day and as a full instant |
+| Classification | `BkTxCd` — `Domn`/`Fmly`/`SubFmlyCd`, `Prtry`; at both `<Ntry>` and `<TxDtls>` level |
+| References | `EndToEndId`, `MndtId`, `AcctSvcrRef`, `InstrId`, `MsgId`, `PmtInfId`, `TxId`, `ChqNb`, `ClrSysRef`, `Prtry` |
+| Parties | debtor, creditor, ultimate parties: name, IBAN, `Othr`, currency, country, address, identifiers |
+| Banks | `RltdAgts` — debtor, creditor and intermediary agent BICs |
+| State | `Sts`, `RvslInd`, `RtrInf` (reason, originator, original `BkTxCd`) |
+| Description | `RmtInf/Ustrd` line by line, `RmtInf/Strd`, `AddtlNtryInf`, `AddtlTxInf`, `NtryRef`, and the raw description untouched |
+| Other | `Purp`, `AmtDtls` + `CcyXchg`, `Chrgs`, `Btch`, a deduplication key |
 
-Запълването с интервали до точно 32 500 байта се реже преди парсването
-(`ayqStripPadding`), защото иначе два експорта на един и същ ден не се сравняват.
+The padding out to exactly 32,500 bytes is cut before parsing
+(`ayqStripPadding`), because otherwise two exports of the same day never
+compare equal.
 
-### Одит на беззагубността
+### The losslessness audit
 
-„Нищо не се губи“ е твърдение, затова е проверимо. `ayqAuditCoverage` обхожда
-суровия XML, събира всички листни пътища и ги сравнява с декларирания списък на
-прочетеното. Празен резултат означава, че записът наистина носи всичко.
-Непознато поле излиза с брой попадения, вместо да бъде подминато тихо.
+"Nothing is lost" is a claim, so it is made checkable. `ayqAuditCoverage` walks
+the raw XML, collects every leaf path and compares them against the declared
+list of what is read. An empty result means the record really does carry
+everything. An unknown field comes out with a hit count instead of being
+silently passed by.
 
-## Контрагентът
+## The counterparty
 
-Не низ, а разрешен обект (`AyqCounterparty`) с записан слой, взел решението:
+Not a string but a resolved object (`AyqCounterparty`) that records the layer
+which made the call:
 
-1. **`bank-transaction-code`** — класифицира винаги; произнася име само когато
-   контрагентът е самата банка (такса, лихва).
-2. **`structured`** — `RltdPties` + контрагентен IBAN.
-3. **`intermediary`** — при Mollie, Adyen, Buckaroo, Stripe, PAY.nl, CCV и др.
-   IBAN-ът е на посредника, не на търговеца. Този слой никога не решава — той
-   само спира приемането на предишния.
-4. **`description`** — разбор на свободния текст: `BEA`/`GEA` (терминал, дата,
-   час и номер на картата се отделят), SEPA със слаш-тагове (`/TRTP/…/NAME/…`)
-   и с нидерландски етикети (`Naam:`, `Incassant:`, `Machtiging:`).
-5. **`alias`** — ръчната таблица, по IBAN, по мандат или по нормализиран ключ.
-   Има последна дума.
+1. **`bank-transaction-code`** — always classifies; pronounces a name only when
+   the counterparty is the bank itself (a fee, interest).
+2. **`structured`** — `RltdPties` plus the counterparty IBAN.
+3. **`intermediary`** — for Mollie, Adyen, Buckaroo, Stripe, PAY.nl, CCV and
+   the rest, the IBAN belongs to the intermediary, not the merchant. This layer
+   never decides; it only stops the previous one from being accepted.
+4. **`description`** — parsing the free text: `BEA`/`GEA` (terminal, date, time
+   and card number are separated out), SEPA with slash tags (`/TRTP/…/NAME/…`)
+   and with Dutch labels (`Naam:`, `Incassant:`, `Machtiging:`).
+5. **`alias`** — the manual table, by IBAN, by mandate or by normalised key. It
+   has the last word.
 
-Всеки слой оставя следа и когато е подминал (`trail`), така че всяко име може да
-бъде обяснено и оспорено. `ayq-camt trail` печата веригата.
+Every layer leaves a trace even when it passes (`trail`), so every name can be
+explained and challenged. `ayq-camt trail` prints the chain.
 
-Вграденият списък с посредници е по **име и по префикс в дескриптора**. IBAN-и
-няма нарочно: непроверен вграден IBAN би давал тихи грешни отговори. Известните
-се подават през `AyqResolveOptions.intermediaryIbans`.
+The built-in intermediary list matches on **names and descriptor prefixes**.
+There are deliberately no IBANs: an unverified built-in IBAN would produce
+silent wrong answers. Known ones are supplied through
+`AyqResolveOptions.intermediaryIbans`.
 
-## Съвместимост
+## Compatibility
 
-`ayqToLegacyTransaction` произвежда петте полета на Actual от междинния запис —
-разширението е добавка, а не подмяна. Ползва се и като база за сравнение при
-измерването.
+`ayqToLegacyTransaction` produces Actual's five fields from the intermediate
+record — the extension is additive, not a replacement. It also serves as the
+baseline the measurement compares against.
 
-Единствената поведенческа разлика: името на страната се чете от `<Nm>` на самата
-страна. Оригиналът търси `<Nm>` рекурсивно в поддървото и при страна без име
-взима името от пощенския адрес.
+The only behavioural difference: the party name is read from the party's own
+`<Nm>`. The original searches for `<Nm>` recursively and, for a party without a
+name, picks up the name from the postal address.
 
-## Обем на промяната
+## Size of the change
 
-| | реда |
+| | lines |
 |---|---|
-| Оригинал (`xmlcamt2json.ts`) | 168 |
-| Парсър (`ayq-camt053.ts`) | 456 |
-| Типове на записа | 239 |
-| Достъп до XML | 135 |
-| Разрешаване на контрагента | 762 |
-| Одит, измерване и критерии | 542 |
-| Четене на файлове и ZIP | 253 |
+| Original (`xmlcamt2json.ts`) | 168 |
+| Parser (`ayq-camt053.ts`) | 456 |
+| Record types | 239 |
+| XML access | 135 |
+| Counterparty resolution | 762 |
+| Audit, measurement and criteria | 542 |
+| File and ZIP reading | 253 |
 | CLI | 330 |
-| Тестове и фикстури | 1163 |
+| Tests and fixtures | 1163 |
 
-## Обхват
+## Scope
 
-Стъпка 3 свършва тук. Стъпка 4 (зареждане през `@actual-app/api`) и стъпка 5
-(собствен екран) не са започвани; този пакет не зависи от Actual по никакъв
-начин и няма нужда от билд на monorepo-то.
+Step 3 ends here. Step 4 (loading through `@actual-app/api`) and step 5 (a
+custom screen) have not been started; this package does not depend on Actual in
+any way and needs no build of the monorepo.
 
-Реални банкови данни не влизат в repository-то. Фикстурите са изцяло измислени.
+Real bank data never enter the repository. Every fixture is invented.

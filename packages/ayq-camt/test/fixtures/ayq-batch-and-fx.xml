@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Измислен ден с двете форми, които измерените 212 файла НЕ съдържат, но които
-  схемата допуска и които биха колабирали тихо, ако записът беше един на <Ntry>:
-  batch-нат запис с два <TxDtls> и валутна операция с AmtDtls, CcyXchg и Chrgs.
+  An invented day carrying the two forms the measured 212 files do NOT contain,
+  but which the schema allows and which would collapse silently if the record
+  were one per <Ntry>: a batched entry with two <TxDtls>, and a foreign-currency
+  operation with AmtDtls, CcyXchg and Chrgs.
 -->
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
   <BkToCstmrStmt>
@@ -19,7 +20,7 @@
         <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
       </Acct>
 
-      <!-- Batch: един запис, две транзакции. Сумата на <Ntry> е сборът. -->
+      <!-- Batch: one entry, two transactions. The <Ntry> amount is the total. -->
       <Ntry>
         <Amt Ccy="EUR">180.00</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
@@ -63,7 +64,7 @@
         </NtryDtls>
       </Ntry>
 
-      <!-- Валутна операция: платено в USD, осчетоводено в EUR, с такса. -->
+      <!-- Currency operation: paid in USD, booked in EUR, with a charge. -->
       <Ntry>
         <Amt Ccy="EUR">92.11</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>

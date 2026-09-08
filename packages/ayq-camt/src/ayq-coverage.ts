@@ -1,17 +1,22 @@
-// Доказателство за беззагубността.
+// Proof of losslessness.
 //
-// „Нищо не се губи“ е твърдение, а не свойство — затова тук то е проверимо.
-// Одитът обхожда суровия XML под всеки <Ntry>, събира всички листни пътища и
-// ги сравнява с декларирания списък на прочетеното. Каквото остане непокрито,
-// излиза с брой попадения. Празен резултат означава, че записът наистина носи
-// всичко, което банката е дала.
+// "Nothing is lost" is a claim, not a property — so here it is checkable. The
+// audit walks the raw XML under every <Ntry>, collects all leaf paths and
+// compares them against the declared list of what is read. Whatever is left
+// over is reported with a hit count. An empty result means the record really
+// does carry everything the bank gave.
 //
-// Списъкът се поддържа на ръка нарочно: когато банката добави поле, одитът го
-// съобщава, вместо парсърът тихо да го подмине.
+// The list is maintained by hand on purpose: when the bank adds a field, the
+// audit says so instead of the parser silently passing it by.
 
-import { ayqChildren, ayqParseXml, ayqFindAll, type AyqXmlNode } from './ayq-xml.ts';
+import {
+  ayqChildren,
+  ayqParseXml,
+  ayqFindAll,
+  type AyqXmlNode,
+} from './ayq-xml.ts';
 
-/** Пътищата на една страна и сметката ѝ, относно RltdPties. */
+/** The paths of one party and its account, relative to RltdPties. */
 function partyPaths(party: string, account: string | null): string[] {
   const paths = [
     `RltdPties/${party}/Nm`,
@@ -32,7 +37,7 @@ function partyPaths(party: string, account: string | null): string[] {
   return paths;
 }
 
-/** Пътищата на BkTxCd, под даден префикс. */
+/** The BkTxCd paths under a given prefix. */
 function bankCodePaths(prefix: string): string[] {
   return [
     `${prefix}/Domn/Cd`,
@@ -43,7 +48,7 @@ function bankCodePaths(prefix: string): string[] {
   ];
 }
 
-/** Пътищата на AmtDtls, под даден префикс. */
+/** The AmtDtls paths under a given prefix. */
 function amountDetailPaths(prefix: string): string[] {
   const paths: string[] = [];
   for (const slot of ['InstdAmt', 'TxAmt', 'CntrValAmt', 'PrtryAmt']) {
@@ -62,7 +67,7 @@ function amountDetailPaths(prefix: string): string[] {
   return paths;
 }
 
-/** Пътищата на Chrgs, под даден префикс — и с, и без вложен <Rcrd>. */
+/** The Chrgs paths under a given prefix — with and without a nested <Rcrd>. */
 function chargePaths(prefix: string): string[] {
   const fields = ['Amt', 'CdtDbtInd', 'Br', 'Pty/FinInstnId/BIC'];
   return [
@@ -71,7 +76,7 @@ function chargePaths(prefix: string): string[] {
   ];
 }
 
-/** Пътищата на RtrInf, под даден префикс. */
+/** The RtrInf paths under a given prefix. */
 function returnPaths(prefix: string): string[] {
   return [
     `${prefix}/Rsn/Cd`,
@@ -82,7 +87,7 @@ function returnPaths(prefix: string): string[] {
   ];
 }
 
-/** Всичко, което междинният запис чете под един <Ntry>. */
+/** Everything the intermediate record reads under one <Ntry>. */
 export const AYQ_CAPTURED_ENTRY_PATHS: string[] = [
   'Amt',
   'CdtDbtInd',
@@ -141,7 +146,7 @@ export const AYQ_CAPTURED_ENTRY_PATHS: string[] = [
   ].map(path => `NtryDtls/TxDtls/${path}`),
 ];
 
-/** Всичко, което междинният запис чете извън <Ntry>. */
+/** Everything the intermediate record reads outside <Ntry>. */
 export const AYQ_CAPTURED_STATEMENT_PATHS: string[] = [
   'Id',
   'ElctrncSeqNb',
@@ -159,13 +164,13 @@ export const AYQ_CAPTURED_STATEMENT_PATHS: string[] = [
 ];
 
 export type AyqCoverageReport = {
-  /** Брой обходени <Ntry>. */
+  /** How many <Ntry> were walked. */
   entries: number;
-  /** Пътища, които парсърът чете, с брой попадения. */
+  /** Paths the parser reads, with hit counts. */
   covered: Record<string, number>;
-  /** Пътища, които съществуват в XML-а, но записът не чете. */
+  /** Paths present in the XML that the record does not read. */
   uncovered: Record<string, number>;
-  /** Декларирани пътища без нито едно попадение в тези данни. */
+  /** Declared paths with no hit at all in this data. */
   unusedDeclarations: string[];
 };
 
@@ -184,9 +189,11 @@ function collectLeafPaths(
   }
 
   const record = node as Record<string, unknown>;
-  const childKeys = Object.keys(record).filter(key => key !== '$' && key !== '_');
+  const childKeys = Object.keys(record).filter(
+    key => key !== '$' && key !== '_',
+  );
   if (childKeys.length === 0) {
-    // Елемент само с атрибути и/или текст — това е лист.
+    // An element with only attributes and/or text — that is a leaf.
     if (prefix.length > 0) out.set(prefix, (out.get(prefix) ?? 0) + 1);
     return;
   }
@@ -200,9 +207,9 @@ function collectLeafPaths(
 }
 
 /**
- * Сравнява какво съдържа XML-ът с това, което междинният запис чете.
+ * Compares what the XML contains with what the intermediate record reads.
  *
- * Приема суровото съдържание на един или няколко CAMT файла.
+ * Takes the raw content of one or more CAMT files.
  */
 export async function ayqAuditCoverage(
   contents: string[],
@@ -223,8 +230,9 @@ export async function ayqAuditCoverage(
     ];
 
     for (const statement of statements) {
-      // Извлечението без записите: балансите и обобщенията са контекст на
-      // сметката, не на транзакцията, и нарочно остават извън записа.
+      // The statement without its entries: balances and summaries are context
+      // of the account, not of a transaction, and stay outside the record on
+      // purpose.
       const header = { ...(statement as Record<string, unknown>) };
       delete header.Ntry;
       delete header.Bal;

@@ -15,12 +15,12 @@ import { buildZip } from './ayq-zip-writer.ts';
 
 const day = await readFixture('ayq-abn-day.xml');
 
-test('обхождането слиза в подпапки и пропуска не-XML', async () => {
+test('the walk descends into subdirectories and skips non-XML', async () => {
   const root = await mkdtemp(join(tmpdir(), 'ayq-'));
   await mkdir(join(root, '2026', '05'), { recursive: true });
   await writeFile(join(root, '2026', '05', 'b.xml'), day);
   await writeFile(join(root, '2026', 'a.XML'), day);
-  await writeFile(join(root, 'readme.txt'), 'не е XML');
+  await writeFile(join(root, 'readme.txt'), 'not XML');
 
   const files = await ayqLoadTargets([root]);
   assert.equal(files.length, 2);
@@ -30,7 +30,7 @@ test('обхождането слиза в подпапки и пропуска 
   );
 });
 
-test('кодировката се чете от XML декларацията', async () => {
+test('the encoding is read from the XML declaration', async () => {
   const root = await mkdtemp(join(tmpdir(), 'ayq-'));
 
   const utf8 = join(root, 'utf8.xml');
@@ -39,7 +39,8 @@ test('кодировката се чете от XML декларацията', a
   assert.equal(readUtf8.declaredEncoding, 'UTF-8');
   assert.equal(readUtf8.bytes, 32_500);
 
-  // Същият документ, обявен и записан като ISO-8859-1, с диакритика в името.
+  // The same document, declared and written as ISO-8859-1, with a diacritic
+  // in the name.
   const latinSource = day
     .replace('encoding="UTF-8"', 'encoding="ISO-8859-1"')
     .replace('ALBERT HEIJN 1234', 'CAFÉ ZÜRICH');
@@ -50,30 +51,30 @@ test('кодировката се чете от XML декларацията', a
   assert.equal(readLatin.declaredEncoding, 'ISO-8859-1');
   assert.ok(
     readLatin.content.includes('CAFÉ ZÜRICH'),
-    'диакритиката оцелява, вместо да се превърне в заместващи знаци',
+    'the diacritics survive instead of turning into replacement characters',
   );
 
   const entries = await ayqParseCamt(readLatin.content);
   assert.ok(entries[0].additionalEntryInformation?.includes('CAFÉ ZÜRICH'));
 });
 
-test('ZIP се чете направо, и при deflate, и при store', async () => {
+test('a ZIP is read directly, both deflated and stored', async () => {
   const archive = buildZip([
     { name: '20260531.xml', content: padLikeAbn(day) },
     { name: 'map/20260601.xml', content: padLikeAbn(day), stored: true },
     { name: 'map/', content: '' },
-    { name: 'readme.txt', content: 'не е XML' },
+    { name: 'readme.txt', content: 'not XML' },
   ]);
 
   const raw = ayqReadZip(archive);
-  assert.equal(raw.length, 3, 'папките се пропускат, файловете — не');
+  assert.equal(raw.length, 3, 'directories are skipped, files are not');
 
   const root = await mkdtemp(join(tmpdir(), 'ayq-'));
   const path = join(root, 'export.zip');
   await writeFile(path, archive);
 
   const files = await ayqReadCamtZip(path);
-  assert.equal(files.length, 2, 'само XML файловете влизат');
+  assert.equal(files.length, 2, 'only the XML files are taken');
   assert.deepEqual(
     files.map(file => file.name),
     ['20260531.xml', '20260601.xml'],
@@ -81,13 +82,13 @@ test('ZIP се чете направо, и при deflate, и при store', asy
   assert.equal(files[0].archive, 'export.zip');
   assert.equal(files[0].bytes, 32_500);
 
-  // Съдържанието от архива дава същите записи, както от диска.
+  // Content from the archive yields the same records as content from disk.
   const fromZip = await ayqParseCamt(files[0].content);
   const fromDisk = await ayqParseCamt(day);
   assert.deepEqual(fromZip, fromDisk);
 });
 
-test('ZIP се приема и през ayqLoadTargets, включително от папка', async () => {
+test('a ZIP is accepted through ayqLoadTargets too, including from a directory', async () => {
   const root = await mkdtemp(join(tmpdir(), 'ayq-'));
   await writeFile(
     join(root, 'export.zip'),
@@ -100,17 +101,17 @@ test('ZIP се приема и през ayqLoadTargets, включително �
   assert.equal(files.filter(file => file.archive !== null).length, 1);
 });
 
-test('повреден или неподдържан ZIP се съобщава, а не се чете наполовина', () => {
+test('a corrupt or unsupported ZIP is reported, not half-read', () => {
   assert.throws(
-    () => ayqReadZip(Buffer.from('това не е архив')),
-    /не е ZIP архив/,
+    () => ayqReadZip(Buffer.from('this is not an archive')),
+    /not a ZIP archive/,
   );
 
   const encrypted = buildZip([{ name: 'a.xml', content: day }]);
-  // Вдига се флагът за шифроване в централната директория.
+  // Raise the encryption flag in the central directory.
   const directoryOffset = encrypted.readUInt32LE(encrypted.length - 6);
   encrypted.writeUInt16LE(0x1, directoryOffset + 8);
-  assert.throws(() => ayqReadZip(encrypted), /шифрован/);
+  assert.throws(() => ayqReadZip(encrypted), /encrypted/);
 });
 
 const expectations: AyqExpectations = {
@@ -120,7 +121,7 @@ const expectations: AyqExpectations = {
   withoutTxDtls: 4,
 };
 
-test('критериите минават срещу очаквани числа', async () => {
+test('the criteria pass against the expected numbers', async () => {
   const entries = await ayqParseCamt(day, { file: 'ayq-abn-day.xml' });
   const verdict = ayqEvaluateSpike(
     ayqMeasure(entries, 1),
@@ -132,7 +133,7 @@ test('критериите минават срещу очаквани числа
   assert.ok(verdict.checks.every(check => check.passed));
 });
 
-test('разминаване в броенията проваля спайка', async () => {
+test('a mismatch in the counts fails the spike', async () => {
   const entries = await ayqParseCamt(day, { file: 'ayq-abn-day.xml' });
   const verdict = ayqEvaluateSpike(
     ayqMeasure(entries, 1),
@@ -143,11 +144,11 @@ test('разминаване в броенията проваля спайка',
   assert.equal(verdict.passed, false);
   assert.equal(
     verdict.checks.find(check => !check.passed)?.name,
-    'записи <Ntry>',
+    '<Ntry> entries',
   );
 });
 
-test('файл с грешка проваля спайка', async () => {
+test('a file that failed to parse fails the spike', async () => {
   const entries = await ayqParseCamt(day, { file: 'ayq-abn-day.xml' });
   const verdict = ayqEvaluateSpike(
     ayqMeasure(entries, 1),
@@ -158,7 +159,7 @@ test('файл с грешка проваля спайка', async () => {
   assert.equal(verdict.passed, false);
 });
 
-test('непокрит XML път не проваля, а иска решение', async () => {
+test('an uncovered XML path does not fail, it calls for a decision', async () => {
   const withNewField = day.replace(
     '<AcctSvcrRef>2026053100000001</AcctSvcrRef>',
     '<AcctSvcrRef>2026053100000001</AcctSvcrRef><TechInptChanl><Cd>POSD</Cd></TechInptChanl>',
@@ -173,29 +174,30 @@ test('непокрит XML път не проваля, а иска решени�
   assert.equal(verdict.passed, true);
 
   const advisory = verdict.checks.find(
-    check => check.name === 'непрочетени XML пътища',
+    check => check.name === 'uncovered XML paths',
   );
   assert.equal(advisory?.advisory, true);
   assert.equal(advisory?.passed, false);
   assert.equal(advisory?.actual, '1');
 });
 
-test('броенията 350/217 са за <Ntry>, не за междинни записи', async () => {
-  // Един <Ntry> с два <TxDtls> плюс един с един: два записа с TxDtls,
-  // но три междинни записа. Критерият е за <Ntry> и трябва да види 2.
+test('the 350/217 counts are about <Ntry>, not intermediate records', async () => {
+  // One <Ntry> with two <TxDtls> plus one with a single one: two entries
+  // with TxDtls, but three intermediate records. The criterion is about
+  // <Ntry> and must see 2.
   const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
   const entries = await ayqParseCamt(batchAndFx, { file: 'batch.xml' });
   const measurement = ayqMeasure(entries, 1);
 
   assert.equal(measurement.entries, 2);
   assert.equal(measurement.records, 3);
-  assert.equal(measurement.withTxDtls, 2, 'брои <Ntry>, не записи');
-  assert.equal(measurement.recordsWithTxDtls, 3, 'записите се броят отделно');
+  assert.equal(measurement.withTxDtls, 2, 'counts <Ntry>, not records');
+  assert.equal(measurement.recordsWithTxDtls, 3, 'records are counted separately');
   assert.equal(measurement.withoutTxDtls, 0);
   assert.equal(measurement.batched, 1);
 });
 
-test('batch не проваля спайка, но се съобщава', async () => {
+test('a batch does not fail the spike, but is reported', async () => {
   const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
   const entries = await ayqParseCamt(batchAndFx, { file: 'batch.xml' });
   const verdict = ayqEvaluateSpike(
@@ -207,7 +209,7 @@ test('batch не проваля спайка, но се съобщава', async
   assert.equal(verdict.passed, true);
 
   const advisory = verdict.checks.find(
-    check => check.name === '<Ntry> с повече от един <TxDtls>',
+    check => check.name === '<Ntry> with more than one <TxDtls>',
   );
   assert.equal(advisory?.advisory, true);
   assert.equal(advisory?.actual, '1');

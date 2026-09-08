@@ -10,14 +10,14 @@ const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
 
 const entries = await ayqParseCamt(day, { file: 'ayq-abn-day.xml' });
 
-test('веригата винаги тръгва от BkTxCd', () => {
+test('the chain always starts at BkTxCd', () => {
   for (const entry of entries) {
     const resolved = ayqResolveCounterparty(entry);
     assert.equal(resolved.trail[0].layer, 'bank-transaction-code');
   }
 });
 
-test('картовият запис се решава от описанието, а не от IBAN', () => {
+test('a card entry is resolved from the description, not from an IBAN', () => {
   const resolved = ayqResolveCounterparty(entries[0]);
   assert.equal(resolved.kind, 'card-terminal');
   assert.equal(resolved.resolvedBy, 'description');
@@ -27,17 +27,17 @@ test('картовият запис се решава от описанието,
 
   const structured = resolved.trail.find(step => step.layer === 'structured');
   assert.equal(structured?.accepted, false);
-  assert.match(structured?.note ?? '', /няма TxDtls/);
+  assert.match(structured?.note ?? '', /no TxDtls/);
 });
 
-test('банкоматът също минава през описанието', () => {
+test('an ATM withdrawal also goes through the description', () => {
   const resolved = ayqResolveCounterparty(entries[1]);
   assert.equal(resolved.kind, 'card-withdrawal');
   assert.equal(resolved.resolvedBy, 'description');
   assert.equal(resolved.key, 'GELDMAAT WESTERSTRAAT');
 });
 
-test('такса и лихва се решават от BkTxCd — контрагентът е банката', () => {
+test('fees and interest resolve from BkTxCd — the bank is the counterparty', () => {
   const fee = ayqResolveCounterparty(entries[2]);
   assert.equal(fee.kind, 'bank-fee');
   assert.equal(fee.resolvedBy, 'bank-transaction-code');
@@ -49,7 +49,7 @@ test('такса и лихва се решават от BkTxCd — контра�
   assert.equal(interest.name, 'ABN AMRO Bank');
 });
 
-test('директният дебит се решава от структурираните данни и носи мандата', () => {
+test('a direct debit resolves from structured data and carries the mandate', () => {
   const resolved = ayqResolveCounterparty(entries[4]);
   assert.equal(resolved.kind, 'direct-debit');
   assert.equal(resolved.resolvedBy, 'structured');
@@ -58,14 +58,14 @@ test('директният дебит се решава от структури�
   assert.equal(resolved.mandateId, 'MANDAAT-4471902');
 });
 
-test('при кредит се взима длъжникът', () => {
+test('on a credit the debtor is taken', () => {
   const resolved = ayqResolveCounterparty(entries[5]);
   assert.equal(resolved.kind, 'credit-transfer');
   assert.equal(resolved.resolvedBy, 'structured');
   assert.equal(resolved.name, 'TESTWERKGEVER B.V.');
 });
 
-test('посредникът не се приема за контрагент', () => {
+test('an intermediary is not accepted as the counterparty', () => {
   const resolved = ayqResolveCounterparty(entries[6]);
   assert.equal(resolved.intermediary, 'MOLLIE');
   assert.equal(resolved.resolvedBy, 'description');
@@ -78,15 +78,15 @@ test('посредникът не се приема за контрагент', 
 
   const intermediary = resolved.trail.find(step => step.layer === 'intermediary');
   assert.equal(intermediary?.accepted, false);
-  assert.match(intermediary?.note ?? '', /посредника/);
+  assert.match(intermediary?.note ?? '', /intermediary/);
 });
 
-test('сторното се класифицира като сторно, а не като директен дебит', () => {
+test('a reversal is classified as a reversal, not as a direct debit', () => {
   const resolved = ayqResolveCounterparty(entries[7]);
   assert.equal(resolved.kind, 'reversal');
 });
 
-test('картов запис с RmtInf пак намира маркера в AddtlNtryInf', async () => {
+test('a card entry with RmtInf still finds the marker in AddtlNtryInf', async () => {
   const fx = (await ayqParseCamt(batchAndFx)).at(-1);
   const resolved = ayqResolveCounterparty(fx!);
   assert.equal(resolved.resolvedBy, 'description');
@@ -94,7 +94,7 @@ test('картов запис с RmtInf пак намира маркера в Ad
   assert.equal(resolved.intermediary, 'CCV');
 });
 
-test('псевдонимът има последна дума и се записва във веригата', () => {
+test('the alias has the last word and is recorded in the chain', () => {
   const byKey = ayqResolveCounterparty(entries[0], {
     aliases: [{ key: 'ALBERT HEIJN', name: 'Albert Heijn' }],
   });
@@ -103,18 +103,18 @@ test('псевдонимът има последна дума и се запис
   assert.equal(byKey.trail.at(-1)?.layer, 'alias');
 
   const byMandate = ayqResolveCounterparty(entries[4], {
-    aliases: [{ mandateId: 'MANDAAT-4471902', name: 'Ток' }],
+    aliases: [{ mandateId: 'MANDAAT-4471902', name: 'Electricity' }],
   });
   assert.equal(byMandate.resolvedBy, 'alias');
-  assert.equal(byMandate.name, 'Ток');
+  assert.equal(byMandate.name, 'Electricity');
 
   const byIban = ayqResolveCounterparty(entries[4], {
-    aliases: [{ iban: 'NL00TEST0987654321', name: 'Ток по IBAN' }],
+    aliases: [{ iban: 'NL00TEST0987654321', name: 'Electricity by IBAN' }],
   });
-  assert.equal(byIban.name, 'Ток по IBAN');
+  assert.equal(byIban.name, 'Electricity by IBAN');
 });
 
-test('допълнителен посредник може да се подаде отвън', () => {
+test('an extra intermediary can be supplied from outside', () => {
   const resolved = ayqResolveCounterparty(entries[4], {
     intermediaryNames: ['TESTENERGIE'],
   });
@@ -122,10 +122,10 @@ test('допълнителен посредник може да се подад�
   assert.notEqual(resolved.resolvedBy, 'structured');
 });
 
-test('всеки запис получава решение и следа', () => {
+test('every record gets a decision and a trail', () => {
   for (const entry of entries) {
     const resolved = ayqResolveCounterparty(entry);
     assert.ok(resolved.trail.length >= 1);
-    assert.ok(resolved.key !== null, `няма ключ за ${entry.ayqKey}`);
+    assert.ok(resolved.key !== null, `no key for ${entry.ayqKey}`);
   }
 });

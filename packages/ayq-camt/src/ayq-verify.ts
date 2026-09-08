@@ -1,10 +1,11 @@
-// Критериите за PASS на CAMT спайка, проверени машинно.
+// The PASS criteria for the CAMT spike, checked mechanically.
 //
-// Числата по подразбиране идват от AYQ_camt_measurement-r001.md — измерването
-// върху 212 дневни файла от една частна сметка. Подават се отвън, за да може
-// същата проверка да се пусне срещу друг експорт.
+// The default numbers come from AYQ_camt_measurement-r001.md — the measurement
+// over 212 daily files from one private account. They are passed in, so the
+// same check can run against a different export.
 //
-// Оценката е отделена от печатането, за да е тествана без файлове на диска.
+// Evaluation is separated from printing, so it can be tested without files on
+// disk.
 
 import type { AyqCoverageReport } from './ayq-coverage.ts';
 import type { AyqMeasurement } from './ayq-measure.ts';
@@ -16,7 +17,7 @@ export type AyqExpectations = {
   withoutTxDtls: number;
 };
 
-/** Измереното в r001. */
+/** What r001 measured. */
 export const AYQ_R001_EXPECTATIONS: AyqExpectations = {
   files: 212,
   entries: 567,
@@ -29,7 +30,7 @@ export type AyqCheck = {
   passed: boolean;
   expected: string;
   actual: string;
-  /** Информативна проверка — не проваля спайка, а иска решение. */
+  /** Informational: does not fail the spike, but calls for a decision. */
   advisory?: boolean;
 };
 
@@ -54,10 +55,11 @@ function check(
 }
 
 /**
- * Оценява резултата срещу критериите.
+ * Evaluates the result against the criteria.
  *
- * Непокритите XML пътища са нарочно **advisory**: те не са провал, а списъкът
- * с решения — кое поле влиза в AyqBankEntry и кое остава извън него.
+ * Uncovered XML paths are deliberately **advisory**: they are not a failure
+ * but the list of decisions — which field enters AyqBankEntry and which stays
+ * out of it.
  */
 export function ayqEvaluateSpike(
   measurement: AyqMeasurement,
@@ -68,29 +70,38 @@ export function ayqEvaluateSpike(
   const uncovered = Object.keys(coverage.uncovered);
 
   const checks: AyqCheck[] = [
-    check('файлове, прочетени без грешка', expectations.files, measurement.files - failedFiles),
-    check('файлове с грешка при парсване', 0, failedFiles),
-    check('записи <Ntry>', expectations.entries, measurement.entries),
-    check('записи с <TxDtls>', expectations.withTxDtls, measurement.withTxDtls),
-    check('записи без <TxDtls>', expectations.withoutTxDtls, measurement.withoutTxDtls),
     check(
-      'BkTxCd при всеки междинен запис',
+      'files read without error',
+      expectations.files,
+      measurement.files - failedFiles,
+    ),
+    check('files that failed to parse', 0, failedFiles),
+    check('<Ntry> entries', expectations.entries, measurement.entries),
+    check('entries with <TxDtls>', expectations.withTxDtls, measurement.withTxDtls),
+    check(
+      'entries without <TxDtls>',
+      expectations.withoutTxDtls,
+      measurement.withoutTxDtls,
+    ),
+    check(
+      'BkTxCd on every intermediate record',
       measurement.records,
       measurement.present.bankTransactionCode,
     ),
     check(
-      'BookgDt и ValDt при всеки междинен запис',
+      'BookgDt and ValDt on every intermediate record',
       measurement.records,
       measurement.present.bothDates,
     ),
-    check('непрочетени XML пътища', 0, uncovered.length, true),
-    // r001 измери нула batch записа. Появи ли се такъв, това е точно случаят,
-    // от който r003 §11.4 се опасяваше — и се вижда, вместо да се слее тихо.
-    check('<Ntry> с повече от един <TxDtls>', 0, measurement.batched, true),
+    check('uncovered XML paths', 0, uncovered.length, true),
+    // r001 measured zero batched entries. Should one appear, this is exactly
+    // the case r003 §11.4 worried about — and it shows rather than merging
+    // silently.
+    check('<Ntry> with more than one <TxDtls>', 0, measurement.batched, true),
   ];
 
   return {
-    // Advisory проверките не влияят на присъдата.
+    // Advisory checks do not affect the verdict.
     passed: checks.every(item => item.advisory === true || item.passed),
     checks,
   };

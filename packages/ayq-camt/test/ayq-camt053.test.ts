@@ -8,7 +8,7 @@ import { padLikeAbn, readFixture } from './ayq-fixtures.ts';
 const day = await readFixture('ayq-abn-day.xml');
 const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
 
-test('запълването до 32 500 байта се реже преди сравнение', async () => {
+test('the 32,500-byte padding is cut before anything is compared', async () => {
   const padded = padLikeAbn(day);
   assert.equal(Buffer.byteLength(padded, 'utf8'), 32_500);
   assert.equal(ayqStripPadding(padded), day.trim());
@@ -18,7 +18,7 @@ test('запълването до 32 500 байта се реже преди с�
   assert.deepEqual(fromPadded, fromRaw);
 });
 
-test('един запис на TxDtls, а без TxDtls — един на Ntry', async () => {
+test('one record per TxDtls, and one per Ntry when TxDtls is absent', async () => {
   const entries = await ayqParseCamt(day, { file: 'ayq-abn-day.xml' });
   assert.equal(entries.length, 9);
 
@@ -29,7 +29,7 @@ test('един запис на TxDtls, а без TxDtls — един на Ntry',
   }
 });
 
-test('контекстът на извлечението пътува с всеки запис', async () => {
+test('the statement context travels with every record', async () => {
   const [first] = await ayqParseCamt(day, { file: 'ayq-abn-day.xml' });
   assert.equal(first.statement.file, 'ayq-abn-day.xml');
   assert.equal(first.statement.flavour, 'camt.053');
@@ -40,7 +40,7 @@ test('контекстът на извлечението пътува с все�
   assert.equal(first.statement.accountOwnerName, 'J. TESTPERSOON');
 });
 
-test('картовият запис пази описанието знак по знак', async () => {
+test('a card entry keeps its description character for character', async () => {
   const [card] = await ayqParseCamt(day);
   assert.equal(card.amount.value, -23.45);
   assert.equal(card.amount.currency, 'EUR');
@@ -57,7 +57,7 @@ test('картовият запис пази описанието знак по 
   assert.equal(card.rawDescription, card.additionalEntryInformation);
 });
 
-test('двете дати стоят поотделно', async () => {
+test('the two dates are kept apart', async () => {
   const entries = await ayqParseCamt(day);
   const directDebit = entries[4];
   assert.equal(directDebit.bookingDate.date, '2026-05-31');
@@ -69,7 +69,7 @@ test('двете дати стоят поотделно', async () => {
   }
 });
 
-test('директният дебит носи целия Refs блок, IBAN, BIC и Purp', async () => {
+test('a direct debit carries the whole Refs block, IBAN, BIC and Purp', async () => {
   const directDebit = (await ayqParseCamt(day))[4];
   assert.equal(directDebit.creditor.name, 'TESTENERGIE NEDERLAND B.V.');
   assert.equal(directDebit.creditor.iban, 'NL00TEST0987654321');
@@ -91,7 +91,7 @@ test('директният дебит носи целия Refs блок, IBAN, B
   ]);
 });
 
-test('при кредит контрагентът е длъжникът', async () => {
+test('on a credit the counterparty is the debtor', async () => {
   const incoming = (await ayqParseCamt(day))[5];
   assert.equal(incoming.creditDebitIndicator, 'CRDT');
   assert.equal(incoming.amount.value, 1250);
@@ -101,7 +101,7 @@ test('при кредит контрагентът е длъжникът', async
   assert.equal(incoming.creditor.name, null);
 });
 
-test('сторното носи RvslInd и RtrInf', async () => {
+test('a reversal carries RvslInd and RtrInf', async () => {
   const reversal = (await ayqParseCamt(day))[7];
   assert.equal(reversal.reversalIndicator, true);
   assert.equal(reversal.returnInformation?.reasonCode, 'MD06');
@@ -110,7 +110,7 @@ test('сторното носи RvslInd и RtrInf', async () => {
   ]);
 });
 
-test('сметка без IBAN се пази като Othr', async () => {
+test('an account without an IBAN is kept as Othr', async () => {
   const other = (await ayqParseCamt(day))[8];
   assert.equal(other.creditor.iban, null);
   assert.equal(other.creditor.otherAccountId, '000123456');
@@ -119,7 +119,7 @@ test('сметка без IBAN се пази като Othr', async () => {
   assert.equal(other.bankTransactionCode.code, 'XTND/NTAV/NTAV');
 });
 
-test('batch-нат запис се разцепва, а сумата на Ntry не се губи', async () => {
+test('a batched entry is split and the Ntry amount is not lost', async () => {
   const entries = await ayqParseCamt(batchAndFx);
   const batched = entries.filter(e => e.position.transactionCount === 2);
   assert.equal(batched.length, 2);
@@ -135,7 +135,7 @@ test('batch-нат запис се разцепва, а сумата на Ntry �
   assert.equal(batched[1].creditor.name, 'TESTVERZEKERAAR N.V.');
 });
 
-test('валутната операция и таксата се пазят', async () => {
+test('the currency exchange and the charge are kept', async () => {
   const fx = (await ayqParseCamt(batchAndFx)).at(-1);
   assert.equal(fx?.amount.value, -92.11);
   assert.equal(fx?.currencyExchange?.instructedAmount?.raw, '99.00');
@@ -150,7 +150,7 @@ test('валутната операция и таксата се пазят', as
   assert.equal(fx?.charges[0].isDebit, true);
 });
 
-test('ключът за дедупликация е уникален и не зависи от името на файла', async () => {
+test('the deduplication key is unique and independent of the file name', async () => {
   const first = await ayqParseCamt(day, { file: 'export-a.xml' });
   const second = await ayqParseCamt(day, { file: 'export-b.xml' });
   assert.deepEqual(
@@ -160,7 +160,7 @@ test('ключът за дедупликация е уникален и не з�
   assert.equal(new Set(first.map(e => e.ayqKey)).size, first.length);
 });
 
-test('суровият възел се закача само когато е поискан', async () => {
+test('the raw node is attached only when asked for', async () => {
   const without = await ayqParseCamt(day);
   assert.equal(without[0].rawNode, undefined);
   const withRaw = await ayqParseCamt(day, { keepRawNode: true });

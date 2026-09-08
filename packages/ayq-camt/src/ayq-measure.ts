@@ -1,11 +1,11 @@
-// Структурно броене върху набор CAMT файлове.
+// Structural counting over a set of CAMT files.
 //
-// Възпроизвежда таблиците от AYQ_camt_measurement-r001.md и добавя числото,
-// заради което съществува стъпка 3: колко различни имена остават след
-// нормализацията в сравнение с петте полета на Actual.
+// Reproduces the tables from AYQ_camt_measurement-r001.md and adds the number
+// step 3 exists for: how many distinct names survive normalisation, against
+// how many Actual's five fields produce.
 //
-// Изходът е само броения. Имена, суми и IBAN-и не влизат в него — данните са
-// реални лични банкови записи и остават на машината.
+// The output is counts only. Names, amounts and IBANs never enter it — the
+// data are real personal bank records and stay on the machine.
 
 import type { AyqBankEntry } from './ayq-types.ts';
 import { ayqToLegacyTransaction } from './ayq-legacy.ts';
@@ -19,35 +19,35 @@ import type {
 export type AyqMeasurement = {
   files: number;
   statements: number;
-  /** Брой <Ntry>. */
+  /** Number of <Ntry>. */
   entries: number;
-  /** Брой междинни записа — един на <TxDtls>, или един на <Ntry> без такъв. */
+  /** Number of intermediate records — one per <TxDtls>, or one per bare <Ntry>. */
   records: number;
-  /** <Ntry> с поне един <TxDtls>. Измереното в r001: 350. */
+  /** <Ntry> with at least one <TxDtls>. Measured in r001: 350. */
   withTxDtls: number;
-  /** <Ntry> без <TxDtls> изобщо. Измереното в r001: 217. */
+  /** <Ntry> with no <TxDtls> at all. Measured in r001: 217. */
   withoutTxDtls: number;
-  /** Междинни записи, произлезли от <TxDtls>. Различава се от withTxDtls само при batch. */
+  /** Records that came from a <TxDtls>. Differs from withTxDtls only in a batch. */
   recordsWithTxDtls: number;
-  /** <Ntry>, носили повече от един <TxDtls>. Измереното в r001: 0. */
+  /** <Ntry> carrying more than one <TxDtls>. Measured in r001: 0. */
   batched: number;
 
-  /** Наличност на полетата, които оригиналният парсър изхвърля. */
+  /** Presence of the fields the original parser discards. */
   present: Record<string, number>;
 
-  /** BkTxCd, подредено по брой. */
+  /** BkTxCd, ordered by count. */
   bankTransactionCodes: Record<string, number>;
-  /** Разбивка на записите без <TxDtls> по BkTxCd. */
+  /** Breakdown of the entries without <TxDtls>, by BkTxCd. */
   withoutTxDtlsByCode: Record<string, number>;
 
   paymentKinds: Record<AyqPaymentKind, number>;
   resolvedBy: Record<AyqCounterpartyLayer, number>;
 
-  /** Колко различни имена дават петте полета на Actual. */
+  /** How many distinct names Actual's five fields produce. */
   distinctLegacyPayees: number;
-  /** Колко различни ключа дава нормализацията на AYQ. */
+  /** How many distinct keys AYQ's normalisation produces. */
   distinctCounterpartyKeys: number;
-  /** Същото, само за картовите и банкоматните записи. */
+  /** The same, restricted to card and ATM entries. */
   cardRecords: number;
   distinctLegacyPayeesOnCards: number;
   distinctCounterpartyKeysOnCards: number;
@@ -113,11 +113,12 @@ export function ayqMeasure(
       `${entry.statement.file ?? ''}#${entry.position.statementIndex}`,
     );
 
-    // Тези три броят <Ntry>, не междинни записи: критерият 350/217 е за
-    // <Ntry>. При batch един <Ntry> дава няколко записа, така че броенето по
-    // записи би дало число над 350 — и то тъкмо когато batch се появи, тоест
-    // тъкмо когато числото трябва да е вярно. Първият запис на всеки <Ntry>
-    // има transactionIndex 0, а при липсващ <TxDtls> — -1.
+    // These three count <Ntry>, not intermediate records: the 350/217
+    // criterion is about <Ntry>. In a batch one <Ntry> yields several records,
+    // so counting records would give a number above 350 — precisely when a
+    // batch appears, which is precisely when the number must be right. The
+    // first record of every <Ntry> has transactionIndex 0, and -1 when
+    // <TxDtls> is absent.
     if (entry.position.transactionIndex <= 0) {
       if (entry.position.transactionCount > 0) withTxDtls += 1;
       else withoutTxDtls += 1;
@@ -160,7 +161,7 @@ export function ayqMeasure(
     if (entry.currencyExchange !== null) present.currencyExchange += 1;
     if (entry.charges.length > 0) present.charges += 1;
 
-    const code = entry.bankTransactionCode.code ?? 'липсва';
+    const code = entry.bankTransactionCode.code ?? 'absent';
     bump(bankTransactionCodes, code);
     if (entry.position.transactionCount === 0) bump(withoutTxDtlsByCode, code);
 

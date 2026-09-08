@@ -1,49 +1,51 @@
-// AYQ — беззагубен междинен банков запис (intermediate bank record).
+// AYQ — the lossless intermediate bank record.
 //
-// Един запис на <TxDtls>, не на <Ntry>. Когато <Ntry> няма <TxDtls>, се получава
-// точно един запис с празна транзакционна половина, но с пълния <Ntry> контекст —
-// това е случаят при 217 от 567-те измерени записа (BEA/GEA/такси/лихва).
+// One record per <TxDtls>, not per <Ntry>. When an <Ntry> carries no <TxDtls>,
+// exactly one record is produced, with an empty transaction half but the full
+// entry context — that is the shape of 217 of the 567 measured entries
+// (card payments, ATM withdrawals, fees, interest).
 //
-// Правило: нищо от банката не се изхвърля и нищо не се пренаписва. Нормализацията
-// е отделен слой (виж src/counterparty), който чете този запис и не го променя.
+// Rule: nothing the bank gives is discarded and nothing is rewritten.
+// Normalisation is a separate layer (see src/counterparty) that reads this
+// record and never modifies it.
 
-/** Схемата, от която е дошъл записът. */
+/** The schema the record came from. */
 export type AyqCamtFlavour = 'camt.053' | 'camt.052' | 'camt.054' | 'unknown';
 
-/** Сума както банката я дава: числото, валутата и суровият низ непокътнат. */
+/** An amount as the bank gives it: the number, the currency, the raw string. */
 export type AyqAmount = {
-  /** Знаково число. Знакът идва от CdtDbtInd, не от текста. */
+  /** Signed number. The sign comes from CdtDbtInd, never from the text. */
   value: number | null;
-  /** ISO 4217 от атрибута Ccy, ако присъства. */
+  /** ISO 4217, from the Ccy attribute when present. */
   currency: string | null;
-  /** Суровият текст на елемента, точно както е в XML-а. */
+  /** The element's raw text, exactly as it appears in the XML. */
   raw: string | null;
 };
 
-/** Дата, запазена и като ден, и като пълен момент, ако банката дава DtTm. */
+/** A date kept both as a day and as a full instant when the bank gives DtTm. */
 export type AyqDate = {
   /** YYYY-MM-DD. */
   date: string | null;
-  /** Пълният ISO момент, когато банката е дала <DtTm>; иначе null. */
+  /** The full ISO instant when the bank gave <DtTm>; otherwise null. */
   dateTime: string | null;
 };
 
 /**
- * <BkTxCd> — банково авторитетната класификация. Присъства при всичките 567
- * измерени записа, включително при тези без <TxDtls>. Затова веригата за
- * разпознаване на контрагента тръгва оттук, а не от IBAN.
+ * <BkTxCd> — the bank's authoritative classification. Present on all 567
+ * measured entries, including those without <TxDtls>. That is why counterparty
+ * resolution starts here rather than at the IBAN.
  */
 export type AyqBankTransactionCode = {
-  domain: string | null; // Domn/Cd              напр. PMNT
-  family: string | null; // Domn/Fmly/Cd         напр. CCRD
-  subFamily: string | null; // Domn/Fmly/SubFmlyCd  напр. POSD
+  domain: string | null; // Domn/Cd              e.g. PMNT
+  family: string | null; // Domn/Fmly/Cd         e.g. CCRD
+  subFamily: string | null; // Domn/Fmly/SubFmlyCd  e.g. POSD
   proprietary: string | null; // Prtry/Cd
   proprietaryIssuer: string | null; // Prtry/Issr
-  /** "PMNT/CCRD/POSD" — само когато и трите части са налични. */
+  /** "PMNT/CCRD/POSD" — only when all three parts are present. */
   code: string | null;
 };
 
-/** <Refs> — цялата група, не само EndToEndId. */
+/** <Refs> — the whole group, not just EndToEndId. */
 export type AyqReferences = {
   messageId: string | null; // MsgId
   accountServicerReference: string | null; // AcctSvcrRef
@@ -51,24 +53,24 @@ export type AyqReferences = {
   instructionId: string | null; // InstrId
   endToEndId: string | null; // EndToEndId
   transactionId: string | null; // TxId
-  /** MndtId — SEPA мандатът; ключът към абонаментите и директните дебити. */
+  /** MndtId — the SEPA mandate; the key to subscriptions and direct debits. */
   mandateId: string | null;
   chequeNumber: string | null; // ChqNb
   clearingSystemReference: string | null; // ClrSysRef
   proprietary: Record<string, string>; // Prtry/{Tp,Ref}
 };
 
-/** Страна по транзакцията заедно със сметката ѝ. */
+/** A party to the transaction together with its account. */
 export type AyqParty = {
   name: string | null;
-  /** Контрагентен IBAN. Липсва при 38 % от измерените записи — затова не е котва. */
+  /** Counterparty IBAN. Missing on 38 % of measured entries — never an anchor. */
   iban: string | null;
-  /** Othr/Id — сметка без IBAN (8 случая в измерването). */
+  /** Othr/Id — an account without an IBAN (8 cases in the measurement). */
   otherAccountId: string | null;
   otherAccountScheme: string | null;
   accountCurrency: string | null;
   country: string | null;
-  /** AdrLine, ред по ред, непокътнати. */
+  /** AdrLine, line by line, untouched. */
   addressLines: string[];
   /** Id/OrgId/Othr/Id. */
   organisationId: string | null;
@@ -76,14 +78,14 @@ export type AyqParty = {
   privateId: string | null;
 };
 
-/** <RltdAgts> — BIC на банките на двете страни. */
+/** <RltdAgts> — the BICs of both parties' banks. */
 export type AyqAgents = {
   debtorAgentBic: string | null;
   creditorAgentBic: string | null;
   intermediaryAgentBic: string | null;
 };
 
-/** <AmtDtls> + <CcyXchg> — валутните операции. */
+/** <AmtDtls> + <CcyXchg> — foreign-currency operations. */
 export type AyqCurrencyExchange = {
   instructedAmount: AyqAmount | null; // InstdAmt
   transactionAmount: AyqAmount | null; // TxAmt
@@ -92,13 +94,13 @@ export type AyqCurrencyExchange = {
   sourceCurrency: string | null; // CcyXchg/SrcCcy
   targetCurrency: string | null; // CcyXchg/TrgtCcy
   unitCurrency: string | null; // CcyXchg/UnitCcy
-  /** Низ, за да не се губи точност при закръгляне. */
+  /** A string, so no precision is lost to rounding. */
   exchangeRate: string | null; // CcyXchg/XchgRate
   contractId: string | null; // CcyXchg/CtrctId
   quotationDate: string | null; // CcyXchg/QtnDt
 };
 
-/** <Chrgs> — банкови такси, начислени върху записа. */
+/** <Chrgs> — bank charges levied on the entry. */
 export type AyqCharge = {
   amount: AyqAmount;
   bearer: string | null; // Br
@@ -106,16 +108,16 @@ export type AyqCharge = {
   isDebit: boolean | null; // CdtDbtInd
 };
 
-/** <RtrInf> — сторно/връщане. */
+/** <RtrInf> — reversal and return information. */
 export type AyqReturnInformation = {
   reasonCode: string | null; // Rsn/Cd
   reasonProprietary: string | null; // Rsn/Prtry
   originatorName: string | null; // Orgtr/Nm
-  additionalInformation: string[]; // AddtlInf, ред по ред
+  additionalInformation: string[]; // AddtlInf, line by line
   originalBankTransactionCode: AyqBankTransactionCode | null; // OrgnlBkTxCd
 };
 
-/** <RmtInf/Strd> — структурираната референция на кредитора. */
+/** <RmtInf/Strd> — the creditor's structured reference. */
 export type AyqStructuredRemittance = {
   creditorReference: string | null; // CdtrRefInf/Ref
   creditorReferenceType: string | null; // CdtrRefInf/Tp/CdOrPrtry
@@ -123,7 +125,10 @@ export type AyqStructuredRemittance = {
   additionalInformation: string[]; // AddtlRmtInf
 };
 
-/** <NtryDtls/Btch> — batch контекст. Няма го в измерената сметка, но е част от схемата. */
+/**
+ * <NtryDtls/Btch> — batch context. Absent from the measured account, but part
+ * of the schema and the case that would silently collapse amounts.
+ */
 export type AyqBatch = {
   messageId: string | null; // MsgId
   paymentInformationId: string | null; // PmtInfId
@@ -132,12 +137,12 @@ export type AyqBatch = {
   isDebit: boolean | null; // CdtDbtInd
 };
 
-/** Контекстът на извлечението, в което живее записът. */
+/** The statement the record lives in. */
 export type AyqStatementContext = {
-  /** Само базовото име на файла — пътища не се записват. */
+  /** The file's base name only — paths are never recorded. */
   file: string | null;
   flavour: AyqCamtFlavour;
-  /** URN на схемата от xmlns на <Document>. */
+  /** The schema URN from the <Document> xmlns. */
   schema: string | null;
   groupMessageId: string | null; // GrpHdr/MsgId
   groupCreatedAt: string | null; // GrpHdr/CreDtTm
@@ -147,7 +152,7 @@ export type AyqStatementContext = {
   statementCreatedAt: string | null; // Stmt/CreDtTm
   fromDate: string | null; // FrToDt/FrDtTm
   toDate: string | null; // FrToDt/ToDtTm
-  /** Собствената сметка. */
+  /** The account being reported on. */
   accountIban: string | null;
   accountOtherId: string | null;
   accountCurrency: string | null;
@@ -155,49 +160,49 @@ export type AyqStatementContext = {
   accountServicerBic: string | null;
 };
 
-/** Позицията на записа в източника — прави го проследим до конкретния <Ntry>. */
+/** Where the record sits in the source — traceable back to the exact <Ntry>. */
 export type AyqEntryPosition = {
-  /** Индекс на <Stmt> във файла, от 0. */
+  /** Index of the <Stmt> in the file, from 0. */
   statementIndex: number;
-  /** Индекс на <Ntry> в извлечението, от 0. */
+  /** Index of the <Ntry> in the statement, from 0. */
   entryIndex: number;
-  /** Индекс на <TxDtls> в записа, от 0. -1 когато <TxDtls> изобщо липсва. */
+  /** Index of the <TxDtls> in the entry, from 0. -1 when <TxDtls> is absent. */
   transactionIndex: number;
-  /** Брой <TxDtls> в този <Ntry>. 0 при 217-те записа без структурирани данни. */
+  /** Number of <TxDtls> in this <Ntry>. 0 for the 217 unstructured entries. */
   transactionCount: number;
 };
 
 /**
- * Беззагубеният междинен банков запис.
+ * The lossless intermediate bank record.
  *
- * Всичко, което ABN AMRO дава в camt.053 за една транзакция, стои тук в
- * банковата си форма. Нищо не е слято, нищо не е съкратено, нищо не е
- * интерпретирано. Слоят за нормализация чете това и произвежда отделен обект.
+ * Everything ABN AMRO gives in camt.053 for one transaction sits here in its
+ * banking form. Nothing is merged, shortened or interpreted. The normalisation
+ * layer reads this and produces a separate object.
  */
 export type AyqBankEntry = {
   statement: AyqStatementContext;
   position: AyqEntryPosition;
 
-  /** Стабилен ключ за дедупликация в рамките на един импорт. */
+  /** A stable key for deduplication within an import. */
   ayqKey: string;
 
-  /** Сумата на транзакцията (TxDtls/Amt, ако има; иначе Ntry/Amt), със знак. */
+  /** The transaction amount (TxDtls/Amt when present, else Ntry/Amt), signed. */
   amount: AyqAmount;
-  /** Сумата на целия <Ntry>, винаги. Различава се от amount само при batch. */
+  /** The whole <Ntry> amount, always. Differs from `amount` only in a batch. */
   entryAmount: AyqAmount;
-  /** CRDT/DBIT, както банката го дава. */
+  /** CRDT/DBIT, as the bank gives it. */
   creditDebitIndicator: 'CRDT' | 'DBIT' | null;
-  /** RvslInd — записът сторнира предишен. 1 попадение в измерването. */
+  /** RvslInd — the entry reverses an earlier one. 1 hit in the measurement. */
   reversalIndicator: boolean | null;
   /** Sts — BOOK/PDNG/INFO. */
   status: string | null;
 
-  /** BookgDt и ValDt поотделно, никога слети. И двете при всичките 567 записа. */
+  /** BookgDt and ValDt kept apart, never merged. Both present on all 567. */
   bookingDate: AyqDate;
   valueDate: AyqDate;
 
   bankTransactionCode: AyqBankTransactionCode;
-  /** BkTxCd на ниво <Ntry>, когато <TxDtls> носи собствен различен код. */
+  /** The <Ntry>-level BkTxCd, when the <TxDtls> carries a different one. */
   entryBankTransactionCode: AyqBankTransactionCode;
 
   references: AyqReferences;
@@ -212,21 +217,21 @@ export type AyqBankEntry = {
   purposeProprietary: string | null; // Purp/Prtry
   returnInformation: AyqReturnInformation | null;
 
-  /** RmtInf/Ustrd — ред по ред, точно както са в XML-а. */
+  /** RmtInf/Ustrd — line by line, exactly as in the XML. */
   remittanceUnstructured: string[];
   structuredRemittance: AyqStructuredRemittance | null;
-  /** AddtlNtryInf — непокътнато. Единственият носител на име при BEA/GEA. */
+  /** AddtlNtryInf, untouched. The only carrier of a name on card entries. */
   additionalEntryInformation: string | null;
-  /** AddtlTxInf — непокътнато. */
+  /** AddtlTxInf, untouched. */
   additionalTransactionInformation: string | null;
   /** NtryRef. */
   entryReference: string | null;
 
   /**
-   * Суровото описание, непокътнато: редовете на RmtInf/Ustrd, ако ги има,
-   * иначе AddtlNtryInf. Слепени с \n, без trim, без свиване на интервали.
-   * Това е низът, който разборът на описанието получава — и единственото
-   * място, където се крие името на търговеца при картовите плащания.
+   * The raw description, untouched: the RmtInf/Ustrd lines when present,
+   * otherwise AddtlNtryInf. Joined with \n, never trimmed, whitespace never
+   * collapsed. This is the string the description parser receives — and the
+   * only place a merchant name hides on card payments.
    */
   rawDescription: string | null;
 
@@ -234,6 +239,6 @@ export type AyqBankEntry = {
   charges: AyqCharge[];
   batch: AyqBatch | null;
 
-  /** Разпарснатото XML поддърво, когато е поискано с { keepRawNode: true }. */
+  /** The parsed XML subtree, when requested with { keepRawNode: true }. */
   rawNode?: { entry: unknown; transaction: unknown };
 };

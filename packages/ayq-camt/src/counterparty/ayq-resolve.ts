@@ -1,19 +1,21 @@
-// Веригата от доказателства за контрагента.
+// The chain of evidence for the counterparty.
 //
-// Редът е фиксиран и тръгва от BkTxCd, защото той е налице при всичките 567
-// измерени записа, докато контрагентен IBAN липсва при 38 % от тях. BkTxCd не
-// произнася име (освен когато контрагентът е самата банка) — той решава кой
-// слой има смисъл да бъде питан и в какъв ред.
+// The order is fixed and starts at BkTxCd, because it is present on all 567
+// measured entries while a counterparty IBAN is missing on 38 % of them.
+// BkTxCd does not pronounce a name (except when the counterparty is the bank
+// itself) — it decides which layer is worth asking, and in what order.
 //
-//   1. bank-transaction-code — класифицира; при такса и лихва сам произнася.
-//   2. structured           — RltdPties + контрагентен IBAN.
-//   3. intermediary         — ако структурираното име е на посредник, спира
-//                             приемането: IBAN-ът е негов, не на търговеца.
-//   4. description          — разбор на свободния текст.
-//   5. alias                — ръчната таблица има последна дума.
+//   1. bank-transaction-code — always classifies; on fees and interest it also
+//                              decides.
+//   2. structured           — RltdPties plus the counterparty IBAN.
+//   3. intermediary         — when the structured name is a payment
+//                              intermediary, acceptance stops here: the IBAN
+//                              is the PSP's, not the merchant's.
+//   4. description          — parsing the free text.
+//   5. alias                — the manual table has the last word.
 //
-// Всеки слой оставя следа, включително когато е подминал. Записва се кой слой
-// е взел решението.
+// Every layer leaves a trace, including when it passes. The layer that made
+// the call is recorded.
 
 import type { AyqBankEntry } from '../ayq-types.ts';
 import {
@@ -33,8 +35,8 @@ import type {
 } from './ayq-counterparty-types.ts';
 
 /**
- * BkTxCd → вид плащане. Кодовете са ISO 20022 external codes; изброени са
- * тези, които реално се срещат в измерената сметка, плюс близките им роднини.
+ * BkTxCd to payment kind. The codes are ISO 20022 external codes; listed are
+ * the ones that actually occur in the measured account, plus close relatives.
  */
 const KIND_BY_CODE: Record<string, AyqPaymentKind> = {
   'PMNT/CCRD/POSD': 'card-terminal',
@@ -58,7 +60,7 @@ const KIND_BY_CODE: Record<string, AyqPaymentKind> = {
   'ACMT/MDOP/INTR': 'interest',
 };
 
-/** Резервна класификация по семейство, когато точният подкод е непознат. */
+/** Fallback classification by family, when the exact sub-code is unknown. */
 const KIND_BY_FAMILY: Record<string, AyqPaymentKind> = {
   CCRD: 'card-terminal',
   RDDT: 'direct-debit',
@@ -70,7 +72,8 @@ export function ayqClassify(entry: AyqBankEntry): AyqPaymentKind {
   if (entry.reversalIndicator === true || entry.returnInformation !== null) {
     return 'reversal';
   }
-  const code = entry.bankTransactionCode.code ?? entry.entryBankTransactionCode.code;
+  const code =
+    entry.bankTransactionCode.code ?? entry.entryBankTransactionCode.code;
   if (code !== null && code in KIND_BY_CODE) return KIND_BY_CODE[code];
 
   const family =
@@ -91,15 +94,15 @@ function describeCode(entry: AyqBankEntry): string {
     entry.bankTransactionCode.code ??
     entry.entryBankTransactionCode.code ??
     entry.bankTransactionCode.proprietary ??
-    'липсва'
+    'absent'
   );
 }
 
 /**
- * Разрешава контрагента на един междинен запис.
+ * Resolves the counterparty of one intermediate record.
  *
- * Записът не се променя. Резултатът е отделен обект, който носи и решението,
- * и пътя до него.
+ * The record is not modified. The result is a separate object carrying both
+ * the decision and the path to it.
  */
 export function ayqResolveCounterparty(
   entry: AyqBankEntry,
@@ -109,8 +112,8 @@ export function ayqResolveCounterparty(
   const kind = ayqClassify(entry);
   const isDebit = entry.creditDebitIndicator === 'DBIT';
 
-  // ── 1. BkTxCd ──────────────────────────────────────────────────────────
-  // Класифицира винаги. Произнася име само когато контрагентът е банката.
+  // -- 1. BkTxCd ---------------------------------------------------------
+  // Always classifies. Pronounces a name only when the bank is the counterparty.
   if (kind === 'bank-fee' || kind === 'interest') {
     const name = bankName(entry) ?? entry.additionalEntryInformation;
     trail.push({
@@ -121,18 +124,23 @@ export function ayqResolveCounterparty(
       accepted: name !== null,
       note:
         kind === 'bank-fee'
-          ? 'Банкова такса — контрагентът е самата банка.'
-          : 'Лихва — контрагентът е самата банка.',
+          ? 'Bank charge — the counterparty is the bank itself.'
+          : 'Interest — the counterparty is the bank itself.',
     });
     if (name !== null) {
-      return finish(entry, trail, {
-        name,
-        key: ayqNormaliseKey(name),
-        iban: null,
-        intermediary: null,
-        resolvedBy: 'bank-transaction-code',
-        kind,
-      }, options);
+      return finish(
+        entry,
+        trail,
+        {
+          name,
+          key: ayqNormaliseKey(name),
+          iban: null,
+          intermediary: null,
+          resolvedBy: 'bank-transaction-code',
+          kind,
+        },
+        options,
+      );
     }
   } else {
     trail.push({
@@ -141,20 +149,20 @@ export function ayqResolveCounterparty(
       name: null,
       iban: null,
       accepted: false,
-      note: `Класифицирано като ${kind}; определя реда на следващите слоеве.`,
+      note: `Classified as ${kind}; sets the order of the layers that follow.`,
     });
   }
 
-  // ── 2. structured ──────────────────────────────────────────────────────
-  // При дебит контрагентът е кредиторът, при кредит — длъжникът.
+  // -- 2. structured -----------------------------------------------------
+  // On a debit the counterparty is the creditor; on a credit, the debtor.
   const party = isDebit ? entry.creditor : entry.debtor;
   const structuredName = party.name;
   const structuredIban = party.iban;
   const hasStructured = structuredName !== null || structuredIban !== null;
 
-  // ── 3. intermediary ────────────────────────────────────────────────────
-  // Проверява се преди приемането: ако името или IBAN-ът са на посредник,
-  // структурираният слой не бива да произнася — той сочи PSP-то.
+  // -- 3. intermediary ---------------------------------------------------
+  // Checked before acceptance: if the name or the IBAN belongs to an
+  // intermediary, the structured layer must not decide — it points at the PSP.
   const normalisedStructured = ayqNormaliseKey(structuredName);
   const intermediaryByName = ayqMatchIntermediaryName(
     normalisedStructured,
@@ -165,7 +173,8 @@ export function ayqResolveCounterparty(
     (options.intermediaryIbans ?? []).includes(structuredIban)
       ? structuredIban
       : null;
-  const intermediary = intermediaryByName ?? (intermediaryByIban ? 'известен посредник' : null);
+  const intermediary =
+    intermediaryByName ?? (intermediaryByIban ? 'known intermediary' : null);
 
   if (hasStructured) {
     trail.push({
@@ -178,8 +187,8 @@ export function ayqResolveCounterparty(
       accepted: intermediary === null,
       note:
         intermediary === null
-          ? 'Структурирани данни от банката.'
-          : 'Подминато: страната е платежен посредник.',
+          ? 'Structured data from the bank.'
+          : 'Passed over: the party is a payment intermediary.',
     });
   } else {
     trail.push({
@@ -188,7 +197,7 @@ export function ayqResolveCounterparty(
       name: null,
       iban: null,
       accepted: false,
-      note: 'Записът няма TxDtls — структурирани данни за контрагента липсват.',
+      note: 'The entry has no TxDtls — no structured counterparty data.',
     });
   }
 
@@ -199,29 +208,34 @@ export function ayqResolveCounterparty(
       name: intermediary,
       iban: structuredIban,
       accepted: false,
-      note: 'IBAN-ът е на посредника; търговецът се търси в свободния текст.',
+      note: "The IBAN is the intermediary's; the merchant is sought in the free text.",
     });
   } else if (hasStructured && structuredName !== null) {
-    return finish(entry, trail, {
-      name: structuredName,
-      key: normalisedStructured,
-      iban: structuredIban,
-      intermediary: null,
-      resolvedBy: 'structured',
-      kind,
-    }, options);
+    return finish(
+      entry,
+      trail,
+      {
+        name: structuredName,
+        key: normalisedStructured,
+        iban: structuredIban,
+        intermediary: null,
+        resolvedBy: 'structured',
+        kind,
+      },
+      options,
+    );
   }
 
-  // ── 4. description ─────────────────────────────────────────────────────
-  // Картовият маркер стои в AddtlNtryInf. Когато записът има и RmtInf/Ustrd,
-  // суровото описание идва оттам, затова се пробват и двете.
+  // -- 4. description ----------------------------------------------------
+  // The card marker lives in AddtlNtryInf. When the entry also has
+  // RmtInf/Ustrd the raw description comes from there, so both are tried.
   const fromRemittance = ayqParseCardDescription(entry.rawDescription);
   const card =
     fromRemittance ?? ayqParseCardDescription(entry.additionalEntryInformation);
   if (card !== null && card.merchant !== null) {
     trail.push({
       layer: 'description',
-      source: `${card.marker} в ${
+      source: `${card.marker} in ${
         fromRemittance !== null && entry.remittanceUnstructured.length > 0
           ? 'RmtInf/Ustrd'
           : 'AddtlNtryInf'
@@ -230,43 +244,57 @@ export function ayqResolveCounterparty(
       iban: null,
       accepted: true,
       note:
-        'Търговецът е изваден от свободния текст; терминал, дата, час и номер ' +
-        'на картата са отделени, защото правят всеки запис уникален.',
+        'The merchant was extracted from the free text; terminal, date, time ' +
+        'and card number were separated out, because they make every entry unique.',
     });
-    return finish(entry, trail, {
-      name: card.merchant,
-      key: ayqNormaliseKey(card.merchant),
-      iban: null,
-      intermediary: card.intermediary ?? intermediary,
-      resolvedBy: 'description',
-      kind,
-    }, options);
+    return finish(
+      entry,
+      trail,
+      {
+        name: card.merchant,
+        key: ayqNormaliseKey(card.merchant),
+        iban: null,
+        intermediary: card.intermediary ?? intermediary,
+        resolvedBy: 'description',
+        kind,
+      },
+      options,
+    );
   }
 
   const sepa = ayqParseSepaDescription(entry.rawDescription);
-  // При посредник името в текста е пак неговото; търговецът е в описанието.
+  // Behind an intermediary the name in the text is the PSP's again; the
+  // merchant sits in the remittance description.
   const sepaCandidate =
     intermediary !== null ? (sepa?.remittance ?? null) : (sepa?.name ?? null);
   if (sepaCandidate !== null) {
     trail.push({
       layer: 'description',
-      source: intermediary !== null ? 'RmtInf/Ustrd → Omschrijving' : 'RmtInf/Ustrd → Naam',
+      source:
+        intermediary !== null
+          ? 'RmtInf/Ustrd -> Omschrijving'
+          : 'RmtInf/Ustrd -> Naam',
       name: sepaCandidate,
       iban: sepa?.iban ?? null,
       accepted: true,
       note:
         intermediary !== null
-          ? 'Плащане през посредник — името на търговеца е в описанието.'
-          : 'Името е изведено от свободния текст на превода.',
+          ? "Paid through an intermediary — the merchant's name is in the description."
+          : 'The name was taken from the free text of the transfer.',
     });
-    return finish(entry, trail, {
-      name: sepaCandidate,
-      key: ayqNormaliseKey(sepaCandidate),
-      iban: sepa?.iban ?? structuredIban,
-      intermediary,
-      resolvedBy: 'description',
-      kind,
-    }, options);
+    return finish(
+      entry,
+      trail,
+      {
+        name: sepaCandidate,
+        key: ayqNormaliseKey(sepaCandidate),
+        iban: sepa?.iban ?? structuredIban,
+        intermediary,
+        resolvedBy: 'description',
+        kind,
+      },
+      options,
+    );
   }
 
   trail.push({
@@ -275,24 +303,30 @@ export function ayqResolveCounterparty(
     name: null,
     iban: null,
     accepted: false,
-    note: 'Свободният текст не съвпада с позната форма.',
+    note: 'The free text matches no known form.',
   });
 
-  // Няма име, но може да има IBAN — той сам по себе си е групиращ признак.
+  // No name, but there may be an IBAN — on its own it is still a grouping key.
   if (structuredIban !== null && intermediary === null) {
-    return finish(entry, trail, {
-      name: null,
-      key: structuredIban,
-      iban: structuredIban,
-      intermediary: null,
-      resolvedBy: 'structured',
-      kind,
-    }, options);
+    return finish(
+      entry,
+      trail,
+      {
+        name: null,
+        key: structuredIban,
+        iban: structuredIban,
+        intermediary: null,
+        resolvedBy: 'structured',
+        kind,
+      },
+      options,
+    );
   }
 
-  // Остана само името на посредника. То се пази, защото е единственото, но
-  // решението не се приписва на структурирания слой — иначе всяко плащане през
-  // PSP щеше да изглежда решено, докато търговецът всъщност е неизвестен.
+  // Only the intermediary's name is left. It is kept, because it is the only
+  // one there is, but the decision is not credited to the structured layer —
+  // otherwise every payment through a PSP would look resolved while the
+  // merchant is in fact unknown.
   if (intermediary !== null) {
     trail.push({
       layer: 'intermediary',
@@ -301,34 +335,44 @@ export function ayqResolveCounterparty(
       iban: structuredIban,
       accepted: false,
       note:
-        'Търговецът не е намерен; записът остава групиран под посредника, ' +
-        'докато не бъде добавен псевдоним.',
+        'No merchant found; the entry stays grouped under the intermediary ' +
+        'until an alias is added.',
     });
-    return finish(entry, trail, {
-      name: structuredName,
-      key: normalisedStructured,
-      iban: null,
-      intermediary,
-      resolvedBy: 'unresolved',
-      kind,
-    }, options);
+    return finish(
+      entry,
+      trail,
+      {
+        name: structuredName,
+        key: normalisedStructured,
+        iban: null,
+        intermediary,
+        resolvedBy: 'unresolved',
+        kind,
+      },
+      options,
+    );
   }
 
-  return finish(entry, trail, {
-    name: structuredName,
-    key: normalisedStructured,
-    iban: structuredIban,
-    intermediary: null,
-    resolvedBy: structuredName === null ? 'unresolved' : 'structured',
-    kind,
-  }, options);
+  return finish(
+    entry,
+    trail,
+    {
+      name: structuredName,
+      key: normalisedStructured,
+      iban: structuredIban,
+      intermediary: null,
+      resolvedBy: structuredName === null ? 'unresolved' : 'structured',
+      kind,
+    },
+    options,
+  );
 }
 
 /**
- * Последният слой: ръчната таблица с псевдоними.
+ * The last layer: the manual alias table.
  *
- * Съвпада по IBAN, по SEPA мандат или по нормализиран ключ — в този ред,
- * защото IBAN-ът и мандатът са по-специфични от името.
+ * Matches on IBAN, on the SEPA mandate, then on the normalised key — in that
+ * order, because the IBAN and the mandate are more specific than a name.
  */
 function finish(
   entry: AyqBankEntry,
@@ -351,14 +395,14 @@ function finish(
     trail.push({
       layer: 'alias',
       source: alias.iban
-        ? 'псевдоним по IBAN'
+        ? 'alias by IBAN'
         : alias.mandateId
-          ? 'псевдоним по мандат'
-          : 'псевдоним по ключ',
+          ? 'alias by mandate'
+          : 'alias by key',
       name: alias.name,
       iban: resolved.iban,
       accepted: true,
-      note: 'Ръчният псевдоним има последна дума.',
+      note: 'The manual alias has the last word.',
     });
     return {
       ...resolved,

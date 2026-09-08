@@ -1,26 +1,25 @@
 #!/usr/bin/env node
-// Инструмент за командния ред около междинния запис.
+// The command-line tool around the intermediate record.
 //
-//   node src/ayq-cli.ts verify  <път…>   parse + measure + audit + критериите
-//   node src/ayq-cli.ts measure <път…>   структурни броения, само числа
-//   node src/ayq-cli.ts audit   <път…>   какво в XML-а записът не чете
-//   node src/ayq-cli.ts parse   <файл>   един файл като JSON, на изхода
-//   node src/ayq-cli.ts trail   <файл>   веригата от доказателства, запис по запис
+//   node src/ayq-cli.ts verify  <path…>   parse + measure + audit + criteria
+//   node src/ayq-cli.ts measure <path…>   structural counts, numbers only
+//   node src/ayq-cli.ts audit   <path…>   what in the XML the record misses
+//   node src/ayq-cli.ts parse   <file>    one file as JSON, on stdout
+//   node src/ayq-cli.ts trail   <file>    the evidence chain, record by record
 //
-// Пътят може да е папка (обхожда се рекурсивно), единичен XML файл или ZIP
-// архив — архивът се чете в паметта и нищо не се разархивира на диска.
+// A path may be a directory (walked recursively), a single XML file, or a ZIP
+// archive — the archive is read in memory and nothing is extracted to disk.
 //
-// „verify“, „measure“ и „audit“ не печатат нито име, нито сума, нито IBAN, нито
-// референция, нито име на файл — само броения и имена на XML елементи. Отчетът
-// им е безопасен за споделяне. „parse“ и „trail“ печатат съдържание и остават
-// на своята машина.
+// `verify`, `measure` and `audit` print no name, amount, IBAN, reference or
+// file name — only counts and XML element names. Their report is safe to
+// share. `parse` and `trail` print content and stay on their own machine.
 //
-// Флагове за verify:
-//   --out <файл>          записва текстовия отчет
-//   --json <файл>         записва същото като JSON, само агрегирани стойности
-//   --expect-files=N      по подразбиране 212  (измереното в r001)
-//   --expect-entries=N    по подразбиране 567
-//   --expect-txdtls=N     по подразбиране 350
+// Flags for verify:
+//   --out <file>          write the text report
+//   --json <file>         write the same as JSON, aggregate values only
+//   --expect-files=N      default 212  (as measured in r001)
+//   --expect-entries=N    default 567
+//   --expect-txdtls=N     default 350
 
 import { writeFile } from 'node:fs/promises';
 
@@ -78,7 +77,7 @@ type Loaded = {
   encodings: Record<string, number>;
 };
 
-/** Чете и разпарсва всичко, без да спира на първия проблемен файл. */
+/** Reads and parses everything, without stopping at the first bad file. */
 async function load(targets: string[]): Promise<Loaded> {
   const files = await ayqLoadTargets(targets);
   const parsed: AyqLoadedFile[] = [];
@@ -87,7 +86,7 @@ async function load(targets: string[]): Promise<Loaded> {
   const encodings: Record<string, number> = {};
 
   for (const [index, file] of files.entries()) {
-    const encoding = file.declaredEncoding ?? 'без декларация';
+    const encoding = file.declaredEncoding ?? 'not declared';
     encodings[encoding] = (encodings[encoding] ?? 0) + 1;
     try {
       entries.push(...(await ayqParseCamt(file.content, { file: file.name })));
@@ -105,85 +104,89 @@ function reportMeasurement(
   measurement: AyqMeasurement,
   loaded: Loaded,
 ): void {
-  heading(out, 'Обхват');
+  heading(out, 'Scope');
   table(out, {
-    'намерени файла': loaded.found,
-    'прочетени без грешка': loaded.parsed.length,
-    'файлове с грешка': loaded.failed.length,
-    извлечения: measurement.statements,
-    'записи (Ntry)': measurement.entries,
-    '  с TxDtls': measurement.withTxDtls,
-    '  без TxDtls': measurement.withoutTxDtls,
-    '  batch (>1 TxDtls)': measurement.batched,
-    'междинни записа': measurement.records,
-    '  от TxDtls': measurement.recordsWithTxDtls,
+    'files found': loaded.found,
+    'read without error': loaded.parsed.length,
+    'files with an error': loaded.failed.length,
+    statements: measurement.statements,
+    'entries (Ntry)': measurement.entries,
+    '  with TxDtls': measurement.withTxDtls,
+    '  without TxDtls': measurement.withoutTxDtls,
+    '  batched (>1 TxDtls)': measurement.batched,
+    'intermediate records': measurement.records,
+    '  from TxDtls': measurement.recordsWithTxDtls,
   });
 
-  heading(out, 'Обявена кодировка');
+  heading(out, 'Declared encoding');
   table(out, loaded.encodings);
 
-  heading(out, 'Наличност на полетата, които оригиналният парсър изхвърля');
+  heading(out, 'Presence of the fields the original parser discards');
   table(out, measurement.present);
 
-  heading(out, 'BkTxCd, по междинен запис');
+  heading(out, 'BkTxCd, per intermediate record');
   table(out, measurement.bankTransactionCodes);
 
-  heading(out, 'Записи без TxDtls, по BkTxCd');
+  heading(out, 'Entries without TxDtls, by BkTxCd');
   table(out, measurement.withoutTxDtlsByCode);
 
-  heading(out, 'Вид плащане');
+  heading(out, 'Payment kind');
   table(out, measurement.paymentKinds);
 
-  heading(out, 'Слой, взел решението за контрагента');
+  heading(out, 'Layer that resolved the counterparty');
   table(out, measurement.resolvedBy);
 
-  heading(out, 'Нормализация');
+  heading(out, 'Normalisation');
   table(out, {
-    'различни имена (петте полета на Actual)': measurement.distinctLegacyPayees,
-    'различни ключа (AYQ)': measurement.distinctCounterpartyKeys,
-    'картови и банкоматни записи': measurement.cardRecords,
-    '  от тях различни имена (Actual)': measurement.distinctLegacyPayeesOnCards,
-    '  от тях различни ключа (AYQ)': measurement.distinctCounterpartyKeysOnCards,
+    "distinct names (Actual's five fields)": measurement.distinctLegacyPayees,
+    'distinct keys (AYQ)': measurement.distinctCounterpartyKeys,
+    'card and ATM records': measurement.cardRecords,
+    '  of those, distinct names (Actual)':
+      measurement.distinctLegacyPayeesOnCards,
+    '  of those, distinct keys (AYQ)':
+      measurement.distinctCounterpartyKeysOnCards,
   });
 
   if (loaded.failed.length > 0) {
-    heading(out, 'Файлове с грешка');
-    // Пореден номер, не име: имената на експортите носят номер на сметка.
+    heading(out, 'Files with an error');
+    // An ordinal, not a name: export file names carry an account number.
     for (const item of loaded.failed) {
-      out.line(`файл №${item.index}: ${item.reason}`);
+      out.line(`file #${item.index}: ${item.reason}`);
     }
   }
 }
 
 function reportCoverage(out: Output, coverage: AyqCoverageReport): void {
-  heading(out, `Одит на беззагубността — ${coverage.entries} записа`);
+  heading(out, `Losslessness audit — ${coverage.entries} entries`);
   const uncovered = Object.entries(coverage.uncovered);
   if (uncovered.length === 0) {
-    out.line('Няма непрочетен път. Всичко, което банката дава, влиза в записа.');
+    out.line('No unread path. Everything the bank gives enters the record.');
   } else {
-    out.line('Пътища в XML-а, които записът НЕ чете — всеки иска решение:');
+    out.line('Paths present in the XML that the record does NOT read:');
     table(out, Object.fromEntries(uncovered));
   }
 }
 
 function reportVerdict(out: Output, verdict: AyqSpikeVerdict): void {
-  heading(out, 'Критерии');
+  heading(out, 'Criteria');
   for (const item of verdict.checks) {
-    const mark = item.passed ? 'ДА ' : item.advisory ? '?  ' : 'НЕ ';
+    const mark = item.passed ? 'OK  ' : item.advisory ? '?   ' : 'FAIL';
     out.line(
-      `${mark} ${item.name}: очаквано ${item.expected}, намерено ${item.actual}` +
-        (item.advisory && !item.passed ? '  (не проваля — иска решение)' : ''),
+      `${mark} ${item.name}: expected ${item.expected}, found ${item.actual}` +
+        (item.advisory && !item.passed
+          ? '  (does not fail — calls for a decision)'
+          : ''),
     );
   }
   out.line();
-  out.line(verdict.passed ? 'CAMT спайк: PASS' : 'CAMT спайк: FAIL');
+  out.line(verdict.passed ? 'CAMT spike: PASS' : 'CAMT spike: FAIL');
 }
 
 /**
- * Отчетът като JSON.
+ * The report as JSON.
  *
- * Съдържа само агрегирани стойности и имена на XML елементи — нито IBAN, нито
- * име, нито сума, нито описание, нито референция, нито име на файл.
+ * Holds aggregate values and XML element names only — no IBAN, no name, no
+ * amount, no description, no reference, no file name.
  */
 function buildJsonReport(
   measurement: AyqMeasurement,
@@ -221,7 +224,8 @@ function buildJsonReport(
       distinctCounterpartyKeys: measurement.distinctCounterpartyKeys,
       cardRecords: measurement.cardRecords,
       distinctLegacyPayeesOnCards: measurement.distinctLegacyPayeesOnCards,
-      distinctCounterpartyKeysOnCards: measurement.distinctCounterpartyKeysOnCards,
+      distinctCounterpartyKeysOnCards:
+        measurement.distinctCounterpartyKeysOnCards,
     },
     coverage: {
       entriesAudited: coverage.entries,
@@ -245,7 +249,7 @@ function withoutFlags(argv: string[]): string[] {
   for (let index = 0; index < argv.length; index += 1) {
     const item = argv[index];
     if (item.startsWith('--')) {
-      if (!item.includes('=')) index += 1; // стойността на флага
+      if (!item.includes('=')) index += 1; // the flag's value
       continue;
     }
     paths.push(item);
@@ -303,7 +307,7 @@ async function commandVerify(argv: string[]): Promise<void> {
   const textTarget = readFlag(argv, 'out');
   if (textTarget !== null) {
     await writeFile(textTarget, out.text(), 'utf8');
-    process.stderr.write(`\nТекстовият отчет е записан в ${textTarget}\n`);
+    process.stderr.write(`\nText report written to ${textTarget}\n`);
   }
 
   const jsonTarget = readFlag(argv, 'json');
@@ -316,7 +320,7 @@ async function commandVerify(argv: string[]): Promise<void> {
       expectations,
     );
     await writeFile(jsonTarget, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    process.stderr.write(`JSON отчетът е записан в ${jsonTarget}\n`);
+    process.stderr.write(`JSON report written to ${jsonTarget}\n`);
   }
 
   if (!verdict.passed) process.exitCode = 1;
@@ -334,16 +338,16 @@ async function commandTrail(argv: string[]): Promise<void> {
     const legacy = ayqToLegacyTransaction(entry);
     process.stdout.write(
       `\n${entry.bookingDate.date ?? '?'}  ${String(entry.amount.value).padStart(10)}  ` +
-        `${entry.bankTransactionCode.code ?? '—'}\n`,
+        `${entry.bankTransactionCode.code ?? '-'}\n`,
     );
-    process.stdout.write(`  Actual : ${legacy.payee_name ?? '—'}\n`);
+    process.stdout.write(`  Actual : ${legacy.payee_name ?? '-'}\n`);
     process.stdout.write(
-      `  AYQ    : ${counterparty.name ?? '—'}  [${counterparty.key ?? '—'}]  ` +
-        `← ${counterparty.resolvedBy}\n`,
+      `  AYQ    : ${counterparty.name ?? '-'}  [${counterparty.key ?? '-'}]  ` +
+        `<- ${counterparty.resolvedBy}\n`,
     );
     for (const step of counterparty.trail) {
       process.stdout.write(
-        `    ${step.accepted ? '✓' : '·'} ${step.layer} (${step.source}): ${step.note}\n`,
+        `    ${step.accepted ? '+' : '.'} ${step.layer} (${step.source}): ${step.note}\n`,
       );
     }
   }
@@ -361,8 +365,8 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 
 if (!command || !(command in commands) || withoutFlags(argv).length === 0) {
   process.stderr.write(
-    'употреба: node src/ayq-cli.ts <verify|measure|audit|parse|trail> ' +
-      '<папка, XML файл или ZIP архив…>\n',
+    'usage: node src/ayq-cli.ts <verify|measure|audit|parse|trail> ' +
+      '<directory, XML file or ZIP archive…>\n',
   );
   process.exit(1);
 }

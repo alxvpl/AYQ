@@ -9,20 +9,20 @@ import { readFixture } from './ayq-fixtures.ts';
 const day = await readFixture('ayq-abn-day.xml');
 const entries = await ayqParseCamt(day, { file: 'ayq-abn-day.xml' });
 
-test('петте полета на Actual продължават да излизат', () => {
+test("Actual's five fields still come out", () => {
   for (const entry of entries) {
     const legacy = ayqToLegacyTransaction(entry);
     assert.ok(legacy.date !== null);
     assert.ok(legacy.amount !== null);
     assert.ok(
       legacy.payee_name !== null,
-      'всеки запис излиза с непразно име, както в измерването',
+      'every entry comes out with a non-empty name, as in the measurement',
     );
     assert.equal(legacy.payee_name, legacy.imported_payee);
   }
 });
 
-test('картовият запис дава суровия низ като име — това е загубата', () => {
+test('a card entry yields the raw string as the name — that is the loss', () => {
   const legacy = ayqToLegacyTransaction(entries[0]);
   assert.equal(
     legacy.payee_name,
@@ -33,7 +33,7 @@ test('картовият запис дава суровия низ като им
   assert.equal(legacy.imported_id, '2026053100000001');
 });
 
-test('нормализацията свива имена, които петте полета не свиват', () => {
+test('normalisation collapses names the five fields do not', () => {
   const measurement = ayqMeasure(entries, 1);
   assert.equal(measurement.records, 9);
   assert.equal(measurement.entries, 9);

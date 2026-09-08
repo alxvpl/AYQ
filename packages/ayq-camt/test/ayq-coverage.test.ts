@@ -7,18 +7,18 @@ import { readFixture } from './ayq-fixtures.ts';
 const day = await readFixture('ayq-abn-day.xml');
 const batchAndFx = await readFixture('ayq-batch-and-fx.xml');
 
-test('нищо в XML-а не остава непрочетено', async () => {
+test('nothing in the XML is left unread', async () => {
   const report = await ayqAuditCoverage([day, batchAndFx]);
   assert.equal(report.entries, 11);
   assert.deepEqual(
     report.uncovered,
     {},
-    `непрочетени пътища: ${Object.keys(report.uncovered).join(', ')}`,
+    `uncovered paths: ${Object.keys(report.uncovered).join(', ')}`,
   );
 });
 
-test('одитът съобщава ново поле, вместо да го подмине', async () => {
-  // Банката добавя елемент, който записът не познава.
+test('the audit reports a new field instead of passing it by', async () => {
+  // The bank adds an element the record does not know about.
   const withNewField = day.replace(
     '<AcctSvcrRef>2026053100000001</AcctSvcrRef>',
     '<AcctSvcrRef>2026053100000001</AcctSvcrRef><TechInptChanl><Cd>POSD</Cd></TechInptChanl>',
@@ -27,7 +27,7 @@ test('одитът съобщава ново поле, вместо да го п
   assert.deepEqual(report.uncovered, { 'TechInptChanl/Cd': 1 });
 });
 
-test('одитът брои и прочетеното', async () => {
+test('the audit also counts what is read', async () => {
   const report = await ayqAuditCoverage([day]);
   assert.equal(report.covered['BkTxCd/Domn/Fmly/SubFmlyCd'], 9);
   assert.equal(report.covered['NtryDtls/TxDtls/Refs/MndtId'], 2);

@@ -1,10 +1,10 @@
-// Минимален ZIP четец, колкото да се прочете експортът на ABN AMRO направо от
-// архива, без ръчно разархивиране и без нищо да се записва на диска.
+// A minimal ZIP reader, just enough to read the ABN AMRO export straight from
+// the archive, with no manual extraction and nothing written to disk.
 //
-// Нарочно без нова зависимост: архивът съдържа 212 малки XML файла, записани
-// със store или deflate, а deflate вече е в `node:zlib`. Всичко извън тези две
-// форми — zip64, шифроване, непознат метод — не се гадае, а се съобщава с
-// грешка. По-добре ясен отказ, отколкото тихо непълно четене.
+// Deliberately without a new dependency: the archive holds 212 small XML files
+// stored or deflated, and deflate is already in `node:zlib`. Anything outside
+// those two forms — zip64, encryption, an unknown method — is not guessed at
+// but reported as an error. A clear refusal beats a silent partial read.
 
 import { inflateRawSync } from 'node:zlib';
 
@@ -23,9 +23,9 @@ export type AyqZipEntry = {
   content: Buffer;
 };
 
-/** Намира записа за край на централната директория, търсейки отзад напред. */
+/** Finds the end-of-central-directory record, searching backwards. */
 function findEndOfCentralDirectory(archive: Buffer): number {
-  // Коментарът на архива е най-много 65 535 байта; толкова назад стига търсенето.
+  // The archive comment is at most 65,535 bytes; the search reaches that far.
   const earliest = Math.max(0, archive.length - 22 - 0xffff);
   for (let offset = archive.length - 22; offset >= earliest; offset -= 1) {
     if (archive.readUInt32LE(offset) === END_OF_CENTRAL_DIRECTORY) return offset;
@@ -34,20 +34,20 @@ function findEndOfCentralDirectory(archive: Buffer): number {
 }
 
 /**
- * Разчита ZIP архив и връща съдържанието на всеки файл.
+ * Reads a ZIP archive and returns the content of every file.
  *
- * Архивът се държи само в паметта — нищо не се пише на диска.
+ * The archive is held in memory only — nothing is written to disk.
  */
 export function ayqReadZip(archive: Buffer): AyqZipEntry[] {
   const end = findEndOfCentralDirectory(archive);
   if (end < 0) {
-    throw new Error('не е ZIP архив: липсва край на централната директория');
+    throw new Error('not a ZIP archive: no end-of-central-directory record');
   }
 
   const entryCount = archive.readUInt16LE(end + 10);
   const directoryOffset = archive.readUInt32LE(end + 16);
   if (entryCount === ZIP64_MARKER_16 || directoryOffset === ZIP64_MARKER_32) {
-    throw new Error('zip64 архивите не се поддържат — разархивирайте ръчно');
+    throw new Error('zip64 archives are not supported — extract manually');
   }
 
   const entries: AyqZipEntry[] = [];
@@ -55,7 +55,7 @@ export function ayqReadZip(archive: Buffer): AyqZipEntry[] {
 
   for (let index = 0; index < entryCount; index += 1) {
     if (archive.readUInt32LE(cursor) !== CENTRAL_FILE_HEADER) {
-      throw new Error(`повреден ZIP: неочакван запис №${index + 1}`);
+      throw new Error(`corrupt ZIP: unexpected record #${index + 1}`);
     }
 
     const flags = archive.readUInt16LE(cursor + 8);
@@ -71,20 +71,21 @@ export function ayqReadZip(archive: Buffer): AyqZipEntry[] {
 
     cursor += 46 + nameLength + extraLength + commentLength;
 
-    // Папките се записват с наклонена черта накрая и нямат съдържание.
+    // Directories are stored with a trailing slash and carry no content.
     if (name.endsWith('/')) continue;
 
     if ((flags & 0x1) !== 0) {
-      throw new Error(`шифрован запис в архива: ${name}`);
+      throw new Error(`encrypted entry in the archive: ${name}`);
     }
     if (method !== METHOD_STORED && method !== METHOD_DEFLATE) {
-      throw new Error(`непознат метод на компресия ${method} за ${name}`);
+      throw new Error(`unknown compression method ${method} for ${name}`);
     }
 
     if (archive.readUInt32LE(localOffset) !== LOCAL_FILE_HEADER) {
-      throw new Error(`повреден ZIP: липсва локален запис за ${name}`);
+      throw new Error(`corrupt ZIP: no local header for ${name}`);
     }
-    // Дължините в локалния запис са свои и се четат оттам, а не от директорията.
+    // The local header carries its own name and extra lengths; they are read
+    // from there rather than from the central directory.
     const localNameLength = archive.readUInt16LE(localOffset + 26);
     const localExtraLength = archive.readUInt16LE(localOffset + 28);
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
@@ -92,7 +93,8 @@ export function ayqReadZip(archive: Buffer): AyqZipEntry[] {
 
     entries.push({
       name,
-      content: method === METHOD_STORED ? Buffer.from(data) : inflateRawSync(data),
+      content:
+        method === METHOD_STORED ? Buffer.from(data) : inflateRawSync(data),
     });
   }
 

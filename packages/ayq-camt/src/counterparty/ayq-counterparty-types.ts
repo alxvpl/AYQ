@@ -1,90 +1,92 @@
-// Контрагентът не е низ, а разрешен обект с верига от доказателства.
+// A counterparty is not a string but a resolved object with a chain of
+// evidence.
 //
-// Причината е измерена: 201 картови и банкоматни записа произвеждат 201
-// различни имена, защото низът съдържа терминал, дата, час и номер на картата.
-// Обратно, при 38 % от записите контрагентен IBAN изобщо липсва. Затова нито
-// името, нито IBAN-ът са котва — котвата е BkTxCd, който е налице винаги.
+// The reason is measured: 201 card and ATM entries produce 201 distinct names,
+// because the string carries the terminal, the date, the time and the card
+// number. Conversely, 38 % of entries have no counterparty IBAN at all. So
+// neither the name nor the IBAN is the anchor — the anchor is BkTxCd, which is
+// always present.
 //
-// Всеки слой оставя следа дори когато не е решил. Записва се кой слой е взел
-// решението, за да може всяко име да бъде обяснено, оспорено и поправено.
+// Every layer leaves a trace even when it does not decide. The layer that made
+// the call is recorded, so every name can be explained, challenged and fixed.
 
-/** Слоят, който може да произнесе име на контрагент. */
+/** A layer that may pronounce a counterparty name. */
 export type AyqCounterpartyLayer =
-  /** Самата банка е контрагентът — такса, лихва. Заключава се от BkTxCd. */
+  /** The bank itself is the counterparty — a fee or interest. Read off BkTxCd. */
   | 'bank-transaction-code'
-  /** RltdPties + контрагентен IBAN. Работи при 350-те структурирани записа. */
+  /** RltdPties plus the counterparty IBAN. Works on the 350 structured entries. */
   | 'structured'
-  /** Разпознат посредник: IBAN-ът е негов, не на търговеца. Никога не решава. */
+  /** A recognised payment intermediary: the IBAN is its own. Never decides. */
   | 'intermediary'
-  /** Разбор на свободния текст. Единствената възможност при картовите записи. */
+  /** Parsing the free text. The only option on card entries. */
   | 'description'
-  /** Потребителска таблица с псевдоними. Има последна дума. */
+  /** The user's alias table. Has the last word. */
   | 'alias'
-  /** Нито един слой не е произнесъл име. */
+  /** No layer pronounced a name. */
   | 'unresolved';
 
-/** Видът на плащането според BkTxCd — определя кой слой се пита след кой. */
+/** The kind of payment per BkTxCd — it decides which layer is asked, and when. */
 export type AyqPaymentKind =
-  | 'card-terminal' // PMNT/CCRD/POSD — „BEA“, 198 от 217-те неструктурирани
-  | 'card-withdrawal' // PMNT/CCRD/CWDL — „GEA“, банкомат
-  | 'direct-debit' // PMNT/RDDT/* — SEPA мандат, 157 записа
+  | 'card-terminal' // PMNT/CCRD/POSD — "BEA", 198 of the 217 unstructured
+  | 'card-withdrawal' // PMNT/CCRD/CWDL — "GEA", ATM
+  | 'direct-debit' // PMNT/RDDT/* — SEPA mandate, 157 entries
   | 'credit-transfer' // PMNT/ICDT/*, PMNT/RCDT/*
-  | 'bank-fee' // PMNT/MDOP/COMM — банката е контрагентът
-  | 'interest' // ACMT/ACOP/INTR — банката е контрагентът
-  | 'reversal' // сторно, разпознато по RvslInd или RtrInf
-  | 'unknown'; // XTND/NTAV/NTAV и всичко непокрито
+  | 'bank-fee' // PMNT/MDOP/COMM — the bank is the counterparty
+  | 'interest' // ACMT/ACOP/INTR — the bank is the counterparty
+  | 'reversal' // a reversal, seen through RvslInd or RtrInf
+  | 'unknown'; // XTND/NTAV/NTAV and everything uncovered
 
-/** Какво един слой е видял и защо е приел или е подминал. */
+/** What one layer saw, and why it accepted or passed. */
 export type AyqEvidence = {
   layer: AyqCounterpartyLayer;
-  /** Полето, което слоят е чел, с име от схемата. */
+  /** The field the layer read, named as in the schema. */
   source: string;
   name: string | null;
   iban: string | null;
-  /** Този слой ли произнесе окончателното име. */
+  /** Whether this layer pronounced the final name. */
   accepted: boolean;
-  /** Едно изречение — стига да е четимо в интерфейса без документация. */
+  /** One sentence — readable in the interface without documentation. */
   note: string;
 };
 
-/** Разрешеният контрагент. */
+/** The resolved counterparty. */
 export type AyqCounterparty = {
-  /** Показваното име, както слоят го е произнесъл. */
+  /** The display name, as the layer pronounced it. */
   name: string | null;
   /**
-   * Нормализиран ключ за групиране: главни букви, без диакритика, без
-   * пунктуация, без номер на клон. Това е полето, по което се групира.
+   * The normalised grouping key: upper case, no diacritics, no punctuation,
+   * no trailing branch or order number. This is the field things group by.
    */
   key: string | null;
-  /** Контрагентен IBAN, ако е известен и ако е на контрагента, не на посредник. */
+  /** The counterparty IBAN, when known and when it is not an intermediary's. */
   iban: string | null;
-  /** Разпознатият посредник, когато IBAN-ът е негов. */
+  /** The recognised intermediary, when the IBAN belongs to one. */
   intermediary: string | null;
-  /** SEPA мандатът, когато има такъв — ключът към абонаментите. */
+  /** The SEPA mandate when there is one — the key to subscriptions. */
   mandateId: string | null;
-  /** Слоят, взел решението. */
+  /** The layer that made the call. */
   resolvedBy: AyqCounterpartyLayer;
   kind: AyqPaymentKind;
-  /** Цялата верига, в реда на изпълнение, включително подминатите слоеве. */
+  /** The whole chain in execution order, including the layers that passed. */
   trail: AyqEvidence[];
 };
 
-/** Ръчен псевдоним. Съвпада по IBAN, по мандат или по нормализиран ключ. */
+/** A manual alias. Matches on IBAN, on mandate, or on the normalised key. */
 export type AyqAlias = {
   iban?: string;
   mandateId?: string;
   key?: string;
-  /** Крайното име. */
+  /** The final name. */
   name: string;
 };
 
 export type AyqResolveOptions = {
   aliases?: AyqAlias[];
   /**
-   * Допълнителни посредници над вградения списък — низове, които се търсят
-   * в името, без оглед на регистър.
+   * Intermediaries beyond the built-in list — strings looked for inside the
+   * name, case-insensitively.
    */
   intermediaryNames?: string[];
-  /** IBAN-и, за които е известно, че са на посредник, а не на търговец. */
+  /** IBANs known to belong to an intermediary rather than to a merchant. */
   intermediaryIbans?: string[];
 };

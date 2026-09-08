@@ -1,6 +1,6 @@
-// Минимален ZIP писач — само за тестовете, за да има истински архив, който
-// четецът да разчете. Поддържа двата метода, които четецът поддържа: store и
-// deflate. В `src/` няма писач и не му е мястото там.
+// A minimal ZIP writer — for the tests only, so the reader has a real archive
+// to read. Supports the two methods the reader supports: store and deflate.
+// There is no writer in `src/`, and it does not belong there.
 
 import { crc32 } from 'node:zlib';
 import { deflateRawSync } from 'node:zlib';
@@ -8,7 +8,7 @@ import { deflateRawSync } from 'node:zlib';
 export type AyqZipInput = {
   name: string;
   content: Buffer | string;
-  /** true записва без компресия (метод 0). */
+  /** true writes the entry uncompressed (method 0). */
   stored?: boolean;
 };
 
@@ -28,8 +28,8 @@ export function buildZip(inputs: AyqZipInput[]): Buffer {
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4); // нужна версия
-    local.writeUInt16LE(0, 6); // флагове
+    local.writeUInt16LE(20, 4); // version needed
+    local.writeUInt16LE(0, 6); // flags
     local.writeUInt16LE(method, 8);
     local.writeUInt32LE(checksum, 14);
     local.writeUInt32LE(data.length, 18);
@@ -39,9 +39,9 @@ export function buildZip(inputs: AyqZipInput[]): Buffer {
 
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 4); // версия на записващия
-    central.writeUInt16LE(20, 6); // нужна версия
-    central.writeUInt16LE(0, 8); // флагове
+    central.writeUInt16LE(20, 4); // version made by
+    central.writeUInt16LE(20, 6); // version needed
+    central.writeUInt16LE(0, 8); // flags
     central.writeUInt16LE(method, 10);
     central.writeUInt32LE(checksum, 16);
     central.writeUInt32LE(data.length, 20);

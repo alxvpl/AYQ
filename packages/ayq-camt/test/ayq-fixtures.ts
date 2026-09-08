@@ -10,8 +10,8 @@ export async function readFixture(name: string): Promise<string> {
 }
 
 /**
- * Допълва до точно 32 500 байта с интервали — така ABN AMRO доставя всеки от
- * 212-те дневни файла.
+ * Pads with spaces to exactly 32,500 bytes — the way ABN AMRO delivers each of
+ * the 212 daily files.
  */
 export function padLikeAbn(content: string, size = 32_500): string {
   const bytes = Buffer.byteLength(content, 'utf8');

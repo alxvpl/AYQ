@@ -1,38 +1,39 @@
 # AYQ
 
-Самостоятелно приложение за лично финансово управление. Windows първо, Android
-после. Отделен продукт — не е и няма да става модул на CIVION: отделни бази,
-никакво взаимно писане.
+A standalone personal finance application. Windows first, Android after. Its
+own product — not a module of CIVION and never becoming one: separate
+databases, no writing across the boundary.
 
-## Архитектура
+## Architecture
 
-Actual (MIT, `actualbudget/actual`, HEAD `db1b0ea`, v26.9.0) като финансов и sync
-двигател; изцяло собствен AYQ интерфейс. Стабилният Node API работи в Electron
-background процес, а UI-ят говори с него през типизиран IPC — същата граница,
-която самият Actual вече ползва в производство.
+Actual (MIT, `actualbudget/actual`, HEAD `db1b0ea`, v26.9.0) as the finance and
+sync engine, with an entirely custom AYQ interface. The stable Node API runs in
+an Electron background process and the UI talks to it over typed IPC — the same
+boundary Actual itself already uses in production.
 
-MoneyMatter е отпаднал като кодова основа (AGPL + CLA, без offline слой).
-Доменният му модел се ползва като спецификация: четене и собствена
-имплементация, никакъв copy-paste.
+MoneyMatter is out as a code base (AGPL plus a CLA, and no offline layer). Its
+domain model is used as a specification: read it, implement our own, copy
+nothing.
 
-Форк на целия Actual monorepo — едва след успешен спайк.
+Forking the whole Actual monorepo comes only after the spike passes.
 
-## Състояние
+## Status
 
-Спайкът тече. Стъпки 1 и 2 (измерване върху 212 реални дневни CAMT.053 файла)
-са изпълнени; резултатите са записани извън repository-то.
+The spike is in progress. Steps 1 and 2 — measurement over 212 real daily
+CAMT.053 files — are done; the results live outside this repository.
 
-**Стъпка 3 — този код.** [`packages/ayq-camt`](packages/ayq-camt) превежда
-CAMT.053 в беззагубен междинен банков запис и разрешава контрагента с верига от
-доказателства, която тръгва от `BkTxCd`, а не от IBAN.
+**Step 3 is this code.** [`packages/ayq-camt`](packages/ayq-camt) turns
+CAMT.053 into a lossless intermediate bank record and resolves the counterparty
+through a chain of evidence that starts at `BkTxCd` rather than at an IBAN.
 
-Стъпки 4 (headless зареждане през `@actual-app/api`) и 5 (един собствен екран
-срещу същия API) не са започвани.
+Steps 4 (headless loading through `@actual-app/api`) and 5 (one custom screen
+against the same API) have not been started.
 
-## Правила
+## Rules
 
-- Реални банкови данни не влизат в repository-то и не се качват никъде. Всички
-  фикстури са измислени.
-- Всичко ново се именува `ayq-*`.
-- CIVION не се докосва. Когато контрактът AYQ→CIVION дойде на ред: AYQ е
-  недоверен източник, влиза като кандидат, никога като приета плащане.
+- Real bank data never enter this repository and are never uploaded anywhere.
+  Every fixture is invented.
+- Everything new is named `ayq-*`.
+- CIVION is not touched. When the AYQ-to-CIVION contract comes up: AYQ is an
+  untrusted source, entering as a candidate, never as an accepted payment.
+- Documents and code are written in English.

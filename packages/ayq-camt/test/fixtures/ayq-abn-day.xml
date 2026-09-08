@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Изцяло измислен ден по образеца на ABN AMRO camt.053.001.02 за частна сметка.
-  IBAN-ите, имената и сумите не са ничии. Реални банкови данни в repository-то
-  не влизат — те стоят на машината на потребителя.
+  A wholly invented day, shaped like an ABN AMRO camt.053.001.02 statement for
+  a private account. The IBANs, names and amounts belong to no one. Real bank
+  data never enter the repository — they stay on the user's machine.
 
-  Съдържа по един представител на всяка форма, измерена в 212-те файла:
-  картово плащане на терминал, теглене от банкомат, банкова такса, лихва,
-  директен дебит с пълен Refs блок, входящ превод, iDEAL през посредник,
-  сторно и XTND/NTAV/NTAV.
+  Contains one representative of every form measured across the 212 files:
+  a card payment at a terminal, an ATM withdrawal, a bank charge, interest,
+  a direct debit with a full Refs block, an incoming transfer, an iDEAL
+  payment through an intermediary, a reversal, and XTND/NTAV/NTAV.
 -->
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
   <BkToCstmrStmt>
@@ -37,7 +37,7 @@
         <Dt><Dt>2026-05-31</Dt></Dt>
       </Bal>
 
-      <!-- 1. Картово плащане на терминал. Без TxDtls: името е само в текста. -->
+      <!-- 1. Card payment at a terminal. No TxDtls: the name is only in the text. -->
       <Ntry>
         <Amt Ccy="EUR">23.45</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
@@ -54,7 +54,7 @@
         <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM</AddtlNtryInf>
       </Ntry>
 
-      <!-- 2. Теглене от банкомат. -->
+      <!-- 2. ATM withdrawal. -->
       <Ntry>
         <Amt Ccy="EUR">50.00</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
@@ -71,7 +71,7 @@
         <AddtlNtryInf>GEA, Betaalpas   GELDMAAT WESTERSTRAAT 7,PAS421 NR:00C3D4, 31.05.26/09:02   AMSTERDAM</AddtlNtryInf>
       </Ntry>
 
-      <!-- 3. Банкова такса. Контрагентът е самата банка. -->
+      <!-- 3. Bank charge. The counterparty is the bank itself. -->
       <Ntry>
         <Amt Ccy="EUR">3.30</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
@@ -88,7 +88,7 @@
         <AddtlNtryInf>ABN AMRO Bank N.V.             Kosten betalingsverkeer</AddtlNtryInf>
       </Ntry>
 
-      <!-- 4. Лихва. -->
+      <!-- 4. Interest. -->
       <Ntry>
         <Amt Ccy="EUR">0.42</Amt>
         <CdtDbtInd>CRDT</CdtDbtInd>
@@ -105,7 +105,7 @@
         <AddtlNtryInf>Creditrente</AddtlNtryInf>
       </Ntry>
 
-      <!-- 5. Директен дебит с пълен Refs блок и SEPA мандат. -->
+      <!-- 5. Direct debit with a full Refs block and a SEPA mandate. -->
       <Ntry>
         <Amt Ccy="EUR">61.90</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
@@ -145,7 +145,7 @@
         <AddtlNtryInf>SEPA Incasso algemeen doorlopend</AddtlNtryInf>
       </Ntry>
 
-      <!-- 6. Входящ превод. При кредит контрагентът е длъжникът. -->
+      <!-- 6. Incoming transfer. On a credit the counterparty is the debtor. -->
       <Ntry>
         <Amt Ccy="EUR">1250.00</Amt>
         <CdtDbtInd>CRDT</CdtDbtInd>
@@ -174,7 +174,8 @@
         </NtryDtls>
       </Ntry>
 
-      <!-- 7. iDEAL през посредник: IBAN-ът е на PSP-то, търговецът е в текста. -->
+      <!-- 7. iDEAL through an intermediary: the IBAN is the PSP's, the
+           merchant is in the text. -->
       <Ntry>
         <Amt Ccy="EUR">34.95</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
@@ -200,7 +201,7 @@
         </NtryDtls>
       </Ntry>
 
-      <!-- 8. Сторно на предишен директен дебит. -->
+      <!-- 8. Reversal of an earlier direct debit. -->
       <Ntry>
         <Amt Ccy="EUR">61.90</Amt>
         <CdtDbtInd>CRDT</CdtDbtInd>
@@ -233,7 +234,7 @@
         </NtryDtls>
       </Ntry>
 
-      <!-- 9. XTND/NTAV/NTAV — банката не класифицира. Сметка без IBAN. -->
+      <!-- 9. XTND/NTAV/NTAV — the bank does not classify. Account without an IBAN. -->
       <Ntry>
         <Amt Ccy="EUR">12.00</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
