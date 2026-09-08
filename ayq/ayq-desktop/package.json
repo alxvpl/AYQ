@@ -29,5 +29,8 @@
   },
   "engines": {
     "node": ">=22.18"
+  },
+  "overrides": {
+    "node-gyp": "13.0.2"
   }
 }

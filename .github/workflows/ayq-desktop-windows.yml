@@ -49,6 +49,27 @@ jobs:
           Write-Host "arch    : $env:PROCESSOR_ARCHITECTURE"
           Write-Host "node    : $(node --version)  (ABI $(node -p 'process.versions.modules'))"
           Write-Host "npm     : $(npm --version)"
+          Write-Host "image   : $env:ImageOS / $env:ImageVersion"
+
+      # The native build needs MSVC, and when node-gyp cannot find it the error
+      # says only that it found nothing. This records what is actually on the
+      # image, so a toolchain failure is diagnosable from the log alone rather
+      # than by guessing at the runner.
+      - name: Record the Visual Studio toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          Write-Host "vswhere        : $vswhere (present: $(Test-Path $vswhere))"
+          if (Test-Path $vswhere) {
+            Write-Host "installations  :"
+            & $vswhere -products * -prerelease -format value -property displayName
+            Write-Host "versions       :"
+            & $vswhere -products * -prerelease -format value -property installationVersion
+            Write-Host "paths          :"
+            & $vswhere -products * -prerelease -format value -property installationPath
+            Write-Host "with the C++ toolset (VC.Tools.x86.x64):"
+            & $vswhere -products * -prerelease -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format value -property installationVersion
+          }
 
       # One command from a clean checkout: install, rebuild the native module
       # for the pinned Electron, and refuse to continue unless it opens a

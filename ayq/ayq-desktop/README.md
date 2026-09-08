@@ -83,6 +83,15 @@ Determinism rests on three things, and `setup.mjs` enforces the first:
 - The rebuild is passed that same version explicitly rather than sniffing it.
 - `verify-native.mjs` opens a real database under Electron afterwards.
 
+`node-gyp` is pinned to 13.0.2 through an npm `overrides` entry. The version
+`@electron/rebuild` depends on recognises Visual Studio 2017, 2019 and 2022 and
+nothing else, so on a machine carrying a newer Visual Studio it reports that it
+found no installation at all — which is what the Windows runner produced. 13.0.2
+knows VS 2026 as well, and its programmatic surface is the one
+`@electron/rebuild` already drives. When a rebuild does fail, `setup.mjs` runs
+node-gyp's own finder and prints the log it otherwise discards, so the answer is
+which installations were seen and why each was rejected.
+
 `setup.mjs` runs npm through `ComSpec` explicitly on Windows rather than
 spawning `npm.cmd` and hoping. Since the CVE-2024-27980 fix, Node refuses to
 execute a batch file without a command shell, and the spawn fails before the

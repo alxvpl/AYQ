@@ -19,6 +19,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,14 +56,47 @@ function quoteForCmd(argument) {
   return /^[A-Za-z0-9_@:.,+=/\\-]+$/.test(argument) ? argument : `"${argument}"`;
 }
 
-function run(command, args, label, options = {}) {
+// When the native build fails on Windows it is almost always the toolchain,
+// and node-gyp's own account of what it looked for is thrown away: it logs
+// through proc-log, which prints nothing unless something is listening. The
+// finder keeps every line in `errorLog`, so we run it ourselves and print that
+// — the difference between "Could not find any Visual Studio installation" and
+// knowing which installations were seen and why each was rejected.
+async function describeVisualStudio() {
+  if (!isWindows) return;
+
+  process.stderr.write(`\n[ayq-setup] asking node-gyp what it can see:\n`);
+
+  let finder;
+  try {
+    const requireFrom = createRequire(join(here, 'package.json'));
+    const VisualStudioFinder = requireFrom('node-gyp/lib/find-visualstudio');
+    const version = requireFrom('node-gyp/package.json').version;
+    process.stderr.write(`[ayq-setup] node-gyp ${version}\n`);
+
+    finder = new VisualStudioFinder(process.version, null);
+    const found = await finder.findVisualStudio();
+    process.stderr.write(
+      `[ayq-setup] node-gyp would use VS${found.versionYear} ` +
+        `(${found.version}) at ${found.path}\n`,
+    );
+  } catch (error) {
+    process.stderr.write(`[ayq-setup] ${String(error.message).trim()}\n`);
+    for (const line of finder?.errorLog ?? []) {
+      process.stderr.write(`[ayq-setup]   ${line}\n`);
+    }
+  }
+}
+
+async function run(command, args, label, options = {}) {
+  const { diagnose, ...spawnOptions } = options;
   process.stdout.write(`\n[ayq-setup] ${label}\n`);
   process.stdout.write(`[ayq-setup] > ${command} ${args.join(' ')}\n`);
 
   const result = spawnSync(command, args, {
     cwd: here,
     stdio: 'inherit',
-    ...options,
+    ...spawnOptions,
   });
 
   // A spawn that never started reports nothing on stdio, so the error object
@@ -79,6 +113,8 @@ function run(command, args, label, options = {}) {
     process.exit(1);
   }
 
+  if (result.signal || result.status !== 0) await diagnose?.();
+
   if (result.signal) {
     process.stderr.write(
       `\n[ayq-setup] failed: ${label} — killed by ${result.signal}\n`,
@@ -94,9 +130,9 @@ function run(command, args, label, options = {}) {
   }
 }
 
-function runNpm(args, label) {
+async function runNpm(args, label, extra = {}) {
   const { command, args: spawnArgs, options } = npmInvocation(args);
-  run(command, spawnArgs, label, options);
+  await run(command, spawnArgs, label, { ...options, ...extra });
 }
 
 const manifest = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
@@ -113,12 +149,12 @@ if (!/^\d+\.\d+\.\d+$/.test(electronVersion ?? '')) {
   process.exit(1);
 }
 
-runNpm(
+await runNpm(
   existsSync(join(here, 'package-lock.json')) ? ['ci'] : ['install'],
   'installing dependencies',
 );
 
-runNpm(
+await runNpm(
   [
     'exec',
     '--no',
@@ -132,9 +168,10 @@ runNpm(
     '--build-from-source',
   ],
   `rebuilding better-sqlite3 for Electron ${electronVersion}`,
+  { diagnose: describeVisualStudio },
 );
 
-run(
+await run(
   process.execPath,
   [join(here, 'verify-native.mjs')],
   'verifying the native module loads under Electron',
