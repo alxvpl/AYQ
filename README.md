@@ -62,10 +62,10 @@ The spike is complete and closed: verified against the real 212-file export —
 
 The monorepo fork is in place.
 
-**The desktop skeleton.** [`ayq/ayq-client`](ayq/ayq-client) is the AYQ
+**The desktop application.** [`ayq/ayq-client`](ayq/ayq-client) is the AYQ
 renderer — ours, not Actual's — and [`ayq/ayq-desktop`](ayq/ayq-desktop) is the
-Electron host that serves it. The boundary the spike proved over HTTP is now
-typed IPC:
+Electron host that serves it. The boundary the spike proved over HTTP is typed
+IPC:
 
 ```
 ayq-client ──▶ typed IPC ──▶ Electron background ──▶ @actual-app/api
@@ -74,19 +74,17 @@ ayq-client ──▶ typed IPC ──▶ Electron background ──▶ @actual-a
 The renderer imports no Actual code and has no `require` and no `process` to
 reach it with; a test enforces that on the source and on the built bundle.
 
-**The ledger.** The screen is the transactions, newest first, each with the
-counterparty the CAMT resolver decided rather than the bank's raw string. They
-come from one AQL query in the engine; the renderer formats and computes no
-money. A new AYQ is genuinely empty — no demo account, no invented entries —
-and says so, with the import as the obvious next step.
+What it does today: imports CAMT.053 from an `.xml` or a `.zip` and keeps the
+data on the machine; shows the ledger newest first, with the canonical
+counterparty rather than the bank's raw string; explains any transaction — the
+layer that named it, the bank's code, the SEPA mandate; filters by search,
+account, date and category state; files transactions into categories and
+remembers the decision for that counterparty; finds what recurs and when it is
+next due; keeps an import history; and refuses to import the same statement
+twice. A new AYQ is genuinely empty and says so.
 
-**CAMT.053 import.** A button, the host's native picker, and the engine
-reading the file. `.xml` and `.zip` both, the ZIP never
-extracted. The parsing is the spike's `ayq-camt` unchanged, the mapping the
-bridge's, the import `@actual-app/api`'s — and importing the same export twice
-adds nothing, because every transaction carries the record's own stable key.
-The screen shows counts. Nothing from a statement travels further than the
-machine it was imported on.
+It packages into a per-user Windows installer, and the Windows workflow
+installs the result and makes the installed application prove all of it again.
 
 ## Rules
 

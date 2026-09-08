@@ -1,7 +1,7 @@
 {
   "name": "ayq-desktop",
   "version": "0.1.0",
-  "description": "The AYQ Electron host: window, typed IPC relay, and the forked Actual engine.",
+  "description": "AYQ \u2014 a local personal finance desktop application.",
   "main": "dist/ayq-main.js",
   "scripts": {
     "setup": "node setup.mjs",
@@ -12,7 +12,9 @@
     "smoke": "node start.mjs --smoke --require-host \"electron utilityProcess\"",
     "start:debug-node-engine": "node start.mjs --engine node",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --test-concurrency=1 \"test/*.test.ts\""
+    "test": "npm run build && node --test --test-concurrency=1 \"test/*.test.ts\"",
+    "icon": "node build-icon.mjs",
+    "package": "npm run build && npm run icon && electron-builder --win nsis --x64"
   },
   "license": "MIT",
   "private": true,
@@ -24,6 +26,7 @@
     "@electron/rebuild": "4.0.3",
     "@types/node": "22.15.3",
     "electron": "43.4.0",
+    "electron-builder": "26.8.1",
     "esbuild": "0.24.2",
     "typescript": "5.9.2"
   },
@@ -32,5 +35,46 @@
   },
   "overrides": {
     "node-gyp": "13.0.2"
+  },
+  "productName": "AYQ",
+  "build": {
+    "appId": "eu.ayq.desktop",
+    "productName": "AYQ",
+    "copyright": "AYQ",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map",
+      "!node_modules/better-sqlite3/{benchmark,src,bin,docs,deps,build/Release/obj}"
+    ],
+    "asarUnpack": [
+      "**/node_modules/@actual-app/api/**",
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-windows-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AYQ"
+    }
   }
 }

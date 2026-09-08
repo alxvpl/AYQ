@@ -13,7 +13,7 @@
 // two halves meet.
 
 import { fork } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,6 +28,14 @@ import {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// Pinned before anything asks for a path. Electron derives the user data
+// directory from the application's name, and that name would otherwise be the
+// package name in development and the product name once packaged — two
+// different directories for the same person's budget. Stating it once means an
+// upgrade, and a switch between a checkout and an installed build, find the
+// data that is already there.
+app.setName('AYQ');
 
 /** Where the budget lives. Nothing is written outside it. */
 const dataDir = process.env.AYQ_DATA_DIR ?? join(app.getPath('userData'), 'budget');
@@ -248,10 +256,14 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
  * Only counts are printed. The fixture is invented, but the rule holds
  * whatever the file is: a statement's contents do not belong in a CI log.
  */
+/** What the import rounds reported, for the run that launched this. */
+const importRounds: AyqImportSummary[] = [];
+
 async function checkImport(window: BrowserWindow): Promise<boolean> {
   try {
     const first = await importOnce(window);
     const second = await importOnce(window);
+    importRounds.push(first, second);
 
     const report = (round: string, summary: AyqImportSummary): void => {
       process.stdout.write(
@@ -348,6 +360,35 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
 
   const hostOk = requiredHost === '' || engineHost === requiredHost;
+  const passed = state === 'ready' && hostOk && emptyOk && importOk;
+
+  // A packaged Windows application is a GUI subsystem binary: nothing it writes
+  // to stdout reaches the console that started it. So the outcome is also
+  // written where the run that launched it can read it — which is the only way
+  // an installed build can be checked automatically.
+  const report = process.env.AYQ_SMOKE_REPORT;
+  if (report) {
+    mkdirSync(dirname(report), { recursive: true });
+    writeFileSync(
+      report,
+      `${JSON.stringify(
+        {
+          passed,
+          state,
+          engineHost,
+          requiredHost,
+          hostOk,
+          emptyOk,
+          importOk,
+          imports: importRounds,
+          dataDir,
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+  }
 
   process.stdout.write(`\n[ayq-smoke] renderer state: ${state || 'timeout'}\n`);
   process.stdout.write(`[ayq-smoke] engine host: ${engineHost || 'unreported'}\n`);
@@ -359,7 +400,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   process.stdout.write(`[ayq-smoke] rendered:\n${body}\n`);
 
   engine?.stop();
-  app.exit(state === 'ready' && hostOk && emptyOk && importOk ? 0 : 1);
+  app.exit(passed ? 0 : 1);
 }
 
 void app.whenReady().then(() => {

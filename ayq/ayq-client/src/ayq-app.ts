@@ -312,6 +312,9 @@ function drawFooter(): void {
   if (state.summary?.lastImportAt) {
     parts.push(`last import ${ayqMoment(state.summary.lastImportAt)}`);
   }
+  // Where the money actually lives, said out loud: this application keeps
+  // everything on this machine, and a person is entitled to know where.
+  parts.push(status.dataDir);
   note.textContent = parts.join(' · ');
 }
 

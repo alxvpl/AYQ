@@ -32,7 +32,7 @@ jobs:
   production-smoke:
     name: utilityProcess engine on Windows
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -122,6 +122,51 @@ jobs:
           --import ../ayq-camt/test/fixtures/ayq-abn-month.xml
           --screenshot "${{ runner.temp }}\ayq-desktop-import.png"
 
+      # The product, as a person would get it: an installer, installed, and the
+      # installed application driving itself through the same acceptance.
+      - name: Package the Windows installer
+        working-directory: ayq/ayq-desktop
+        run: npm run package
+
+      - name: Install it and run what was installed
+        shell: pwsh
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-installed-budget
+          AYQ_SMOKE: '1'
+          AYQ_SMOKE_REQUIRE_HOST: electron utilityProcess
+          AYQ_SMOKE_IMPORT: ${{ github.workspace }}\ayq\ayq-camt\test\fixtures\ayq-abn-month.xml
+          AYQ_SMOKE_REPORT: ${{ runner.temp }}\ayq-installed-report.json
+          AYQ_SMOKE_SCREENSHOT: ${{ runner.temp }}\ayq-desktop-installed.png
+        run: |
+          $setup = Get-ChildItem 'ayq\ayq-desktop\release' -Filter '*-setup.exe' |
+            Select-Object -First 1
+          if (-not $setup) { throw 'electron-builder produced no installer' }
+          Write-Host "installer : $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
+
+          # /S is NSIS's silent switch; the installer is per-user, so it needs
+          # no administrator and lands under the profile.
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\AYQ\AYQ.exe'
+          if (-not (Test-Path $exe)) { throw "nothing was installed at $exe" }
+          Write-Host "installed : $exe"
+
+          # A GUI subsystem binary writes nothing to this console, so the run
+          # is judged by its exit code and the report it leaves behind.
+          $run = Start-Process -FilePath $exe -PassThru -Wait
+          Write-Host "exit code : $($run.ExitCode)"
+          if (Test-Path $env:AYQ_SMOKE_REPORT) {
+            Get-Content $env:AYQ_SMOKE_REPORT | Write-Host
+          }
+          if ($run.ExitCode -ne 0) { throw 'the installed application failed its own acceptance' }
+
+      - name: Upload the installer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayq-windows-installer
+          path: ayq/ayq-desktop/release/*-setup.exe
+          if-no-files-found: warn
+
       - name: Upload the window capture
         if: always()
         uses: actions/upload-artifact@v4
@@ -130,4 +175,6 @@ jobs:
           path: |
             ${{ runner.temp }}\ayq-desktop-windows.png
             ${{ runner.temp }}\ayq-desktop-import.png
+            ${{ runner.temp }}\ayq-desktop-installed.png
+            ${{ runner.temp }}\ayq-installed-report.json
           if-no-files-found: warn

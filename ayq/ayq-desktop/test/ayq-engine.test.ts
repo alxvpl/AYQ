@@ -523,3 +523,73 @@ test('the summary adds up what the ledger holds', async () => {
   assert.ok(summary.counterpartyCount >= 5, 'the shops collapsed into a few');
   assert.ok(summary.counterpartyCount < 14, 'and fewer than the rows');
 });
+
+test('what AYQ keeps survives a restart', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const category = categories.find(candidate => !candidate.isIncome);
+  assert.ok(category);
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const coffee = ledger.rows.find(row => row.payee === 'Koffiehuis De Test');
+  assert.ok(coffee);
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: coffee.id,
+    categoryId: category.id,
+    createRule: true,
+  });
+
+  // Every request above ran in its own engine process against the same
+  // directory, so this is already a restart. What matters is that the file on
+  // disk is the whole state: the rule, the history and the provenance.
+  const store = JSON.parse(
+    await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
+  ) as {
+    version: number;
+    rules: unknown[];
+    imports: unknown[];
+    provenance: Record<string, unknown>;
+  };
+
+  assert.equal(store.version, 1);
+  assert.equal(store.rules.length, 1);
+  assert.equal(store.imports.length, 1);
+  assert.equal(Object.keys(store.provenance).length, 14);
+
+  const reopened = await ask(dataDir, { kind: 'transactions.list' });
+  assert.equal(reopened.total, 14);
+  assert.equal(
+    reopened.rows.filter(row => row.categoryId === category.id).length,
+    2,
+    'both coffees, still filed where they were put',
+  );
+});
+
+test('a store from a newer AYQ is refused, not overwritten', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', path: fixture });
+
+  const path = join(dataDir, 'ayq-store.json');
+  const original = await readFile(path, 'utf8');
+  await writeFile(
+    path,
+    JSON.stringify({ ...JSON.parse(original), version: 99 }),
+    'utf8',
+  );
+
+  const answer = await send(
+    { id: 'newer', kind: 'transactions.list' },
+    dataDir,
+  );
+  assert.equal(answer.ok, false, 'the engine refuses rather than guessing');
+  if (answer.ok) return;
+  assert.match(answer.message, /version 99/);
+  assert.match(answer.message, /upgrade rather than overwrite/);
+
+  // And it really did not touch the file.
+  const after = JSON.parse(await readFile(path, 'utf8')) as { version: number };
+  assert.equal(after.version, 99);
+});
