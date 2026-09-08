@@ -288,7 +288,18 @@ jobs:
           # directory means the check below looks where the files were actually
           # asked to go rather than guessing at a default.
           $target = Join-Path $env:RUNNER_TEMP 'ayq-install'
-          Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$target" -Wait
+          $install = Start-Process -FilePath $setup.FullName `
+            -ArgumentList '/S', "/D=$target" -PassThru -Wait
+          Write-Host "installer exit code : $($install.ExitCode)"
+
+          # The installer's own verdict, which this step used to discard. An
+          # installer that refuses says so in its exit code and returns at once;
+          # without reading it, a refusal was indistinguishable from a slow
+          # install and cost three minutes of waiting before a message that
+          # could only say what was missing, never why.
+          if ($install.ExitCode -ne 0) {
+            throw "the installer refused with exit code $($install.ExitCode)"
+          }
 
           # NSIS returns before it has finished writing: the silent installer
           # exits while its own work continues, so waiting on the process is
@@ -311,7 +322,7 @@ jobs:
                 Write-Host "  $place : absent"
               }
             }
-            throw "nothing was installed at $exe"
+            throw "the installer reported success and installed nothing at $exe"
           }
           Write-Host "installed : $exe"
 
