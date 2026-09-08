@@ -9,7 +9,7 @@
 // spreadsheet, and the transaction count comes from the engine's own query
 // language. Nothing here is fabricated for the benefit of the interface.
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import api from '@actual-app/api';
@@ -85,6 +85,9 @@ async function findBudgetId(): Promise<string | null> {
 async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
   if (opened) return opened;
 
+  // On a first launch the directory does not exist yet, and the API expects to
+  // be handed one that does.
+  mkdirSync(dataDir, { recursive: true });
   await api.init({ dataDir });
 
   const existing = await findBudgetId();

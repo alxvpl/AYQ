@@ -89,12 +89,12 @@ async function describeVisualStudio() {
 }
 
 async function run(command, args, label, options = {}) {
-  const { diagnose, ...spawnOptions } = options;
+  const { diagnose, cwd = here, ...spawnOptions } = options;
   process.stdout.write(`\n[ayq-setup] ${label}\n`);
   process.stdout.write(`[ayq-setup] > ${command} ${args.join(' ')}\n`);
 
   const result = spawnSync(command, args, {
-    cwd: here,
+    cwd,
     stdio: 'inherit',
     ...spawnOptions,
   });
@@ -135,6 +135,12 @@ async function runNpm(args, label, extra = {}) {
   await run(command, spawnArgs, label, { ...options, ...extra });
 }
 
+// `ci` when a lockfile is there, `install` when it is not — the first is exact,
+// the second is what a package without a lockfile can offer.
+function installArgs(directory) {
+  return existsSync(join(directory, 'package-lock.json')) ? ['ci'] : ['install'];
+}
+
 const manifest = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const electronVersion = manifest.devDependencies?.electron;
 
@@ -149,10 +155,16 @@ if (!/^\d+\.\d+\.\d+$/.test(electronVersion ?? '')) {
   process.exit(1);
 }
 
-await runNpm(
-  existsSync(join(here, 'package-lock.json')) ? ['ci'] : ['install'],
-  'installing dependencies',
-);
+await runNpm(installArgs(here), 'installing dependencies');
+
+// The renderer is a separate package with its own lockfile, and the desktop
+// build bundles it (`build:client`). Without this the app cannot be built and
+// cannot be typechecked from a clean checkout — which is what the Windows run
+// discovered, with `tsc` missing rather than failing.
+const clientDir = join(here, '..', 'ayq-client');
+await runNpm(installArgs(clientDir), 'installing renderer dependencies', {
+  cwd: clientDir,
+});
 
 await runNpm(
   [
