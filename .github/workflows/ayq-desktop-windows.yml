@@ -126,6 +126,19 @@ jobs:
           --import ../ayq-camt/test/fixtures/ayq-abn-month.xml
           --screenshot "${{ runner.temp }}\ayq-desktop-import.png"
 
+      # Categorising, twice over: the first launch files the newest transaction
+      # through the control in the ledger, the second launch reopens the same
+      # budget and requires it to still be filed. Two processes, one directory
+      # — a restart, not a redraw.
+      - name: Category acceptance
+        working-directory: ayq/ayq-desktop
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-category-budget
+        run: |
+          node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --categorise Utilities
+          node start.mjs --smoke --require-host "electron utilityProcess" --expect-category Utilities --screenshot "${{ runner.temp }}\ayq-desktop-categories.png"
+
       # The product, as a person would get it: an installer, installed, and the
       # installed application driving itself through the same acceptance.
       - name: Package the Windows installer
@@ -210,6 +223,7 @@ jobs:
           path: |
             ${{ runner.temp }}\ayq-desktop-windows.png
             ${{ runner.temp }}\ayq-desktop-import.png
+            ${{ runner.temp }}\ayq-desktop-categories.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-report.json
           if-no-files-found: warn

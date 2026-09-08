@@ -10,6 +10,7 @@ import { ayqElement, ayqSelect, ayqTable } from './ayq-dom.ts';
 import { ayqDay, ayqEuro } from './ayq-format.ts';
 import type {
   AyqAccountSummary,
+  AyqCategorised,
   AyqCategory,
   AyqLedger,
   AyqLedgerFilter,
@@ -27,6 +28,8 @@ export type AyqTransactionsState = {
   detail: AyqTransactionDetail | null;
   /** What went wrong in the panel, if anything did. */
   problem: string | null;
+  /** The counterparty a manual choice just made offerable, if any. */
+  offer: AyqCategorised | null;
 };
 
 export function ayqEmptyTransactionsState(): AyqTransactionsState {
@@ -38,6 +41,7 @@ export function ayqEmptyTransactionsState(): AyqTransactionsState {
     openId: null,
     detail: null,
     problem: null,
+    offer: null,
   };
 }
 
@@ -76,7 +80,7 @@ export function ayqRenderTransactions(
       {
         label: 'Category',
         className: 'col-category',
-        cell: row => row.category ?? '—',
+        cell: row => categoryCell(state, row, redraw),
       },
       {
         label: 'Account',
@@ -104,6 +108,7 @@ export function ayqRenderTransactions(
         state.openId = state.openId === row.id ? null : row.id;
         state.detail = null;
         state.problem = null;
+        state.offer = null;
         redraw(false);
         if (state.openId !== null) void loadDetail(state, redraw);
       });
@@ -121,7 +126,109 @@ export function ayqRenderTransactions(
     ),
   );
 
+  if (state.offer !== null) target.append(offerLine(state, redraw));
   if (state.openId !== null) target.append(detailPanel(state, redraw));
+}
+
+/**
+ * The category control, in the row.
+ *
+ * Filing a transaction should not require opening anything: the column that
+ * shows the category is the column that sets it. Choosing here is a person's
+ * own decision and is recorded as one, so no rule will later overwrite it.
+ */
+function categoryCell(
+  state: AyqTransactionsState,
+  row: AyqLedgerRow,
+  redraw: (reload: boolean) => void,
+): HTMLElement {
+  const select = ayqSelect(
+    [
+      { value: '', label: '—' },
+      ...state.categories.map(category => ({
+        value: category.id,
+        label: category.name,
+      })),
+    ],
+    row.categoryId ?? '',
+    value => {
+      void assign(state, row.id, value === '' ? null : value, false, redraw);
+    },
+    row.categoryId === null ? 'category-unset' : undefined,
+  );
+
+  select.title =
+    row.categorySource === 'rule'
+      ? `${row.category} — from the rule for this counterparty`
+      : row.categorySource === 'manual'
+        ? `${row.category} — filed by hand`
+        : 'Not categorised';
+
+  // The row opens its detail panel on click; the control must not.
+  select.addEventListener('click', event => event.stopPropagation());
+  return select;
+}
+
+/**
+ * The offer after a manual choice: the same shop, the rest of the ledger.
+ *
+ * It appears only when there is something to offer, says exactly how many, and
+ * does nothing until it is accepted. Declining it leaves the one transaction
+ * filed and the rest alone.
+ */
+function offerLine(
+  state: AyqTransactionsState,
+  redraw: (reload: boolean) => void,
+): HTMLElement {
+  const offer = state.offer;
+  const line = ayqElement('div', 'offer');
+  if (offer === null) return line;
+
+  const name = offer.counterpartyName ?? 'this counterparty';
+  line.append(
+    ayqElement(
+      'span',
+      undefined,
+      `${offer.pendingForCounterparty} more from ${name} ${
+        offer.pendingForCounterparty === 1 ? 'is' : 'are'
+      } uncategorised.`,
+    ),
+  );
+
+  const accept = document.createElement('button');
+  accept.type = 'button';
+  accept.className = 'quiet small';
+  accept.textContent = `File them as ${offer.row.category} too`;
+  accept.addEventListener('click', () => {
+    void (async () => {
+      accept.disabled = true;
+      const key = offer.counterpartyKey;
+      const categoryId = offer.row.categoryId;
+      state.offer = null;
+      if (key !== null && categoryId !== null) {
+        const answer = await ayqAsk({
+          kind: 'transaction.categoriseCounterparty',
+          counterpartyKey: key,
+          categoryId,
+        });
+        if (!answer.ok) state.problem = answer.message;
+      }
+      redraw(true);
+    })();
+  });
+  line.append(accept);
+
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'quiet small';
+  dismiss.textContent = 'No';
+  dismiss.addEventListener('click', () => {
+    state.offer = null;
+    redraw(false);
+  });
+  line.append(dismiss);
+
+  return line;
 }
 
 async function loadDetail(
@@ -380,6 +487,15 @@ async function assign(
     // Said where it happened, in the panel that asked. A rejected change that
     // vanishes silently is worse than one that never happened.
     state.problem = answer.ok ? null : answer.message;
+
+    if (answer.ok && answer.kind === 'transaction.categorise') {
+      // Offered, never assumed: the rest of the shop is only filed if the
+      // person says so, and there is nothing to say when nothing is pending.
+      state.offer =
+        !createRule && answer.result.pendingForCounterparty > 0
+          ? answer.result
+          : null;
+    }
   } catch (error) {
     state.problem = error instanceof Error ? error.message : String(error);
   }

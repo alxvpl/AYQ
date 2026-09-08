@@ -252,6 +252,57 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
 }
 
 /**
+ * Files the newest transaction from the ledger itself.
+ *
+ * Through the control in the row, the way a person would: the option is chosen
+ * and a change event dispatched, and what comes back is read from the rendered
+ * table rather than from any state the renderer kept. If the column does not
+ * show it, it did not happen.
+ */
+async function categoriseNewest(
+  window: BrowserWindow,
+  name: string,
+): Promise<string> {
+  const chose = String(
+    await window.webContents.executeJavaScript(`(() => {
+      const row = document.querySelector('.grid tbody tr');
+      if (!row) return 'no rows';
+      const select = row.querySelector('.col-category select');
+      if (!select) return 'no control';
+      const option = [...select.options].find(
+        candidate => candidate.textContent === ${JSON.stringify(name)},
+      );
+      if (!option) return 'no such category';
+      select.value = option.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return 'chosen';
+    })()`),
+  );
+  if (chose !== 'chosen') return chose;
+
+  const deadline = Date.now() + 60_000;
+  let shown = '';
+  while (Date.now() < deadline) {
+    shown = await shownCategory(window);
+    if (shown === name) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return shown;
+}
+
+/** What the ledger's first row actually displays as its category. */
+async function shownCategory(window: BrowserWindow): Promise<string> {
+  return String(
+    await window.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector('.grid tbody tr .col-category select');
+      if (!select) return '';
+      const option = select.selectedOptions[0];
+      return option ? option.textContent : '';
+    })()`),
+  );
+}
+
+/**
  * The import acceptance run: import once, import the same file again, and
  * require the second to add nothing.
  *
@@ -260,6 +311,9 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
  */
 /** What the import rounds reported, for the run that launched this. */
 const importRounds: AyqImportSummary[] = [];
+
+/** What the ledger displayed as the newest transaction's category. */
+let categoryShown = '';
 
 async function checkImport(window: BrowserWindow): Promise<boolean> {
   try {
@@ -347,6 +401,32 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   // Before the capture, so the window in the artifact shows the outcome.
   const importOk = smokeImport === '' || (await checkImport(window));
 
+  // Categorising, through the column that shows it. `--categorise` files the
+  // newest transaction on this launch; `--expect-category` asserts on a later
+  // launch that it is still filed — which is a restart, not a redraw.
+  const toFile = process.env.AYQ_SMOKE_CATEGORISE ?? '';
+  const toExpect = process.env.AYQ_SMOKE_EXPECT_CATEGORY ?? '';
+  let categoryOk = true;
+
+  if (toFile !== '') {
+    categoryShown = await categoriseNewest(window, toFile);
+    categoryOk = categoryShown === toFile;
+    process.stdout.write(
+      `[ayq-smoke] categorised the newest transaction as ${toFile} -> ` +
+        `${categoryOk ? `shown as ${categoryShown}` : `FAILED (${categoryShown})`}\n`,
+    );
+  }
+
+  if (toExpect !== '') {
+    categoryShown = await shownCategory(window);
+    const kept = categoryShown === toExpect;
+    categoryOk = categoryOk && kept;
+    process.stdout.write(
+      `[ayq-smoke] after restart the newest transaction reads ` +
+        `${categoryShown || '(nothing)'} -> ${kept ? 'KEPT' : 'LOST'}\n`,
+    );
+  }
+
   const engineHost = await dataset(window, 'ayqEngineHost');
   const body = String(
     await window.webContents.executeJavaScript(
@@ -362,7 +442,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
 
   const hostOk = requiredHost === '' || engineHost === requiredHost;
-  const passed = state === 'ready' && hostOk && emptyOk && importOk;
+  const passed = state === 'ready' && hostOk && emptyOk && importOk && categoryOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
   // to stdout reaches the console that started it. So the outcome is also
@@ -382,6 +462,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           hostOk,
           emptyOk,
           importOk,
+          categoryOk,
+          categoryShown,
           imports: importRounds,
           dataDir,
         },

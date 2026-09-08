@@ -51,6 +51,15 @@ export type AyqEngineStatus = {
  * — and not the bank's raw string. The engine reads these from the budget; the
  * renderer formats them and nothing more.
  */
+/**
+ * Who decided a transaction's category.
+ *
+ * `manual` is a person's own choice and outranks everything: no rule may
+ * overwrite it. `rule` is a standing decision about a counterparty, and a rule
+ * may revise its own earlier work. `null` means nothing has decided yet.
+ */
+export type AyqCategorySource = 'manual' | 'rule' | null;
+
 export type AyqLedgerRow = {
   id: string;
   /** YYYY-MM-DD, the booking date the import chose. */
@@ -63,6 +72,7 @@ export type AyqLedgerRow = {
   accountId: string;
   category: string | null;
   categoryId: string | null;
+  categorySource: AyqCategorySource;
   /** Booked rather than pending, as the statement said. */
   cleared: boolean;
 };
@@ -113,6 +123,20 @@ export type AyqProvenance = {
   /** What the bank actually wrote, verbatim. */
   description: string | null;
   file: string | null;
+};
+
+/**
+ * What filing one transaction by hand changed, and what it makes possible.
+ *
+ * The count is the honest basis for the offer that follows: "the other four
+ * from this shop", and no offer at all when there is no other.
+ */
+export type AyqCategorised = {
+  row: AyqLedgerRow;
+  counterpartyKey: string | null;
+  counterpartyName: string | null;
+  /** Transactions from the same counterparty a rule could still file. */
+  pendingForCounterparty: number;
 };
 
 export type AyqTransactionDetail = {
@@ -223,8 +247,11 @@ export type AyqResults = {
   'accounts.list': AyqAccountSummary[];
   'transactions.list': AyqLedger;
   'transaction.detail': AyqTransactionDetail;
-  'transaction.categorise': AyqLedgerRow;
+  'transaction.categorise': AyqCategorised;
+  'transaction.categoriseCounterparty': { categorised: number };
   'categories.list': AyqCategory[];
+  'categories.create': AyqCategory[];
+  'categories.rename': AyqCategory[];
   'rules.list': AyqCategoryRule[];
   'rules.remove': AyqCategoryRule[];
   'rules.apply': { categorised: number };
@@ -254,7 +281,20 @@ export type AyqRequestBody =
       /** Also remember it for this counterparty, from now on. */
       createRule?: boolean;
     }
+  | {
+      /**
+       * Files every transaction from one counterparty, and remembers it.
+       *
+       * The offer a person gets after categorising one row by hand: the same
+       * shop, the same category, the rest of the ledger.
+       */
+      kind: 'transaction.categoriseCounterparty';
+      counterpartyKey: string;
+      categoryId: string;
+    }
   | { kind: 'categories.list' }
+  | { kind: 'categories.create'; name: string; groupId: string }
+  | { kind: 'categories.rename'; categoryId: string; name: string }
   | { kind: 'rules.list' }
   | { kind: 'rules.remove'; ruleId: string }
   | { kind: 'rules.apply' }

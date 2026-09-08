@@ -25,17 +25,24 @@ import {
   ayqLedger,
   ayqSummary,
 } from './ayq-ledger.ts';
+import {
+  ayqCategories,
+  ayqCreateCategory,
+  ayqRenameCategory,
+  ayqSeedCategories,
+} from './ayq-categories.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import {
   ayqApplyRules,
-  ayqCategories,
   ayqForgetRule,
   ayqKeyOfTransaction,
+  ayqPendingForCounterparty,
+  ayqRecordDecision,
   ayqRememberRule,
   ayqRules,
 } from './ayq-rules.ts';
-import { AYQ_STORE_VERSION, ayqReadStore } from './ayq-store.ts';
+import { ayqReadStore, ayqWriteStore } from './ayq-store.ts';
 
 const BUDGET_NAME = 'AYQ';
 
@@ -134,6 +141,9 @@ async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
   if (created === null) throw new Error('the engine created no budget');
 
   await api.loadBudget(created);
+  // Only ever on a budget just created, so nothing can be referencing the
+  // placeholders it replaces.
+  await ayqSeedCategories();
   opened = { budgetId: created, created: true };
   return opened;
 }
@@ -234,6 +244,11 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       };
 
     case 'transaction.categorise': {
+      const before = await ayqDetail(dataDir, request.transactionId);
+      const chosen = (await ayqCategories()).find(
+        candidate => candidate.id === request.categoryId,
+      );
+
       // Actual clears a category by writing null — that is what its own
       // interface does — but the published type admits only a string. The
       // mismatch is stated here rather than worked around by leaving a
@@ -242,14 +257,21 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         category: request.categoryId,
       } as unknown as Parameters<typeof api.updateTransaction>[1]);
 
-      if (request.createRule === true && request.categoryId !== null) {
-        const detail = await ayqDetail(dataDir, request.transactionId);
-        const key = ayqKeyOfTransaction(dataDir, detail.importedId);
-        const category = (await ayqCategories()).find(
-          candidate => candidate.id === request.categoryId,
-        );
-        if (key !== null && category) {
-          ayqRememberRule(dataDir, key, category.name);
+      // A person chose this, so it is recorded as theirs: no rule may
+      // overwrite it afterwards, including the rule this may be about to
+      // create. An empty name is a deliberate "no category", and outranks a
+      // rule just as firmly.
+      ayqRecordDecision(
+        dataDir,
+        before.importedId ?? request.transactionId,
+        'manual',
+        chosen?.name ?? '',
+      );
+
+      if (request.createRule === true && chosen) {
+        const key = ayqKeyOfTransaction(dataDir, before.importedId);
+        if (key !== null) {
+          ayqRememberRule(dataDir, key, chosen.name);
           await ayqApplyRules(dataDir);
         }
       }
@@ -262,12 +284,65 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         'the category',
       );
 
+      const counterpartyKey = ayqKeyOfTransaction(dataDir, before.importedId);
       return {
         id,
         ok: true,
         kind: 'transaction.categorise',
-        result: updated.row,
+        result: {
+          row: updated.row,
+          counterpartyKey,
+          counterpartyName: updated.row.payee,
+          pendingForCounterparty:
+            counterpartyKey === null || request.categoryId === null
+              ? 0
+              : await ayqPendingForCounterparty(dataDir, counterpartyKey),
+        },
       };
+    }
+
+    case 'transaction.categoriseCounterparty': {
+      const chosen = (await ayqCategories()).find(
+        candidate => candidate.id === request.categoryId,
+      );
+      if (!chosen) throw new Error('no such category');
+
+      ayqRememberRule(dataDir, request.counterpartyKey, chosen.name);
+      return {
+        id,
+        ok: true,
+        kind: 'transaction.categoriseCounterparty',
+        result: await ayqApplyRules(dataDir),
+      };
+    }
+
+    case 'categories.create':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.create',
+        result: await ayqCreateCategory(request.name, request.groupId),
+      };
+
+    case 'categories.rename': {
+      const { categories, was } = await ayqRenameCategory(
+        request.categoryId,
+        request.name,
+      );
+
+      // The rules keep a category by name, so they move with it. Without this,
+      // renaming a category would quietly orphan every rule that used it.
+      const store = ayqReadStore(dataDir);
+      let moved = false;
+      for (const rule of store.rules) {
+        if (rule.categoryName === was) {
+          rule.categoryName = request.name.trim();
+          moved = true;
+        }
+      }
+      if (moved) ayqWriteStore(dataDir, store);
+
+      return { id, ok: true, kind: 'categories.rename', result: categories };
     }
 
     case 'categories.list':

@@ -12,6 +12,7 @@ import api from '@actual-app/api';
 
 import type {
   AyqAccountSummary,
+  AyqCategorySource,
   AyqLedger,
   AyqLedgerFilter,
   AyqLedgerRow,
@@ -88,7 +89,12 @@ function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
   return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
-function toRow(row: AyqQueriedRow): AyqLedgerRow {
+/** The key a decision and a provenance record are filed under. */
+export function ayqRowKey(row: { imported_id: string | null; id: string }): string {
+  return row.imported_id ?? row.id;
+}
+
+function toRow(row: AyqQueriedRow, source: AyqCategorySource): AyqLedgerRow {
   return {
     id: String(row.id),
     date: String(row.date),
@@ -98,6 +104,7 @@ function toRow(row: AyqQueriedRow): AyqLedgerRow {
     accountId: String(row.accountId ?? ''),
     category: row.category ?? null,
     categoryId: row.categoryId ?? null,
+    categorySource: row.categoryId ? source : null,
     cleared: row.cleared === true,
   };
 }
@@ -135,7 +142,9 @@ export async function ayqLedger(
 
   matching.sort(compareRows);
   const limit = filter.limit ?? AYQ_LEDGER_LIMIT;
-  const rows = matching.slice(0, limit).map(toRow);
+  const rows = matching
+    .slice(0, limit)
+    .map(row => toRow(row, store.decisions[ayqRowKey(row)]?.source ?? null));
 
   return { rows, total: matching.length, shown: rows.length };
 }
@@ -154,7 +163,7 @@ export async function ayqDetail(
 
   const store = ayqReadStore(dataDir);
   return {
-    row: toRow(found),
+    row: toRow(found, store.decisions[ayqRowKey(found)]?.source ?? null),
     importedPayee: found.imported_payee ?? null,
     notes: found.notes ?? null,
     importedId: found.imported_id ?? null,

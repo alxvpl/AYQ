@@ -88,6 +88,18 @@
   .col-amount { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; width:1%; }
   .col-amount .in { color:var(--in); font-weight:550; }
   .col-amount .out { color:var(--out); }
+  .col-category select {
+    max-width:170px; padding:2px 4px; font-size:12.5px;
+    background:transparent; border-color:transparent; color:var(--ink);
+  }
+  .col-category select:hover, .col-category select:focus { border-color:var(--line); background:var(--panel); }
+  .col-category select.category-unset { color:var(--muted); }
+
+  .offer {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    margin:10px 0 0; padding:8px 11px; font-size:12.5px;
+    background:var(--panel); border:1px solid var(--line); border-radius:3px;
+  }
   .count { margin:9px 2px 0; font-size:12px; color:var(--muted); }
 
   .detail { margin:16px 0 0; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-radius:3px; }

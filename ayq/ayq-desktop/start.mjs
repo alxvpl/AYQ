@@ -49,6 +49,13 @@ if (importFile) env.AYQ_SMOKE_IMPORT = resolve(importFile);
 // `--require-empty` fails the smoke unless the budget it opened holds nothing:
 // a fresh AYQ has no demo account and no invented entries to hold.
 if (has('require-empty')) env.AYQ_SMOKE_REQUIRE_EMPTY = '1';
+// `--categorise <name>` files the newest transaction from the ledger itself;
+// `--expect-category <name>` demands, on a later launch, that it is still
+// filed — which proves a restart rather than a redraw.
+const categorise = flag('categorise');
+if (categorise) env.AYQ_SMOKE_CATEGORISE = categorise;
+const expectCategory = flag('expect-category');
+if (expectCategory) env.AYQ_SMOKE_EXPECT_CATEGORY = expectCategory;
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

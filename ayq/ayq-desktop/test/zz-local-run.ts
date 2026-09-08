@@ -56,8 +56,8 @@ async function send(
   dataDir: string,
 ): Promise<AyqResponse> {
   const child = fork(enginePath, [], {
-    execPath: electronPath,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', AYQ_DATA_DIR: dataDir },
+    execPath: process.execPath,
+    env: { ...process.env, AYQ_DATA_DIR: dataDir },
     stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
   });
 

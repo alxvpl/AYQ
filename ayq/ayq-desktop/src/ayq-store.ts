@@ -19,6 +19,19 @@ import type {
   AyqProvenance,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+/**
+ * How a transaction came to have the category it has.
+ *
+ * Kept because the difference decides what may overwrite what: a rule may
+ * revise its own earlier work, and may never touch a person's.
+ */
+export type AyqCategoryDecision = {
+  source: 'manual' | 'rule';
+  /** Empty when a person deliberately cleared the category. */
+  categoryName: string;
+  at: string;
+};
+
 /** Bump this when the shape changes, and add a step to `migrate`. */
 export const AYQ_STORE_VERSION = 1;
 
@@ -28,6 +41,8 @@ export type AyqStore = {
   rules: AyqCategoryRule[];
   /** Keyed by the transaction's `imported_id`. */
   provenance: Record<string, AyqProvenance>;
+  /** Keyed the same way: who decided each category. */
+  decisions: Record<string, AyqCategoryDecision>;
 };
 
 const FILE = 'ayq-store.json';
@@ -38,6 +53,7 @@ function empty(): AyqStore {
     imports: [],
     rules: [],
     provenance: {},
+    decisions: {},
   };
 }
 
@@ -68,6 +84,10 @@ function migrate(raw: unknown): AyqStore {
     provenance:
       typeof value.provenance === 'object' && value.provenance !== null
         ? value.provenance
+        : {},
+    decisions:
+      typeof value.decisions === 'object' && value.decisions !== null
+        ? value.decisions
         : {},
   };
 }

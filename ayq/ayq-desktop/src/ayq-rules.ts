@@ -1,35 +1,27 @@
-// Categories, and the standing decisions that fill them in.
+// Standing decisions about counterparties.
 //
 // A rule says: this counterparty belongs in that category. It is keyed by the
-// canonical counterparty key — the same key that makes every Albert Heijn one
-// shop — so one decision covers every past and future visit to it, whatever the
-// terminal printed that day.
+// canonical counterparty key — the same key that makes every visit to one shop
+// one counterparty — and never by a substring of what the bank happened to
+// print, which changes with the terminal, the date and the card.
+//
+// Two things a rule may not do. It may not touch a transaction a person filed
+// themselves: a manual choice is the last word, and automation that overwrites
+// it is worse than no automation. And it may not invent: a counterparty with no
+// rule stays uncategorised, which is a perfectly good answer.
 //
 // Rules are stored by category *name* rather than by id. An id belongs to one
 // budget; a rule is a person's decision and should survive a budget being
-// recreated from the same statements.
+// recreated from the same statements. Renaming a category moves its rules with
+// it.
 
 import api from '@actual-app/api';
 
-import type {
-  AyqCategory,
-  AyqCategoryRule,
-} from '../../ayq-client/src/ayq-ipc-contract.ts';
+import type { AyqCategoryRule } from '../../ayq-client/src/ayq-ipc-contract.ts';
+import { ayqCategories } from './ayq-categories.ts';
+import { ayqRowKey } from './ayq-ledger.ts';
 import { ayqSettle } from './ayq-settle.ts';
-import { ayqId, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
-
-export async function ayqCategories(): Promise<AyqCategory[]> {
-  const groups = await api.getCategoryGroups();
-  const byGroup = new Map(groups.map(group => [group.id, group.name]));
-
-  return (await api.getCategories()).map(category => ({
-    id: category.id,
-    name: category.name,
-    groupId: category.group_id ?? '',
-    groupName: byGroup.get(category.group_id ?? '') ?? '',
-    isIncome: category.is_income === true,
-  }));
-}
+import { ayqId, ayqReadStore, ayqWriteStore, type AyqStore } from './ayq-store.ts';
 
 export function ayqRules(dataDir: string): AyqCategoryRule[] {
   return ayqReadStore(dataDir).rules;
@@ -68,66 +60,31 @@ export function ayqForgetRule(
   return store.rules;
 }
 
-/**
- * Applies every rule to every transaction that has no category yet.
- *
- * Only the uncategorised are touched: a rule is a default, not an override, and
- * a person who moved one transaction by hand did so on purpose.
- */
-export async function ayqApplyRules(
+/** Records who decided a transaction's category, and what they decided. */
+export function ayqRecordDecision(
   dataDir: string,
-): Promise<{ categorised: number }> {
+  key: string,
+  source: 'manual' | 'rule',
+  categoryName: string,
+): void {
   const store = ayqReadStore(dataDir);
-  if (store.rules.length === 0) return { categorised: 0 };
+  store.decisions[key] = { source, categoryName, at: new Date().toISOString() };
+  ayqWriteStore(dataDir, store);
+}
 
-  const categories = await ayqCategories();
-  const byName = new Map(
-    categories.map(category => [category.name.toLowerCase(), category.id]),
-  );
+type AyqCategorisableRow = {
+  id: string;
+  imported_id: string | null;
+  categoryId: string | null;
+};
 
-  const wanted = new Map<string, string>();
-  for (const rule of store.rules) {
-    const categoryId = byName.get(rule.categoryName.toLowerCase());
-    if (categoryId) wanted.set(rule.counterpartyKey, categoryId);
-  }
-  if (wanted.size === 0) return { categorised: 0 };
-
+async function rowsToConsider(): Promise<AyqCategorisableRow[]> {
   const answer = (await api.aqlQuery(
     api
       .q('transactions')
       .select(['id', 'imported_id', { categoryId: 'category.id' }]),
-  )) as {
-    data?: Array<{ id: string; imported_id: string | null; categoryId: string | null }>;
-  };
-
-  const rows = answer.data ?? [];
-  const before = rows.filter(row => !row.categoryId).length;
-
-  let categorised = 0;
-  for (const row of rows) {
-    if (row.categoryId) continue;
-    const key = row.imported_id
-      ? store.provenance[row.imported_id]?.counterpartyKey
-      : null;
-    if (!key) continue;
-    const categoryId = wanted.get(key);
-    if (!categoryId) continue;
-
-    await api.updateTransaction(row.id, { category: categoryId });
-    categorised += 1;
-  }
-
-  if (categorised > 0) {
-    // The writes land after the calls that queued them return, so the next
-    // read is only trusted once it shows them.
-    await ayqSettle(
-      uncategorisedCount,
-      remaining => remaining <= before - categorised,
-      'the categories',
-    );
-  }
-
-  return { categorised };
+  )) as { data?: AyqCategorisableRow[] };
+  return answer.data ?? [];
 }
 
 async function uncategorisedCount(): Promise<number> {
@@ -137,6 +94,85 @@ async function uncategorisedCount(): Promise<number> {
   return Number(answer.data ?? 0);
 }
 
+/** What each rule wants, resolved against the categories this budget has. */
+async function wanted(
+  store: AyqStore,
+): Promise<Map<string, { id: string; name: string }>> {
+  const categories = await ayqCategories();
+  const byName = new Map(
+    categories.map(category => [category.name.toLowerCase(), category]),
+  );
+
+  const map = new Map<string, { id: string; name: string }>();
+  for (const rule of store.rules) {
+    const category = byName.get(rule.categoryName.toLowerCase());
+    if (category) map.set(rule.counterpartyKey, { id: category.id, name: category.name });
+  }
+  return map;
+}
+
+/**
+ * Applies every rule to every transaction that a rule is allowed to touch.
+ *
+ * Allowed means: nothing filed by hand, and either nothing filed at all or
+ * something this automation filed itself and has since changed its mind about
+ * — which is what makes changing a rule re-file the transactions it already
+ * decided, rather than leaving the old answer behind.
+ */
+export async function ayqApplyRules(
+  dataDir: string,
+): Promise<{ categorised: number }> {
+  const store = ayqReadStore(dataDir);
+  if (store.rules.length === 0) return { categorised: 0 };
+
+  const targets = await wanted(store);
+  if (targets.size === 0) return { categorised: 0 };
+
+  const rows = await rowsToConsider();
+  const before = rows.filter(row => !row.categoryId).length;
+
+  let categorised = 0;
+  let filled = 0;
+
+  for (const row of rows) {
+    const key = ayqRowKey(row);
+    const decision = store.decisions[key];
+    if (decision?.source === 'manual') continue;
+
+    const counterpartyKey = store.provenance[key]?.counterpartyKey;
+    if (!counterpartyKey) continue;
+
+    const target = targets.get(counterpartyKey);
+    if (!target) continue;
+    if (row.categoryId === target.id) continue;
+    // Anything already categorised without this automation's fingerprint on it
+    // arrived some other way, and is left alone.
+    if (row.categoryId && decision?.source !== 'rule') continue;
+
+    await api.updateTransaction(row.id, { category: target.id });
+    store.decisions[key] = {
+      source: 'rule',
+      categoryName: target.name,
+      at: new Date().toISOString(),
+    };
+    categorised += 1;
+    if (!row.categoryId) filled += 1;
+  }
+
+  if (categorised > 0) {
+    ayqWriteStore(dataDir, store);
+    // The writes land after the calls that queued them return, so the next
+    // read is only trusted once it shows them.
+    await ayqSettle(
+      uncategorisedCount,
+      remaining => remaining <= before - filled,
+      'the categories',
+    );
+  }
+
+  return { categorised };
+}
+
 /** The counterparty key a transaction was imported under, when it has one. */
 export function ayqKeyOfTransaction(
   dataDir: string,
@@ -144,4 +180,25 @@ export function ayqKeyOfTransaction(
 ): string | null {
   if (!importedId) return null;
   return ayqReadStore(dataDir).provenance[importedId]?.counterpartyKey ?? null;
+}
+
+/**
+ * How many transactions a rule for this counterparty would still file.
+ *
+ * Used to make the offer after a manual choice truthful: "the other four",
+ * not "the rest", and nothing at all when there is no other.
+ */
+export async function ayqPendingForCounterparty(
+  dataDir: string,
+  counterpartyKey: string,
+): Promise<number> {
+  const store = ayqReadStore(dataDir);
+  const rows = await rowsToConsider();
+
+  return rows.filter(row => {
+    const key = ayqRowKey(row);
+    if (store.decisions[key]?.source === 'manual') return false;
+    if (row.categoryId) return false;
+    return store.provenance[key]?.counterpartyKey === counterpartyKey;
+  }).length;
 }
