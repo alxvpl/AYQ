@@ -316,7 +316,7 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         id,
         ok: true,
         kind: 'import.camt',
-        result: await ayqImportCamt(dataDir, request.path, {
+        result: await ayqImportCamt(dataDir, request.paths, {
           budgetId: budget.budgetId,
           budgetName: BUDGET_NAME,
         }),

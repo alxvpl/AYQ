@@ -164,6 +164,7 @@ export type AyqImportRecord = {
   id: string;
   /** ISO timestamp. */
   at: string;
+  /** What was picked: one name, or how many were. */
   file: string;
   files: number;
   records: number;
@@ -207,13 +208,14 @@ export type AyqSummary = {
 };
 
 /**
- * The file the host's picker returned, or null when the person cancelled.
+ * The files the host's picker returned; empty when the person cancelled.
  *
- * A path, not contents: the renderer never reads it, and never could — it has
- * no filesystem. It hands the path back to the host, which is the side that
- * opened the dialog in the first place.
+ * Paths, not contents: the renderer never reads them, and never could — it has
+ * no filesystem. It hands them back to the host, which is the side that opened
+ * the dialog in the first place. Several, because a bank exports a statement
+ * per day and nobody wants to import two hundred of them one at a time.
  */
-export type AyqPickedFile = { path: string | null };
+export type AyqPickedFile = { paths: string[] };
 
 /** What the engine answers to each request kind. */
 export type AyqResults = {
@@ -260,7 +262,7 @@ export type AyqRequestBody =
   | { kind: 'imports.list' }
   | { kind: 'summary' }
   | { kind: 'import.pick' }
-  | { kind: 'import.camt'; path: string };
+  | { kind: 'import.camt'; paths: string[] };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };

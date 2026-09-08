@@ -25,6 +25,8 @@ export type AyqTransactionsState = {
   /** The row whose detail panel is open. */
   openId: string | null;
   detail: AyqTransactionDetail | null;
+  /** What went wrong in the panel, if anything did. */
+  problem: string | null;
 };
 
 export function ayqEmptyTransactionsState(): AyqTransactionsState {
@@ -35,6 +37,7 @@ export function ayqEmptyTransactionsState(): AyqTransactionsState {
     ledger: null,
     openId: null,
     detail: null,
+    problem: null,
   };
 }
 
@@ -100,6 +103,7 @@ export function ayqRenderTransactions(
       line.addEventListener('click', () => {
         state.openId = state.openId === row.id ? null : row.id;
         state.detail = null;
+        state.problem = null;
         redraw(false);
         if (state.openId !== null) void loadDetail(state, redraw);
       });
@@ -255,6 +259,10 @@ function detailPanel(
   const panel = ayqElement('div', 'detail');
   const detail = state.detail;
 
+  if (state.problem !== null) {
+    panel.append(ayqElement('p', 'error', state.problem));
+  }
+
   if (detail === null) {
     panel.append(ayqElement('p', 'muted', 'Reading the transaction…'));
     return panel;
@@ -361,17 +369,19 @@ async function assign(
   createRule: boolean,
   redraw: (reload: boolean) => void,
 ): Promise<void> {
-  const answer = await ayqAsk({
-    kind: 'transaction.categorise',
-    transactionId,
-    categoryId,
-    createRule: createRule && categoryId !== null,
-  });
+  try {
+    const answer = await ayqAsk({
+      kind: 'transaction.categorise',
+      transactionId,
+      categoryId,
+      createRule: createRule && categoryId !== null,
+    });
 
-  if (!answer.ok) {
-    state.detail = null;
-    redraw(true);
-    throw new Error(answer.message);
+    // Said where it happened, in the panel that asked. A rejected change that
+    // vanishes silently is worse than one that never happened.
+    state.problem = answer.ok ? null : answer.message;
+  } catch (error) {
+    state.problem = error instanceof Error ? error.message : String(error);
   }
 
   // The rule may have categorised other rows too, so the whole list is read

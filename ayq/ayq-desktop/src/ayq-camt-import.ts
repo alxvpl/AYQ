@@ -78,11 +78,19 @@ function bankCode(entry: AyqBankEntry): string | null {
  */
 export async function ayqImportCamt(
   dataDir: string,
-  path: string,
+  paths: string[],
   budget: { budgetId: string; budgetName: string },
 ): Promise<AyqImportSummary> {
-  const files = await ayqLoadTargets([path]);
-  if (files.length === 0) throw new Error('that file holds no CAMT document');
+  if (paths.length === 0) throw new Error('no file was chosen');
+
+  const files = await ayqLoadTargets(paths);
+  if (files.length === 0) {
+    throw new Error(
+      paths.length === 1
+        ? 'that file holds no CAMT document'
+        : 'none of those files holds a CAMT document',
+    );
+  }
 
   const records: AyqBankEntry[] = [];
   let failed = 0;
@@ -156,7 +164,10 @@ export async function ayqImportCamt(
   const record: AyqImportRecord = {
     id: importId,
     at: new Date().toISOString(),
-    file: basename(path),
+    file:
+      paths.length === 1
+        ? basename(paths[0])
+        : `${paths.length} files`,
     files: files.length,
     records: records.length,
     prepared: transactions.length,

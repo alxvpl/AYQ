@@ -125,19 +125,21 @@ let engine: EngineHandle | null = null;
  */
 async function pickCamtFile(): Promise<AyqPickedFile> {
   if (process.env.AYQ_SMOKE === '1' && smokeImport !== '') {
-    return { path: smokeImport };
+    return { paths: [smokeImport] };
   }
 
   const chosen = await dialog.showOpenDialog({
     title: 'Import CAMT.053',
-    properties: ['openFile'],
+    // Several at once: a bank exports a statement per day, and importing two
+    // hundred of them one at a time is not a workflow.
+    properties: ['openFile', 'multiSelections'],
     filters: [
-      { name: 'CAMT.053 statement', extensions: ['xml', 'zip'] },
+      { name: 'CAMT.053 statements', extensions: ['xml', 'zip'] },
       { name: 'All files', extensions: ['*'] },
     ],
   });
 
-  return { path: chosen.canceled ? null : (chosen.filePaths[0] ?? null) };
+  return { paths: chosen.canceled ? [] : chosen.filePaths };
 }
 
 async function ask(request: AyqRequest): Promise<AyqResponse> {

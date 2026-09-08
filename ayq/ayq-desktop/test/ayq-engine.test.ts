@@ -17,6 +17,7 @@
 
 import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -75,6 +76,14 @@ async function send(
     });
   } finally {
     child.kill();
+    // Waited for, not just asked for. Windows locks an open file, so a budget
+    // whose engine has not finished dying can still be held when the next fork
+    // tries to open it — and the next request then waits on a handle rather
+    // than on an answer.
+    await Promise.race([
+      once(child, 'exit'),
+      new Promise(resolve => setTimeout(resolve, 5_000)),
+    ]);
   }
 }
 
@@ -153,7 +162,7 @@ test('an unknown request kind is refused, not guessed at', async () => {
 
 test('a CAMT.053 file is imported through the real API', async () => {
   const dataDir = await budget();
-  const summary = await ask(dataDir, { kind: 'import.camt', path: fixture });
+  const summary = await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   assert.equal(summary.files, 1, 'one CAMT document in the file');
   assert.equal(summary.records, 14, 'the parser produced every entry');
@@ -178,7 +187,7 @@ test('a CAMT.053 file is imported through the real API', async () => {
 
 test('the imported transactions come back as ledger rows', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const ledger = await ask(dataDir, { kind: 'transactions.list' });
   assert.equal(ledger.total, 14, "the engine's count, not the list's length");
@@ -236,7 +245,7 @@ test('the imported transactions come back as ledger rows', async () => {
 
 test('a second read of an unchanged budget returns the same order', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const first = await ask(dataDir, { kind: 'transactions.list' });
   const second = await ask(dataDir, { kind: 'transactions.list' });
@@ -250,7 +259,7 @@ test('a second read of an unchanged budget returns the same order', async () => 
 
 test('the ledger can be searched and filtered', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const search = await ask(dataDir, {
     kind: 'transactions.list',
@@ -292,7 +301,7 @@ test('the ledger can be searched and filtered', async () => {
 
 test('a transaction explains where its name came from', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const ledger = await ask(dataDir, { kind: 'transactions.list' });
   const card = ledger.rows.find(row => row.date === '2026-06-21');
@@ -330,7 +339,7 @@ test('a transaction explains where its name came from', async () => {
 
 test('a category can be set, remembered, and applied to the rest', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const categories = await ask(dataDir, { kind: 'categories.list' });
   assert.ok(categories.length > 0, 'Actual seeds its own categories');
@@ -389,7 +398,7 @@ test('a category can be set, remembered, and applied to the rest', async () => {
 
 test('rules survive a restart and are applied to a later import', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const categories = await ask(dataDir, { kind: 'categories.list' });
   const category = categories.find(candidate => !candidate.isIncome);
@@ -426,7 +435,7 @@ test('rules survive a restart and are applied to a later import', async () => {
 
 test('the recurring view finds the mandate and the rhythm', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const recurring = await ask(dataDir, { kind: 'recurring.list' });
   const names = recurring.map(entry => entry.name);
@@ -447,8 +456,8 @@ test('the import history records what happened', async () => {
   const dataDir = await budget();
   assert.deepEqual(await ask(dataDir, { kind: 'imports.list' }), []);
 
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const history = await ask(dataDir, { kind: 'imports.list' });
   assert.equal(history.length, 2, 'both runs, newest first');
@@ -467,10 +476,10 @@ test('the import history records what happened', async () => {
 test('importing the same file twice does not duplicate anything', async () => {
   const dataDir = await budget();
 
-  const first = await ask(dataDir, { kind: 'import.camt', path: fixture });
+  const first = await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
   assert.equal(first.imported, 14);
 
-  const second = await ask(dataDir, { kind: 'import.camt', path: fixture });
+  const second = await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
   assert.equal(second.records, 14, 'the same file was read again in full');
   assert.equal(second.imported, 0, 'but nothing new was added');
   assert.equal(second.duplicates, 14, 'every row matched one already there');
@@ -497,7 +506,7 @@ test('a ZIP of statements is imported without being extracted', async () => {
     ]),
   );
 
-  const summary = await ask(dataDir, { kind: 'import.camt', path: archive });
+  const summary = await ask(dataDir, { kind: 'import.camt', paths: [archive] });
   assert.equal(summary.file, 'ayq-statements.zip');
   assert.equal(summary.files, 2, 'both documents were read out of the archive');
   assert.equal(summary.records, 28, 'and both were parsed');
@@ -509,7 +518,7 @@ test('a ZIP of statements is imported without being extracted', async () => {
 
 test('the summary adds up what the ledger holds', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const summary = await ask(dataDir, { kind: 'summary' });
   assert.equal(summary.transactionCount, 14);
@@ -526,7 +535,7 @@ test('the summary adds up what the ledger holds', async () => {
 
 test('what AYQ keeps survives a restart', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const categories = await ask(dataDir, { kind: 'categories.list' });
   const category = categories.find(candidate => !candidate.isIncome);
@@ -570,7 +579,7 @@ test('what AYQ keeps survives a restart', async () => {
 
 test('a store from a newer AYQ is refused, not overwritten', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', path: fixture });
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
 
   const path = join(dataDir, 'ayq-store.json');
   const original = await readFile(path, 'utf8');
@@ -592,4 +601,40 @@ test('a store from a newer AYQ is refused, not overwritten', async () => {
   // And it really did not touch the file.
   const after = JSON.parse(await readFile(path, 'utf8')) as { version: number };
   assert.equal(after.version, 99);
+});
+
+test('several statements can be imported in one go', async () => {
+  const dataDir = await budget();
+  const statement = await readFile(fixture, 'utf8');
+
+  // Two exports of the same month, as a bank would name them. The days overlap
+  // completely, which is the case that decides whether picking a whole folder
+  // is safe.
+  const first = join(dataDir, 'ayq-2026-06-a.xml');
+  const second = join(dataDir, 'ayq-2026-06-b.xml');
+  await writeFile(first, statement, 'utf8');
+  await writeFile(second, statement, 'utf8');
+
+  const summary = await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [first, second],
+  });
+
+  assert.equal(summary.file, '2 files');
+  assert.equal(summary.files, 2);
+  assert.equal(summary.records, 28);
+  assert.equal(summary.prepared, 14, 'the overlap was collapsed');
+  assert.equal(summary.imported, 14);
+  assert.equal(summary.duplicates, 14);
+  assert.equal(summary.transactionCountAfter, 14);
+});
+
+test('an empty choice is refused rather than counted as an import', async () => {
+  const dataDir = await budget();
+  const answer = await send({ id: 'none', kind: 'import.camt', paths: [] }, dataDir);
+
+  assert.equal(answer.ok, false);
+  if (answer.ok) return;
+  assert.match(answer.message, /no file was chosen/);
+  assert.deepEqual(await ask(dataDir, { kind: 'imports.list' }), []);
 });

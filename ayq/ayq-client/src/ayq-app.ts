@@ -185,10 +185,22 @@ async function loadView(): Promise<void> {
 }
 
 let loading = false;
+let queued = false;
 
+/**
+ * Reads what the open view needs, then draws.
+ *
+ * A reload asked for while one is already running is remembered rather than
+ * dropped: the second one is usually the one that matters — a category just
+ * assigned, a rule just applied — and losing it would leave the screen showing
+ * the state before the change.
+ */
 async function refresh(reload: boolean): Promise<void> {
   if (reload) {
-    if (loading) return;
+    if (loading) {
+      queued = true;
+      return;
+    }
     loading = true;
     try {
       await loadShell();
@@ -200,6 +212,12 @@ async function refresh(reload: boolean): Promise<void> {
       markState('error');
     } finally {
       loading = false;
+    }
+
+    if (queued) {
+      queued = false;
+      await refresh(true);
+      return;
     }
   }
   draw();
@@ -342,8 +360,8 @@ async function importCamt(): Promise<void> {
 
   try {
     const picked = await need({ kind: 'import.pick' });
-    const path = picked.result.path;
-    if (path === null) {
+    const paths = picked.result.paths;
+    if (paths.length === 0) {
       renderImportLine(
         ayqElement('span', 'muted', 'No file chosen; nothing was imported.'),
       );
@@ -351,8 +369,16 @@ async function importCamt(): Promise<void> {
       return;
     }
 
-    renderImportLine(ayqElement('span', 'muted', 'Reading and importing…'));
-    const done = await need({ kind: 'import.camt', path });
+    renderImportLine(
+      ayqElement(
+        'span',
+        'muted',
+        paths.length === 1
+          ? 'Reading and importing…'
+          : `Reading and importing ${paths.length} files…`,
+      ),
+    );
+    const done = await need({ kind: 'import.camt', paths });
     const summary = done.result;
 
     renderImportLine(
