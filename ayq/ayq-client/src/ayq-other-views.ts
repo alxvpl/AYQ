@@ -9,6 +9,7 @@ import { ayqAsk } from './ayq-bridge.ts';
 import { ayqElement, ayqTable } from './ayq-dom.ts';
 import { ayqDay, ayqEuro, ayqMoment } from './ayq-format.ts';
 import type {
+  AyqCategory,
   AyqCategoryRule,
   AyqImportRecord,
   AyqRecurring,
@@ -17,6 +18,7 @@ import type {
 export function ayqRenderRecurring(
   entries: AyqRecurring[],
   target: HTMLElement,
+  open: (counterpartyKey: string) => void,
 ): void {
   target.replaceChildren();
 
@@ -71,6 +73,12 @@ export function ayqRenderRecurring(
         },
       ],
       entries,
+      (entry, line) => {
+        // A rhythm is only useful if you can see what it is made of.
+        line.classList.add('clickable');
+        line.title = `Show every transaction from ${entry.name}`;
+        line.addEventListener('click', () => open(entry.key));
+      },
     ),
   );
 
@@ -87,10 +95,14 @@ export function ayqRenderRecurring(
 
 export function ayqRenderRules(
   rules: AyqCategoryRule[],
+  categories: AyqCategory[],
   target: HTMLElement,
   redraw: () => void,
 ): void {
   target.replaceChildren();
+  target.append(ayqElement('h3', undefined, 'Categories'));
+  target.append(categoryList(categories, redraw));
+  target.append(ayqElement('h3', undefined, 'Counterparty rules'));
 
   const apply = document.createElement('button');
   apply.type = 'button';
@@ -220,4 +232,92 @@ export function ayqRenderImports(
       history,
     ),
   );
+}
+
+/**
+ * The categories, renameable in place, with one field for adding another.
+ *
+ * Deliberately plain: a category is a name in a group, and the interface for it
+ * should be no more than that. Renaming moves the rules that use it, which the
+ * engine does — the list here only asks.
+ */
+function categoryList(
+  categories: AyqCategory[],
+  redraw: () => void,
+): HTMLElement {
+  const box = ayqElement('div', 'categories');
+
+  for (const category of categories) {
+    const row = ayqElement('div', 'category-row');
+    row.append(ayqElement('span', 'category-group', category.groupName));
+
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.value = category.name;
+    name.className = 'category-name';
+    const rename = () => {
+      const wanted = name.value.trim();
+      if (wanted === '' || wanted === category.name) {
+        name.value = category.name;
+        return;
+      }
+      void (async () => {
+        const answer = await ayqAsk({
+          kind: 'categories.rename',
+          categoryId: category.id,
+          name: wanted,
+        });
+        if (!answer.ok) name.value = category.name;
+        redraw();
+      })();
+    };
+    name.addEventListener('blur', rename);
+    name.addEventListener('keydown', event => {
+      if (event.key === 'Enter') name.blur();
+      if (event.key === 'Escape') {
+        name.value = category.name;
+        name.blur();
+      }
+    });
+    row.append(name);
+    box.append(row);
+  }
+
+  const adding = ayqElement('div', 'category-row');
+  const field = document.createElement('input');
+  field.type = 'text';
+  field.className = 'category-name';
+  field.placeholder = 'Add a category…';
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'quiet small';
+  add.textContent = 'Add';
+  const submit = () => {
+    const wanted = field.value.trim();
+    if (wanted === '') return;
+    // Into the group the spending categories already live in: a new category
+    // with nowhere to belong is a category nobody finds.
+    const group =
+      categories.find(category => !category.isIncome)?.groupId ??
+      categories[0]?.groupId;
+    if (!group) return;
+
+    void (async () => {
+      add.disabled = true;
+      await ayqAsk({ kind: 'categories.create', name: wanted, groupId: group });
+      add.disabled = false;
+      field.value = '';
+      redraw();
+    })();
+  };
+  add.addEventListener('click', submit);
+  field.addEventListener('keydown', event => {
+    if (event.key === 'Enter') submit();
+  });
+
+  adding.append(ayqElement('span', 'category-group', ''), field, add);
+  box.append(adding);
+
+  return box;
 }

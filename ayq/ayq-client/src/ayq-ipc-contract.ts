@@ -87,6 +87,8 @@ export type AyqLedgerFilter = {
   to?: string;
   /** Only transactions with no category. */
   uncategorised?: boolean;
+  /** Only transactions in one category. */
+  categoryId?: string;
   /** One canonical counterparty, by its grouping key. */
   counterpartyKey?: string;
   limit?: number;

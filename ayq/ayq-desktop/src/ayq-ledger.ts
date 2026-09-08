@@ -119,6 +119,7 @@ export async function ayqLedger(
 
   const matching = (await queried(filter)).filter(row => {
     if (filter.uncategorised === true && row.categoryId) return false;
+    if (filter.categoryId && row.categoryId !== filter.categoryId) return false;
 
     if (filter.counterpartyKey) {
       const key = row.imported_id

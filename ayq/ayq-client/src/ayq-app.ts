@@ -180,6 +180,9 @@ async function loadView(): Promise<void> {
       return;
     case 'rules':
       state.rules = (await need({ kind: 'rules.list' })).result;
+      state.transactions.categories = (
+        await need({ kind: 'categories.list' })
+      ).result;
       return;
     case 'imports':
       state.imports = (await need({ kind: 'imports.list' })).result;
@@ -324,10 +327,20 @@ function drawView(): void {
       );
       return;
     case 'recurring':
-      ayqRenderRecurring(state.recurring, target);
+      ayqRenderRecurring(state.recurring, target, counterpartyKey => {
+        state.transactions.filter = { counterpartyKey };
+        state.transactions.openId = null;
+        state.view = 'transactions';
+        void refresh(true);
+      });
       return;
     case 'rules':
-      ayqRenderRules(state.rules, target, () => void refresh(true));
+      ayqRenderRules(
+        state.rules,
+        state.transactions.categories,
+        target,
+        () => void refresh(true),
+      );
       return;
     case 'imports':
       ayqRenderImports(state.imports, target);

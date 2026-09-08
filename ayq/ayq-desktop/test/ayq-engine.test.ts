@@ -951,3 +951,46 @@ test('categories survive a restart, and a re-import adds nothing', async () => {
   assert.equal(afterReimport.total, 4);
   assert.ok(afterReimport.rows.every(row => row.category === 'Transport'));
 });
+
+test('the ledger can be narrowed to one category or one counterparty', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(category => category.name === 'Groceries');
+  assert.ok(groceries);
+
+  await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: 'ALBERT HEIJN',
+    categoryId: groceries.id,
+  });
+
+  const filed = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { categoryId: groceries.id },
+  });
+  assert.equal(filed.total, 6);
+  assert.ok(filed.rows.every(row => row.payee === 'Albert Heijn'));
+
+  const unfiled = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { uncategorised: true },
+  });
+  assert.equal(unfiled.total, 8);
+
+  // One counterparty, by its canonical key rather than by a name that varies.
+  const oneShop = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'TESTFUEL' },
+  });
+  assert.equal(oneShop.total, 4);
+  assert.ok(oneShop.rows.every(row => row.payee === 'Testfuel'));
+
+  // And the two filters compose rather than fighting.
+  const both = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'ALBERT HEIJN', categoryId: groceries.id },
+  });
+  assert.equal(both.total, 6);
+});

@@ -328,16 +328,46 @@ function filterBar(
     bar.append(field);
   }
 
-  const uncategorised = ayqElement('label', 'check');
-  const box = document.createElement('input');
-  box.type = 'checkbox';
-  box.checked = state.filter.uncategorised === true;
-  box.addEventListener('change', () => {
-    state.filter.uncategorised = box.checked ? true : undefined;
-    redraw(true);
-  });
-  uncategorised.append(box, ayqElement('span', undefined, 'Uncategorised'));
-  bar.append(uncategorised);
+  // One control rather than a checkbox and a list: "everything", "the ones
+  // nobody has filed", or one category.
+  bar.append(
+    ayqSelect(
+      [
+        { value: '', label: 'Any category' },
+        { value: 'none', label: 'Uncategorised' },
+        ...state.categories.map(category => ({
+          value: category.id,
+          label: category.name,
+        })),
+      ],
+      state.filter.uncategorised === true
+        ? 'none'
+        : (state.filter.categoryId ?? ''),
+      value => {
+        state.filter.uncategorised = value === 'none' ? true : undefined;
+        state.filter.categoryId =
+          value === '' || value === 'none' ? undefined : value;
+        redraw(true);
+      },
+    ),
+  );
+
+  if (state.filter.counterpartyKey) {
+    const chip = ayqElement('span', 'chip');
+    chip.append(
+      ayqElement('span', undefined, state.filter.counterpartyKey),
+    );
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.className = 'quiet small';
+    drop.textContent = 'Show all';
+    drop.addEventListener('click', () => {
+      state.filter.counterpartyKey = undefined;
+      redraw(true);
+    });
+    chip.append(drop);
+    bar.append(chip);
+  }
 
   const clear = document.createElement('button');
   clear.type = 'button';
@@ -421,6 +451,22 @@ function detailPanel(
     );
   }
   panel.append(list);
+
+  const key = provenance?.counterpartyKey;
+  if (key) {
+    const all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'quiet small';
+    all.textContent = 'Show every transaction from this counterparty';
+    all.addEventListener('click', () => {
+      state.filter = { counterpartyKey: key };
+      state.openId = null;
+      state.detail = null;
+      state.offer = null;
+      redraw(true);
+    });
+    panel.append(all);
+  }
 
   panel.append(categoryPicker(state, detail, redraw));
   return panel;
