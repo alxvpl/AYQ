@@ -170,6 +170,25 @@ finance application is asking for a permission it has no use for.
 and an installed build read the same `%APPDATA%\AYQ\budget` rather than two
 directories for the same person's money.
 
+## Installing it
+
+The Windows workflow publishes `AYQ-0.1.0-windows-x64-setup.exe` as an
+artifact of every green run on this branch. To install:
+
+1. Download the `ayq-windows-installer` artifact from the run and unzip it.
+2. Run the `.exe`. It installs for the current user, into
+   `%LOCALAPPDATA%\Programs\AYQ`, and asks for no administrator rights.
+   Windows SmartScreen will warn that the publisher is unknown — the build is
+   not code-signed, which is a certificate AYQ does not have rather than
+   anything about the binary.
+3. Start AYQ from the Start menu or the desktop shortcut.
+4. Press **Import CAMT.053** and choose one or more `.xml` statements, or a
+   `.zip` of them. Everything else follows from the ledger.
+
+Uninstall through Windows' own Apps list. That removes the program; the budget
+in `%APPDATA%\AYQ` stays, because deleting a person's financial history is not
+something an uninstaller should decide.
+
 ## Where the data is
 
 ```
@@ -186,6 +205,23 @@ launch does not even attempt a network AYQ is not on.
 `npm test` forks the built engine and asks it the same requests the renderer
 sends — a real budget, the real API, seventeen of them. `npm run smoke` covers
 the Electron half, and the Windows workflow covers the packaged one.
+
+## Known limits
+
+Honest ones, none of them blocking for a personal ledger:
+
+- The AYQ store is a single JSON file rewritten on each import. At a few
+  thousand transactions that is milliseconds; at a hundred thousand it would
+  want a database of its own.
+- Applying rules updates transactions one at a time, so a first import that
+  categorises hundreds of rows takes a few seconds longer than it needs to.
+- The ledger reads every matching transaction and filters in the renderer's
+  process rather than in SQL, so search is exact-substring and case-blind
+  rather than indexed.
+- The installer is not code-signed.
+- A broken native binding surfaces as Actual's own "unknown problem opening"
+  rather than the sentence that names the cure; `npm run setup` prints that
+  sentence, and a packaged build has the binding built for it already.
 
 ## Scope
 
