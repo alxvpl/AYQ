@@ -15,13 +15,14 @@
 // The fixture is invented, and deliberately so: a real statement never enters
 // this repository, never reaches CI and never lands in an artifact.
 //
-// Two tests run at once, and the file is given far longer than it needs. Each
-// test has its own directory, its own budget and its own engine, so nothing is
-// shared to contend over; what costs the time is creating thirty real Actual
-// budgets, and that is the work, not overhead to be optimised away. Measured on
-// Windows, the file has run in 140s and in 175s on identical code — runner
-// variance of that size against a 180s limit is a coin toss, and a green suite
-// that fails one run in five teaches people to re-run rather than to read.
+// The tests run one at a time and the file is given far longer than it needs.
+// Both of those are measurements rather than preferences. What costs the time
+// is creating thirty real Actual budgets, and on the Windows runner that is
+// disk rather than processor: running two at once was tried and made the file
+// slower — 184s to 317s — because two Electron processes writing SQLite
+// contend for a disk that scans everything written to it. And the same file
+// has taken anywhere from 140s to 317s on identical code depending on the
+// runner, which is why its limit is nowhere near its typical duration.
 
 import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
