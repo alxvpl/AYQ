@@ -22,8 +22,8 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { test } from 'node:test';
 
 import { buildZip } from '../../ayq-camt/test/ayq-zip-writer.ts';
 import type {
@@ -51,41 +51,95 @@ const fixture = join(
 
 let counter = 0;
 
-async function send(
-  request: AyqRequest,
-  dataDir: string,
-): Promise<AyqResponse> {
+/**
+ * One engine per budget directory, kept alive between requests.
+ *
+ * This is what the application does: Electron starts the engine once and talks
+ * to it for the life of the window. Starting a fresh Electron and reopening the
+ * budget for every single question cost this file more than two minutes of
+ * process startup, and it also made every request a restart — which quietly
+ * turned "survives a restart" into an assertion that proved nothing, because
+ * there was no other kind of call to tell it apart from. A restart is now asked
+ * for by name, with `restart()`.
+ */
+const engines = new Map<string, EngineChild>();
+
+type EngineChild = {
+  child: ReturnType<typeof fork>;
+  waiting: Map<string, (answer: AyqResponse) => void>;
+};
+
+function engineFor(dataDir: string): EngineChild {
+  const running = engines.get(dataDir);
+  if (running) return running;
+
   const child = fork(enginePath, [], {
     execPath: electronPath,
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', AYQ_DATA_DIR: dataDir },
     stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
   });
 
-  try {
-    return await new Promise<AyqResponse>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('the engine did not answer within 120s')),
-        120_000,
-      );
-      child.on('message', message => {
-        clearTimeout(timer);
-        resolve(message as AyqResponse);
-      });
-      child.on('error', reject);
-      child.send(request);
-    });
-  } finally {
-    child.kill();
-    // Waited for, not just asked for. Windows locks an open file, so a budget
-    // whose engine has not finished dying can still be held when the next fork
-    // tries to open it — and the next request then waits on a handle rather
-    // than on an answer.
-    await Promise.race([
-      once(child, 'exit'),
-      new Promise(resolve => setTimeout(resolve, 5_000)),
-    ]);
-  }
+  const started: EngineChild = { child, waiting: new Map() };
+  child.on('message', message => {
+    const answer = message as AyqResponse;
+    started.waiting.get(answer.id)?.(answer);
+    started.waiting.delete(answer.id);
+  });
+  engines.set(dataDir, started);
+  return started;
 }
+
+/**
+ * Stops the engine for a budget and waits for the process to be gone.
+ *
+ * Waited for, not just asked for. Windows locks an open file, so a budget whose
+ * engine has not finished dying can still be held when the next one tries to
+ * open it — and the next request then waits on a handle rather than on an
+ * answer.
+ */
+async function restart(dataDir: string): Promise<void> {
+  const running = engines.get(dataDir);
+  if (!running) return;
+  engines.delete(dataDir);
+
+  running.child.kill();
+  const gave = new Promise<void>(resolve => {
+    // Unreferenced: a timer that outlives the tests would hold the runner open
+    // long after the last assertion, which is a hang with a tidy explanation.
+    const timer = setTimeout(resolve, 5_000);
+    timer.unref();
+  });
+  await Promise.race([once(running.child, 'exit'), gave]);
+}
+
+async function send(
+  request: AyqRequest,
+  dataDir: string,
+): Promise<AyqResponse> {
+  const running = engineFor(dataDir);
+
+  return new Promise<AyqResponse>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('the engine did not answer within 120s')),
+      120_000,
+    );
+    running.waiting.set(request.id, answer => {
+      clearTimeout(timer);
+      resolve(answer);
+    });
+    running.child.once('error', error => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    running.child.send(request);
+  });
+}
+
+// Nothing this file started outlives it: an engine still running would keep the
+// test runner open after the last test, which reads as a hang.
+after(async () => {
+  await Promise.all([...engines.keys()].map(dataDir => restart(dataDir)));
+});
 
 /**
  * Asks one question and insists the engine answered that question.
@@ -142,6 +196,8 @@ test('a second launch reopens the budget instead of creating another', async () 
   const first = await ask(dataDir, { kind: 'engine.status' });
   assert.equal(first.budgetCreated, true);
 
+  await restart(dataDir);
+
   const second = await ask(dataDir, { kind: 'engine.status' });
   assert.equal(second.budgetCreated, false, 'reopened, not recreated');
   assert.equal(second.budgetId, first.budgetId);
@@ -194,22 +250,25 @@ test('the imported transactions come back as ledger rows', async () => {
   assert.equal(ledger.rows.length, 14);
 
   // Newest first, and the fixture's own month decides what that means.
-  assert.deepEqual(ledger.rows.map(row => row.date), [
-    '2026-06-30',
-    '2026-06-27',
-    '2026-06-25',
-    '2026-06-24',
-    '2026-06-21',
-    '2026-06-18',
-    '2026-06-17',
-    '2026-06-14',
-    '2026-06-11',
-    '2026-06-09',
-    '2026-06-05',
-    '2026-06-04',
-    '2026-06-03',
-    '2026-06-02',
-  ]);
+  assert.deepEqual(
+    ledger.rows.map(row => row.date),
+    [
+      '2026-06-30',
+      '2026-06-27',
+      '2026-06-25',
+      '2026-06-24',
+      '2026-06-21',
+      '2026-06-18',
+      '2026-06-17',
+      '2026-06-14',
+      '2026-06-11',
+      '2026-06-09',
+      '2026-06-05',
+      '2026-06-04',
+      '2026-06-03',
+      '2026-06-02',
+    ],
+  );
 
   const [newest] = ledger.rows;
   assert.equal(newest.amountCents, -6190);
@@ -278,12 +337,10 @@ test('the ledger can be searched and filtered', async () => {
     kind: 'transactions.list',
     filter: { from: '2026-06-20', to: '2026-06-27' },
   });
-  assert.deepEqual(dated.rows.map(row => row.date), [
-    '2026-06-27',
-    '2026-06-25',
-    '2026-06-24',
-    '2026-06-21',
-  ]);
+  assert.deepEqual(
+    dated.rows.map(row => row.date),
+    ['2026-06-27', '2026-06-25', '2026-06-24', '2026-06-21'],
+  );
 
   const uncategorised = await ask(dataDir, {
     kind: 'transactions.list',
@@ -416,6 +473,7 @@ test('rules survive a restart and are applied to a later import', async () => {
   });
 
   // A new engine process, reading the store from disk.
+  await restart(dataDir);
   const rules = await ask(dataDir, { kind: 'rules.list' });
   assert.equal(rules.length, 1);
 
@@ -444,16 +502,26 @@ test('the recurring view finds a rhythm and leaves coincidences out', async () =
   // is a coincidence; the energy bill is once; and the salary is income, which
   // belongs in the summary rather than among the things you pay.
   assert.deepEqual(
-    recurring.map(entry => `${entry.name} ${entry.occurrences}× ${entry.cadence}`),
+    recurring.map(
+      entry => `${entry.name} ${entry.occurrences}× ${entry.cadence}`,
+    ),
     ['Albert Heijn 6× weekly', 'Testfuel 4× weekly'],
   );
 
   const [albert] = recurring;
   assert.equal(albert.firstDate, '2026-06-02');
   assert.equal(albert.lastDate, '2026-06-27');
-  assert.equal(albert.nextExpectedDate, '2026-07-02', 'the last date plus the median gap');
+  assert.equal(
+    albert.nextExpectedDate,
+    '2026-07-02',
+    'the last date plus the median gap',
+  );
   assert.equal(albert.lastAmountCents, -944);
-  assert.equal(albert.amountVaries, true, '9.44 and 63.90 are not the same charge');
+  assert.equal(
+    albert.amountVaries,
+    true,
+    '9.44 and 63.90 are not the same charge',
+  );
   assert.equal(albert.mandateId, null, 'a card payment carries no mandate');
 
   for (const entry of recurring) {
@@ -562,9 +630,11 @@ test('what AYQ keeps survives a restart', async () => {
     createRule: true,
   });
 
-  // Every request above ran in its own engine process against the same
-  // directory, so this is already a restart. What matters is that the file on
-  // disk is the whole state: the rule, the history and the provenance.
+  // The engine is stopped before anything below is read, so what follows comes
+  // from the files it left behind: the rule, the history and the provenance
+  // have to be the whole state, or a restart loses some of it.
+  await restart(dataDir);
+
   const store = JSON.parse(
     await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
   ) as {
@@ -642,7 +712,10 @@ test('several statements can be imported in one go', async () => {
 
 test('an empty choice is refused rather than counted as an import', async () => {
   const dataDir = await budget();
-  const answer = await send({ id: 'none', kind: 'import.camt', paths: [] }, dataDir);
+  const answer = await send(
+    { id: 'none', kind: 'import.camt', paths: [] },
+    dataDir,
+  );
 
   assert.equal(answer.ok, false);
   if (answer.ok) return;
@@ -675,10 +748,7 @@ test('a fresh budget has a short, usable set of categories', async () => {
   // Actual's own placeholders are replaced rather than added to: "General" is
   // where a transaction goes to be forgotten.
   for (const placeholder of ['Food', 'General', 'Bills', 'Bills (Flexible)']) {
-    assert.ok(
-      !spending.includes(placeholder),
-      `${placeholder} is still there`,
-    );
+    assert.ok(!spending.includes(placeholder), `${placeholder} is still there`);
   }
 
   assert.ok(
@@ -789,7 +859,10 @@ test('filing one transaction offers the rest of the counterparty', async () => {
     kind: 'transactions.list',
     filter: { search: 'albert' },
   });
-  assert.equal(after.rows.filter(row => row.categoryId === groceries.id).length, 6);
+  assert.equal(
+    after.rows.filter(row => row.categoryId === groceries.id).length,
+    6,
+  );
   assert.equal(
     after.rows.filter(row => row.categorySource === 'manual').length,
     1,
@@ -880,7 +953,10 @@ test('a changed rule re-files what it filed, and nothing else', async () => {
     kind: 'transactions.list',
     filter: { search: 'albert' },
   });
-  assert.equal(first.rows.filter(row => row.category === 'Groceries').length, 6);
+  assert.equal(
+    first.rows.filter(row => row.category === 'Groceries').length,
+    6,
+  );
 
   // The person changes their mind about the whole counterparty.
   const again = await ask(dataDir, {
@@ -894,7 +970,10 @@ test('a changed rule re-files what it filed, and nothing else', async () => {
     kind: 'transactions.list',
     filter: { search: 'albert' },
   });
-  assert.equal(after.rows.filter(row => row.category === 'Eating out').length, 6);
+  assert.equal(
+    after.rows.filter(row => row.category === 'Eating out').length,
+    6,
+  );
   assert.equal(
     (await ask(dataDir, { kind: 'rules.list' })).length,
     1,
@@ -921,8 +1000,10 @@ test('categories survive a restart, and a re-import adds nothing', async () => {
     createRule: true,
   });
 
-  // Every request above ran in its own engine process, so this is already a
-  // restart: the state is on disk or it is gone.
+  // The engine is stopped and started again here: the state is on disk or it
+  // is gone.
+  await restart(dataDir);
+
   const reopened = await ask(dataDir, {
     kind: 'transactions.list',
     filter: { search: 'testfuel' },

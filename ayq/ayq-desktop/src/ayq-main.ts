@@ -38,7 +38,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 app.setName('AYQ');
 
 /** Where the budget lives. Nothing is written outside it. */
-const dataDir = process.env.AYQ_DATA_DIR ?? join(app.getPath('userData'), 'budget');
+const dataDir =
+  process.env.AYQ_DATA_DIR ?? join(app.getPath('userData'), 'budget');
 
 /**
  * The file the automated acceptance run imports.
@@ -248,16 +249,21 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
     throw new Error(`the import ended as ${state || 'timeout'}`);
   }
 
-  return JSON.parse(await dataset(window, 'ayqImportSummary')) as AyqImportSummary;
+  return JSON.parse(
+    await dataset(window, 'ayqImportSummary'),
+  ) as AyqImportSummary;
 }
 
 /**
  * Files the newest transaction from the ledger itself.
  *
  * Through the control in the row, the way a person would: the option is chosen
- * and a change event dispatched, and what comes back is read from the rendered
- * table rather than from any state the renderer kept. If the column does not
- * show it, it did not happen.
+ * and a change event dispatched. What is read back afterwards must come from a
+ * control the renderer rebuilt after the engine answered — the one the harness
+ * typed into still holds whatever was typed into it, so reading that would only
+ * ever confirm the harness's own input. The control is marked before the change
+ * and the mark is what the wait is on; a redraw drops it, so a value seen
+ * without it is a value the engine stored and the ledger read back.
  */
 async function categoriseNewest(
   window: BrowserWindow,
@@ -273,6 +279,7 @@ async function categoriseNewest(
         candidate => candidate.textContent === ${JSON.stringify(name)},
       );
       if (!option) return 'no such category';
+      select.dataset.ayqTyped = '1';
       select.value = option.value;
       select.dispatchEvent(new Event('change', { bubbles: true }));
       return 'chosen';
@@ -287,17 +294,68 @@ async function categoriseNewest(
     if (shown === name) break;
     await new Promise(resolve => setTimeout(resolve, 250));
   }
+  if (shown !== name) {
+    const said = await problemShown(window);
+    if (said !== '') return `${shown || '(nothing)'}; the screen said: ${said}`;
+  }
   return shown;
 }
 
-/** What the ledger's first row actually displays as its category. */
+/**
+ * What the ledger's first row actually displays as its category.
+ *
+ * A control the harness typed into is not an answer, so it reports nothing
+ * until the renderer has replaced it.
+ */
 async function shownCategory(window: BrowserWindow): Promise<string> {
   return String(
     await window.webContents.executeJavaScript(`(() => {
       const select = document.querySelector('.grid tbody tr .col-category select');
       if (!select) return '';
+      if (select.dataset.ayqTyped === '1') return '';
       const option = select.selectedOptions[0];
       return option ? option.textContent : '';
+    })()`),
+  );
+}
+
+/** Whatever the screen is complaining about, so a refusal is not silent. */
+async function problemShown(window: BrowserWindow): Promise<string> {
+  return String(
+    await window.webContents.executeJavaScript(`(() => {
+      const bar = document.getElementById('ayq-problem');
+      return bar && !bar.hidden ? bar.innerText.trim() : '';
+    })()`),
+  );
+}
+
+/**
+ * The ledger as a log can carry it: one line per row, the category being the
+ * one the row shows rather than every option it offers.
+ *
+ * A select prints its whole option list in `innerText`, which buried the one
+ * value a failing run needs in a hundred lines that are the same for every row.
+ */
+async function ledgerDump(window: BrowserWindow): Promise<string> {
+  return String(
+    await window.webContents.executeJavaScript(`(() => {
+      const lines = [...document.querySelectorAll('.grid tbody tr')].map(row => {
+        const cell = name => row.querySelector('.col-' + name);
+        const select = cell('category') && cell('category').querySelector('select');
+        const chosen = select && select.selectedOptions[0]
+          ? select.selectedOptions[0].textContent
+          : '';
+        return [
+          cell('date') ? cell('date').innerText.trim() : '',
+          cell('payee') ? cell('payee').innerText.trim() : '',
+          chosen,
+          cell('account') ? cell('account').innerText.trim() : '',
+          cell('amount') ? cell('amount').innerText.trim() : '',
+        ].join(' | ');
+      });
+      const count = document.querySelector('.count');
+      if (count) lines.push(count.innerText.trim());
+      return lines.join('\\n');
     })()`),
   );
 }
@@ -428,11 +486,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
 
   const engineHost = await dataset(window, 'ayqEngineHost');
-  const body = String(
-    await window.webContents.executeJavaScript(
-      'document.getElementById("ayq-body").innerText',
-    ),
-  );
+  const body = await ledgerDump(window);
+  const said = await problemShown(window);
 
   if (shot) {
     const image = await window.webContents.capturePage();
@@ -442,7 +497,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
 
   const hostOk = requiredHost === '' || engineHost === requiredHost;
-  const passed = state === 'ready' && hostOk && emptyOk && importOk && categoryOk;
+  const passed =
+    state === 'ready' && hostOk && emptyOk && importOk && categoryOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
   // to stdout reaches the console that started it. So the outcome is also
@@ -475,13 +531,17 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
 
   process.stdout.write(`\n[ayq-smoke] renderer state: ${state || 'timeout'}\n`);
-  process.stdout.write(`[ayq-smoke] engine host: ${engineHost || 'unreported'}\n`);
+  process.stdout.write(
+    `[ayq-smoke] engine host: ${engineHost || 'unreported'}\n`,
+  );
   if (requiredHost !== '') {
     process.stdout.write(
       `[ayq-smoke] required host: ${requiredHost} -> ${hostOk ? 'MATCH' : 'MISMATCH'}\n`,
     );
   }
-  process.stdout.write(`[ayq-smoke] rendered:\n${body}\n`);
+  if (said !== '')
+    process.stdout.write(`[ayq-smoke] the screen says: ${said}\n`);
+  process.stdout.write(`[ayq-smoke] ledger:\n${body}\n`);
 
   engine?.stop();
   app.exit(passed ? 0 : 1);
@@ -491,7 +551,9 @@ void app.whenReady().then(() => {
   mkdirSync(dataDir, { recursive: true });
   engine = startEngine();
 
-  ipcMain.handle(AYQ_IPC_CHANNEL, (_event, request: AyqRequest) => ask(request));
+  ipcMain.handle(AYQ_IPC_CHANNEL, (_event, request: AyqRequest) =>
+    ask(request),
+  );
 
   const window = createWindow();
   process.stdout.write(`[ayq] window created, budget data dir: ${dataDir}\n`);
