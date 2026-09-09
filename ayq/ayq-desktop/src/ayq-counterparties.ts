@@ -52,6 +52,9 @@ async function rows(): Promise<AyqCounterpartyRow[]> {
   const answer = (await api.aqlQuery(
     api
       .q('transactions')
+      // The opening balance is Actual's way of recording where an account
+      // started. It is not somebody the money went to.
+      .filter({ starting_balance_flag: false })
       .select(['id', 'date', 'amount', 'imported_id', { payee: 'payee.name' }]),
   )) as { data?: AyqCounterpartyRow[] };
   return answer.data ?? [];
@@ -77,7 +80,10 @@ type Bucket = {
  * the same way. It is the newest rather than the commonest because a merchant
  * that renamed itself should be listed under the name it uses now.
  */
-function gather(store: AyqStore, all: AyqCounterpartyRow[]): Map<string, Bucket> {
+function gather(
+  store: AyqStore,
+  all: AyqCounterpartyRow[],
+): Map<string, Bucket> {
   const byKey = new Map<string, Bucket>();
 
   for (const row of all) {
@@ -113,7 +119,10 @@ function gather(store: AyqStore, all: AyqCounterpartyRow[]): Map<string, Bucket>
     found.outgoingCents += outgoing;
     if (date < found.firstDate) found.firstDate = date;
     if (date > found.lastDate) found.lastDate = date;
-    if (date > found.namedAt || (date === found.namedAt && id > found.namedId)) {
+    if (
+      date > found.namedAt ||
+      (date === found.namedAt && id > found.namedId)
+    ) {
       found.name = row.payee ?? found.name;
       found.namedAt = date;
       found.namedId = id;
@@ -138,9 +147,8 @@ function decorate(
     lastDate: bucket.lastDate,
     categoryName: rule?.categoryName ?? null,
     recurring: recurringKeys.has(bucket.key),
-    aliases: store.aliases.filter(
-      alias => alias.counterpartyKey === bucket.key,
-    ).length,
+    aliases: store.aliases.filter(alias => alias.counterpartyKey === bucket.key)
+      .length,
   };
 }
 
@@ -159,7 +167,9 @@ export async function ayqCounterparties(
   filter: AyqCounterpartyFilter = {},
 ): Promise<AyqCounterpartyList> {
   const store = ayqReadStore(dataDir);
-  const recurringKeys = new Set((await ayqRecurring(dataDir)).map(one => one.key));
+  const recurringKeys = new Set(
+    (await ayqRecurring(dataDir)).map(one => one.key),
+  );
   const buckets = gather(store, await rows());
 
   const needle = (filter.search ?? '').trim().toLowerCase();

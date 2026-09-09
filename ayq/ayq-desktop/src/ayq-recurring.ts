@@ -78,6 +78,7 @@ export async function ayqRecurring(dataDir: string): Promise<AyqRecurring[]> {
   const answer = (await api.aqlQuery(
     api
       .q('transactions')
+      .filter({ starting_balance_flag: false })
       .select(['id', 'date', 'amount', 'imported_id', { payee: 'payee.name' }]),
   )) as {
     data?: Array<{
@@ -98,7 +99,8 @@ export async function ayqRecurring(dataDir: string): Promise<AyqRecurring[]> {
     // The canonical identity, aliases applied. A shop the bank printed two ways
     // is one rhythm the moment a person says the two names are one shop —
     // otherwise a monthly charge looks like two coincidences.
-    const key = ayqCanonicalKey(store, provenance?.counterpartyKey) ?? row.payee;
+    const key =
+      ayqCanonicalKey(store, provenance?.counterpartyKey) ?? row.payee;
     if (!key) continue;
 
     const bucket = series.get(key);
@@ -119,7 +121,9 @@ export async function ayqRecurring(dataDir: string): Promise<AyqRecurring[]> {
 
     const intervals: number[] = [];
     for (let index = 1; index < occurrences.length; index += 1) {
-      intervals.push(days(occurrences[index - 1].date, occurrences[index].date));
+      intervals.push(
+        days(occurrences[index - 1].date, occurrences[index].date),
+      );
     }
     const step = median(intervals);
     const cadence = cadenceOf(step);

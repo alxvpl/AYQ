@@ -90,6 +90,7 @@ async function rowsToConsider(): Promise<AyqCategorisableRow[]> {
   const answer = (await api.aqlQuery(
     api
       .q('transactions')
+      .filter({ starting_balance_flag: false })
       .select(['id', 'imported_id', { categoryId: 'category.id' }]),
   )) as { data?: AyqCategorisableRow[] };
   return answer.data ?? [];
@@ -99,7 +100,9 @@ async function uncategorisedCount(): Promise<number> {
   const answer = (await api.aqlQuery(
     api
       .q('transactions')
-      .filter({ category: null })
+      // An opening balance has no category and never needs one; counting it as
+      // unfiled would mean a budget could never reach zero left to do.
+      .filter({ category: null, starting_balance_flag: false })
       .calculate({ $count: 'id' }),
   )) as { data?: number };
   return Number(answer.data ?? 0);

@@ -85,8 +85,10 @@ export function ayqCanonicalKey(
   resolvedKey: string | null | undefined,
 ): string | null {
   if (!resolvedKey) return null;
-  return store.aliases.find(alias => alias.variantKey === resolvedKey)
-    ?.counterpartyKey ?? resolvedKey;
+  return (
+    store.aliases.find(alias => alias.variantKey === resolvedKey)
+      ?.counterpartyKey ?? resolvedKey
+  );
 }
 
 type AyqPayeeWanted = { id: string; payeeName: string };
@@ -139,6 +141,7 @@ async function wantedPayees(
   const answer = (await api.aqlQuery(
     api
       .q('transactions')
+      .filter({ starting_balance_flag: false })
       .select(['id', 'imported_id', { payee: 'payee.name' }]),
   )) as {
     data?: Array<{
@@ -166,8 +169,8 @@ async function wantedPayees(
         ? alias.counterpartyName
         : // Provenance written by store version 1 recorded the key and not the
           // name, and then there is nothing to restore to but the key itself.
-          ayqCanonicalName(provenance?.counterpartyName ?? null) ??
-          wantedKey);
+          (ayqCanonicalName(provenance?.counterpartyName ?? null) ??
+          wantedKey));
 
     wanted.push({ id: String(row.id), payeeName });
   }
