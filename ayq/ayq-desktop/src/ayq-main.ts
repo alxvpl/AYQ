@@ -414,6 +414,42 @@ async function spendingShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Presses "Show more" and reports how many rows the ledger holds afterwards.
+ *
+ * Counted from the rendered table, before and after, because the defect worth
+ * catching here is a button that looks right and reloads nothing — which is
+ * indistinguishable from a working one unless something counts the rows.
+ */
+async function showMore(window: BrowserWindow): Promise<string> {
+  const rows = async (): Promise<number> =>
+    Number(
+      await window.webContents.executeJavaScript(
+        "document.querySelectorAll('.grid tbody tr').length",
+      ),
+    );
+
+  const before = await rows();
+  const pressed = await window.webContents.executeJavaScript(`(() => {
+    const button = [...document.querySelectorAll('.count button')].find(
+      one => one.textContent === 'Show more',
+    );
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (pressed !== true) return `no button, with ${before} rows shown`;
+
+  const deadline = Date.now() + 60_000;
+  let after = before;
+  while (Date.now() < deadline) {
+    after = await rows();
+    if (after > before) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return `${before} rows, then ${after}`;
+}
+
+/**
  * The ledger as a log can carry it: one line per row, the category being the
  * one the row shows rather than every option it offers.
  *
@@ -492,7 +528,11 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
       second.duplicates === first.prepared &&
       second.transactionCountAfter === first.transactionCountAfter &&
       ledgerTotal === second.transactionCountAfter &&
-      ledgerRows === second.transactionCountAfter;
+      // The rows drawn, not the rows there are: the ledger shows a page at a
+      // time, so demanding it draw all of them was an assumption that held only
+      // while every fixture was smaller than a page.
+      ledgerRows > 0 &&
+      ledgerRows <= ledgerTotal;
 
     process.stdout.write(
       `[ayq-smoke] duplicate protection: ${held ? 'HOLDS' : 'FAILED'}\n`,
@@ -584,6 +624,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
   const spendingOk = process.env.AYQ_SMOKE_SPENDING !== '1' || spending !== '';
 
+  // Reading further back than the first page, through the control that offers
+  // it. The ledger draws the newest few hundred of a budget that may hold
+  // thousands, and a button that does not actually fetch more is worse than no
+  // button, because the screen then quietly claims that is all there is.
+  let paged = '';
+  if (process.env.AYQ_SMOKE_SHOW_MORE === '1') {
+    paged = await showMore(window);
+    process.stdout.write(`[ayq-smoke] show more: ${paged}\n`);
+  }
+  const pagedOk =
+    process.env.AYQ_SMOKE_SHOW_MORE !== '1' ||
+    /^(\d+) rows, then (?!\1\b)/.test(paged);
+
   const engineHost = await dataset(window, 'ayqEngineHost');
   const body = await ledgerDump(window);
   const said = await problemShown(window);
@@ -602,7 +655,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     emptyOk &&
     importOk &&
     categoryOk &&
-    spendingOk;
+    spendingOk &&
+    pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
   // to stdout reaches the console that started it. So the outcome is also
@@ -625,6 +679,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           categoryOk,
           categoryShown,
           spendingOk,
+          pagedOk,
           imports: importRounds,
           dataDir,
         },

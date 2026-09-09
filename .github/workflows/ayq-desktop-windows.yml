@@ -126,6 +126,23 @@ jobs:
           --import ../ayq-camt/test/fixtures/ayq-abn-month.xml
           --screenshot "${{ runner.temp }}\ayq-desktop-import.png"
 
+      # Nine hundred invented transactions, because every fixture until here is
+      # smaller than one page of the ledger — and a page control cannot be
+      # tested by a list that fits. Generated rather than committed: half a
+      # megabyte of invented statement in the repository is half a megabyte
+      # nobody ever reads.
+      - name: A budget bigger than one page
+        working-directory: ayq/ayq-desktop
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-page-budget
+        run: >
+          node make-scale-fixture.mjs "${{ runner.temp }}\ayq-scale.xml" 900 &&
+          node start.mjs --smoke
+          --require-host "electron utilityProcess"
+          --import "${{ runner.temp }}\ayq-scale.xml"
+          --show-more --spending
+
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
       - name: An unusable file is refused, and nothing is damaged

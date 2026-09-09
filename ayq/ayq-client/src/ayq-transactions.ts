@@ -51,6 +51,26 @@ export function ayqEmptyTransactionsState(): AyqTransactionsState {
  * `redraw` is handed in rather than imported: this view changes the filter and
  * the open row, and the shell owns both the state and when it is drawn again.
  */
+/**
+ * Changes what is being looked at, and starts the list again from the top.
+ *
+ * "Show more" raises the row limit, and the limit belongs to the list a person
+ * was reading — not to the next one. Without this, searching after paging down
+ * five times asks the engine for three thousand rows of something else.
+ */
+function narrow(
+  state: AyqTransactionsState,
+  change: () => void,
+  redraw: (reload: boolean) => void,
+): void {
+  change();
+  state.filter.limit = undefined;
+  redraw(true);
+}
+
+/** How many more rows one "Show more" adds. The engine's own default page. */
+const AYQ_LEDGER_PAGE = 500;
+
 export function ayqRenderTransactions(
   state: AyqTransactionsState,
   target: HTMLElement,
@@ -116,15 +136,34 @@ export function ayqRenderTransactions(
   );
   target.append(table);
 
-  target.append(
-    ayqElement(
-      'p',
-      'count',
-      ledger.shown === ledger.total
-        ? `${ledger.total} transactions`
-        : `${ledger.shown} of ${ledger.total} transactions`,
-    ),
+  const counted = ayqElement(
+    'p',
+    'count',
+    ledger.shown === ledger.total
+      ? `${ledger.total} transactions`
+      : `${ledger.shown} of ${ledger.total} transactions`,
   );
+
+  // Six years of statements is twelve thousand rows, and the ledger draws the
+  // newest few hundred of them. Saying "500 of 12,178" and offering no way
+  // further leaves a person with only the filters to reach their own past,
+  // which is a fine way to answer a question and no way to look around.
+  if (ledger.shown < ledger.total) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'quiet small';
+    more.textContent = 'Show more';
+    more.addEventListener('click', () => {
+      state.filter = {
+        ...state.filter,
+        limit: ledger.shown + AYQ_LEDGER_PAGE,
+      };
+      redraw(true);
+    });
+    counted.append(' ', more);
+  }
+
+  target.append(counted);
 
   if (state.offer !== null) target.append(offerLine(state, redraw));
   if (state.openId !== null) target.append(detailPanel(state, redraw));
@@ -291,8 +330,14 @@ function filterBar(
   search.className = 'search';
   search.value = state.filter.search ?? '';
   search.addEventListener('input', () => {
-    state.filter.search = search.value.trim() === '' ? undefined : search.value;
-    redraw(true);
+    narrow(
+      state,
+      () => {
+        state.filter.search =
+          search.value.trim() === '' ? undefined : search.value;
+      },
+      redraw,
+    );
   });
   bar.append(search);
 
@@ -306,10 +351,14 @@ function filterBar(
         })),
       ],
       state.filter.accountId ?? '',
-      value => {
-        state.filter.accountId = value === '' ? undefined : value;
-        redraw(true);
-      },
+      value =>
+        narrow(
+          state,
+          () => {
+            state.filter.accountId = value === '' ? undefined : value;
+          },
+          redraw,
+        ),
     ),
   );
 
@@ -322,8 +371,13 @@ function filterBar(
     field.title = label;
     field.value = state.filter[key] ?? '';
     field.addEventListener('change', () => {
-      state.filter[key] = field.value === '' ? undefined : field.value;
-      redraw(true);
+      narrow(
+        state,
+        () => {
+          state.filter[key] = field.value === '' ? undefined : field.value;
+        },
+        redraw,
+      );
     });
     bar.append(field);
   }
@@ -343,27 +397,34 @@ function filterBar(
       state.filter.uncategorised === true
         ? 'none'
         : (state.filter.categoryId ?? ''),
-      value => {
-        state.filter.uncategorised = value === 'none' ? true : undefined;
-        state.filter.categoryId =
-          value === '' || value === 'none' ? undefined : value;
-        redraw(true);
-      },
+      value =>
+        narrow(
+          state,
+          () => {
+            state.filter.uncategorised = value === 'none' ? true : undefined;
+            state.filter.categoryId =
+              value === '' || value === 'none' ? undefined : value;
+          },
+          redraw,
+        ),
     ),
   );
 
   if (state.filter.counterpartyKey) {
     const chip = ayqElement('span', 'chip');
-    chip.append(
-      ayqElement('span', undefined, state.filter.counterpartyKey),
-    );
+    chip.append(ayqElement('span', undefined, state.filter.counterpartyKey));
     const drop = document.createElement('button');
     drop.type = 'button';
     drop.className = 'quiet small';
     drop.textContent = 'Show all';
     drop.addEventListener('click', () => {
-      state.filter.counterpartyKey = undefined;
-      redraw(true);
+      narrow(
+        state,
+        () => {
+          state.filter.counterpartyKey = undefined;
+        },
+        redraw,
+      );
     });
     chip.append(drop);
     bar.append(chip);
@@ -435,8 +496,10 @@ function detailPanel(
     if (provenance.intermediary) {
       facts.push(['Paid through', provenance.intermediary]);
     }
-    if (provenance.mandateId) facts.push(['SEPA mandate', provenance.mandateId]);
-    if (provenance.endToEndId) facts.push(['End-to-end id', provenance.endToEndId]);
+    if (provenance.mandateId)
+      facts.push(['SEPA mandate', provenance.mandateId]);
+    if (provenance.endToEndId)
+      facts.push(['End-to-end id', provenance.endToEndId]);
     if (provenance.valueDate && provenance.valueDate !== detail.row.date) {
       facts.push(['Value date', ayqDay(provenance.valueDate)]);
     }
@@ -496,7 +559,13 @@ function categoryPicker(
     ],
     detail.row.categoryId ?? '',
     value => {
-      void assign(state, detail.row.id, value === '' ? null : value, remember.checked, redraw);
+      void assign(
+        state,
+        detail.row.id,
+        value === '' ? null : value,
+        remember.checked,
+        redraw,
+      );
     },
   );
   box.append(select);
