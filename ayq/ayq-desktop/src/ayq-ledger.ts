@@ -40,6 +40,7 @@ type AyqQueriedRow = {
   notes: string | null;
   imported_payee: string | null;
   imported_id: string | null;
+  starting_balance_flag: boolean | null;
   payee: string | null;
   account: string | null;
   accountId: string | null;
@@ -59,6 +60,7 @@ function selection() {
       'notes',
       'imported_payee',
       'imported_id',
+      'starting_balance_flag',
       { payee: 'payee.name' },
       { account: 'account.name' },
       { accountId: 'account.id' },
@@ -84,7 +86,12 @@ async function queried(filter: AyqLedgerFilter): Promise<AyqQueriedRow[]> {
   for (const condition of conditions) query = query.filter(condition);
 
   const answer = (await api.aqlQuery(query)) as { data?: AyqQueriedRow[] };
-  return answer.data ?? [];
+  // The opening balance is a transaction in Actual's model, and it is not one
+  // of the bank's: it is how the account's starting point is represented. It
+  // belongs in the balance and nowhere else, or a person who imported five
+  // hundred and sixty-seven entries is told they have five hundred and
+  // sixty-eight and can find only the ones the bank sent.
+  return (answer.data ?? []).filter(row => row.starting_balance_flag !== true);
 }
 
 function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
@@ -322,6 +329,7 @@ export async function ayqAccounts(): Promise<AyqAccountSummary[]> {
   const counts = (await api.aqlQuery(
     api
       .q('transactions')
+      .filter({ starting_balance_flag: false })
       .groupBy('account')
       .select([{ accountId: 'account.id' }, { count: { $count: 'id' } }]),
   )) as { data?: Array<{ accountId: string; count: number }> };
@@ -345,7 +353,12 @@ export async function ayqAccounts(): Promise<AyqAccountSummary[]> {
 /** Counted through the engine's own query language. */
 export async function ayqTransactionCount(): Promise<number> {
   const counted = (await api.aqlQuery(
-    api.q('transactions').calculate({ $count: 'id' }),
+    api
+      .q('transactions')
+      // The opening balance is not one of the bank's entries; it is counted in
+      // the balance and nowhere else.
+      .filter({ starting_balance_flag: false })
+      .calculate({ $count: 'id' }),
   )) as { data?: number };
   return Number(counted.data ?? 0);
 }

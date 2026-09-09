@@ -258,8 +258,11 @@ test('a CAMT.053 file is imported through the real API', async () => {
 
   const accounts = await ask(dataDir, { kind: 'accounts.list' });
   assert.equal(accounts.length, 1);
-  // 741.31 net across the month, balanced by the engine's spreadsheet.
-  assert.equal(accounts[0].balanceCents, 74131);
+  // 1,000.00 to start, as the statement says it stood, plus 741.31 net across
+  // the month: the closing balance the bank itself states.
+  assert.equal(accounts[0].balanceCents, 174131);
+  // Fourteen — the bank's entries. The opening balance is a transaction in
+  // Actual's model and is not one of them.
   assert.equal(accounts[0].transactionCount, 14);
 });
 
@@ -623,10 +626,11 @@ test('the summary adds up what the ledger holds', async () => {
 
   const summary = await ask(dataDir, { kind: 'summary' });
   assert.equal(summary.transactionCount, 14);
-  assert.equal(summary.totalBalanceCents, 74131);
+  // What the statement says the account closed at, not what its entries move.
+  assert.equal(summary.totalBalanceCents, 174131);
   assert.equal(summary.month, '2026-06');
   assert.equal(summary.monthIncomeCents, 125000);
-  // Everything that went out in June: the balance minus the salary.
+  // Everything that went out in June: the month's net minus the salary.
   assert.equal(summary.monthExpenseCents, 74131 - 125000);
   assert.equal(summary.uncategorisedCount, 14);
   assert.equal(summary.accounts.length, 1);
@@ -981,6 +985,32 @@ test('the backlog is a list of shops, largest first, and shrinks by one decision
     after.reduce((sum, one) => sum + one.cents, 0),
     'and what is left unfiled is exactly what the backlog still lists',
   );
+});
+
+test("the balance is the bank's, not the sum of what happened to be imported", async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  // The fixture states its own opening and closing balances, the way a real
+  // statement does. What AYQ shows has to be the second of those: an account
+  // opened at zero and filled with one month of entries would show the month's
+  // net movement, which looks like a balance and is not one.
+  const accounts = await ask(dataDir, { kind: 'accounts.list' });
+  assert.equal(accounts.length, 1);
+  assert.equal(
+    accounts[0]?.balanceCents,
+    174131,
+    'the closing balance the statement states',
+  );
+
+  const summary = await ask(dataDir, { kind: 'summary' });
+  assert.equal(summary.totalBalanceCents, 174131);
+
+  // And the difference between the two balances is exactly what the entries
+  // move, which is the bank's arithmetic agreeing with ours.
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const moved = ledger.rows.reduce((sum, row) => sum + row.amountCents, 0);
+  assert.equal(174131 - 100000, moved);
 });
 
 test('a fresh budget has a short, usable set of categories', async () => {

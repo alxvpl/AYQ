@@ -18,17 +18,6 @@
 
 import { createHash } from 'node:crypto';
 
-import {
-  ayqAttr,
-  ayqChild,
-  ayqChildren,
-  ayqFindAll,
-  ayqParseXml,
-  ayqText,
-  ayqTextAt,
-  ayqTextList,
-  type AyqXmlNode,
-} from './ayq-xml.ts';
 import type {
   AyqAgents,
   AyqAmount,
@@ -45,6 +34,17 @@ import type {
   AyqStatementContext,
   AyqStructuredRemittance,
 } from './ayq-types.ts';
+import {
+  ayqAttr,
+  ayqChild,
+  ayqChildren,
+  ayqFindAll,
+  ayqParseXml,
+  ayqText,
+  ayqTextAt,
+  ayqTextList,
+  type AyqXmlNode,
+} from './ayq-xml.ts';
 
 export type AyqParseOptions = {
   /** The file's base name, recorded in the statement context. */
@@ -249,6 +249,31 @@ function detectFlavour(schema: string | null): AyqCamtFlavour {
   return 'unknown';
 }
 
+/**
+ * A statement's own balances, as the bank stated them.
+ *
+ * CAMT.053 carries `<Bal>` entries typed OPBD (opening booked) and CLBD
+ * (closing booked). They are the bank's arithmetic, not ours, and they are what
+ * makes an imported account's balance a real balance rather than the sum of
+ * whatever period happened to be imported.
+ *
+ * PRCD (previously closed booked) is accepted where a statement gives that
+ * instead of OPBD — they mean the same thing across a statement boundary.
+ */
+function readBalance(
+  statement: AyqXmlNode,
+  wanted: readonly string[],
+): AyqAmount | null {
+  for (const balance of ayqChildren(statement, 'Bal')) {
+    const code = ayqTextAt(balance, 'Tp', 'CdOrPrtry', 'Cd');
+    if (code === null || !wanted.includes(code)) continue;
+    const amount = readAmount(ayqChild(balance, 'Amt'));
+    if (!amount) continue;
+    return signedAmount(amount, ayqTextAt(balance, 'CdtDbtInd') === 'DBIT');
+  }
+  return null;
+}
+
 function readStatementContext(
   statement: AyqXmlNode,
   header: AyqXmlNode,
@@ -278,6 +303,8 @@ function readStatementContext(
     accountCurrency: ayqTextAt(account, 'Ccy'),
     accountOwnerName: ayqTextAt(account, 'Ownr', 'Nm'),
     accountServicerBic: ayqTextAt(account, 'Svcr', 'FinInstnId', 'BIC'),
+    openingBalance: readBalance(statement, ['OPBD', 'PRCD']),
+    closingBalance: readBalance(statement, ['CLBD']),
   };
 }
 
@@ -371,7 +398,8 @@ export async function ayqParseCamt(
             : readBankTransactionCode(transactionCode);
 
         const accountServicerReference =
-          references.accountServicerReference ?? ayqTextAt(entry, 'AcctSvcrRef');
+          references.accountServicerReference ??
+          ayqTextAt(entry, 'AcctSvcrRef');
 
         results.push({
           statement: context,

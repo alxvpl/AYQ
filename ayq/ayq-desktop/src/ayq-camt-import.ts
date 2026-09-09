@@ -54,12 +54,48 @@ export function ayqMaskAccount(entries: AyqBankEntry[]): string {
 }
 
 /** The account by that name, created if the budget has not seen it before. */
-async function accountFor(name: string): Promise<string> {
+/**
+ * The earliest opening balance the statements state, and the date it applies to.
+ *
+ * A statement carries the bank's own arithmetic: what the account held before
+ * the first entry in it. Without that, an account's balance is the sum of
+ * whatever period happened to be imported — a number that looks like a balance,
+ * is presented like a balance, and is not one.
+ *
+ * The earliest is the one that matters: importing 2021 after 2026 must move the
+ * starting point back, not add a second one.
+ */
+function earliestOpening(
+  entries: AyqBankEntry[],
+): { cents: number; date: string } | null {
+  let found: { cents: number; date: string } | null = null;
+
+  for (const entry of entries) {
+    const opening = entry.statement.openingBalance;
+    if (!opening || opening.value === null) continue;
+    const date =
+      entry.statement.fromDate?.slice(0, 10) ?? entry.bookingDate.date;
+    if (date === null) continue;
+    if (found === null || date < found.date) {
+      found = { cents: Math.round(opening.value * 100), date };
+    }
+  }
+
+  return found;
+}
+
+async function accountFor(
+  name: string,
+  opening: { cents: number; date: string } | null,
+): Promise<string> {
   const existing = (await api.getAccounts()).find(
     account => account.name === name,
   );
   if (existing) return existing.id;
-  return api.createAccount({ name, offbudget: false }, 0);
+  // Handed to Actual at creation, which is where it belongs: Actual writes it
+  // as the account's starting balance rather than as a transaction AYQ would
+  // then have to explain.
+  return api.createAccount({ name, offbudget: false }, opening?.cents ?? 0);
 }
 
 function bankCode(entry: AyqBankEntry): string | null {
@@ -195,7 +231,8 @@ export async function ayqImportCamt(
   }
 
   const accountName = ayqMaskAccount(records);
-  const accountId = await accountFor(accountName);
+  const opening = earliestOpening(records);
+  const accountId = await accountFor(accountName, opening);
   const countBefore = await ayqTransactionCount();
 
   const result = await api.importTransactions(

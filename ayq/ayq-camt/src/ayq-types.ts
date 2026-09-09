@@ -167,6 +167,13 @@ export type AyqStatementContext = {
   accountCurrency: string | null;
   accountOwnerName: string | null;
   accountServicerBic: string | null;
+  /**
+   * The balance the bank stated at the start of the statement, signed.
+   * Null when the statement carries none.
+   */
+  openingBalance: AyqAmount | null;
+  /** The balance the bank stated at the end of the statement, signed. */
+  closingBalance: AyqAmount | null;
 };
 
 /** Where the record sits in the source — traceable back to the exact <Ntry>. */
