@@ -3,7 +3,7 @@
 The AYQ renderer. Ours, not Actual's: `packages/desktop-client` is not forked,
 not imported and not consulted.
 
-It is a desktop application shell: a navigation column that holds the five
+It is a desktop application shell: a navigation column that holds the six
 workspaces and the accounts, and a workspace beside it that fills the window.
 Every figure in it — an account's balance included — is one the engine
 computed; this side formats numbers and draws them.
@@ -65,6 +65,16 @@ jsdom and clicks it — the accounts come from account summaries shaped like the
 engine's, choosing one narrows the filter, and All accounts widens it again.
 jsdom is a test dependency; the renderer's own sources still import nothing but
 each other, and the boundary test says so.
+
+## Counterparties and aliases
+
+`src/ayq-counterparties.ts` draws the counterparties workspace: who the money
+went to, what each came to, and — in the detail panel — the imported name
+variants AYQ has actually seen for it. That is where a person says one variant
+is another counterparty. The renderer sends the decision and nothing else: the
+variant key and the counterparty key. Finding the transactions it is true of,
+moving them and leaving every other one alone is the engine’s work, and so is
+refusing the request when the counterparty is not there.
 
 ## Scope
 

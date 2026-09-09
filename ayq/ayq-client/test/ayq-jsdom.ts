@@ -85,3 +85,41 @@ export function ayqClick(element: Element | null, what: string): void {
     }),
   );
 }
+
+/**
+ * A stand-in engine on `window.ayq`, and a log of what was asked of it.
+ *
+ * The renderer's only door outwards is the bridge, so this is the whole of the
+ * boundary a renderer test needs to control. Requests are recorded exactly as
+ * they were sent, because what a screen asks the engine for is as much a part
+ * of the contract as what it draws.
+ */
+export type AyqBridgeLog = {
+  requests: Array<Record<string, unknown>>;
+};
+
+export function ayqStubBridge(
+  answer: (request: Record<string, unknown>) => unknown,
+): AyqBridgeLog {
+  const log: AyqBridgeLog = { requests: [] };
+  const holder = globalThis as unknown as {
+    window: { ayq?: unknown };
+  };
+  holder.window.ayq = {
+    request(request: Record<string, unknown>) {
+      log.requests.push(request);
+      const result = answer(request);
+      return Promise.resolve(
+        result === undefined
+          ? { id: request.id, ok: false, kind: 'error', message: 'no answer' }
+          : { id: request.id, ok: true, kind: request.kind, result },
+      );
+    },
+  };
+  return log;
+}
+
+/** Lets whatever the click started finish before the assertion reads it. */
+export async function ayqSettled(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 0));
+}

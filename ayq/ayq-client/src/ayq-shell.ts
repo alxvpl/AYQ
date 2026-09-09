@@ -16,6 +16,7 @@ import type { AyqAccountSummary } from './ayq-ipc-contract.ts';
 export type AyqView =
   | 'transactions'
   | 'spending'
+  | 'counterparties'
   | 'recurring'
   | 'rules'
   | 'imports';
@@ -40,6 +41,11 @@ export const AYQ_VIEWS: ReadonlyArray<{
     id: 'spending',
     label: 'Spending',
     blurb: 'What the money went on, by category.',
+  },
+  {
+    id: 'counterparties',
+    label: 'Counterparties',
+    blurb: 'Who the money went to, and what AYQ knows them by.',
   },
   {
     id: 'recurring',

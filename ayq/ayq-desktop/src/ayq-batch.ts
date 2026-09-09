@@ -31,6 +31,23 @@ export function ayqUseSend(lend: AyqSend): void {
 export async function ayqSetCategories(
   updates: Array<{ id: string; category: string | null }>,
 ): Promise<void> {
+  await batched(updates);
+}
+
+/**
+ * Points many transactions at a payee, for one reason.
+ *
+ * An alias says one merchant was printed two ways. What that is true of is
+ * every receipt it ever issued, and re-pointing them one call at a time would
+ * be one round trip per receipt.
+ */
+export async function ayqSetPayees(
+  updates: Array<{ id: string; payee: string }>,
+): Promise<void> {
+  await batched(updates);
+}
+
+async function batched(updates: Array<{ id: string }>): Promise<void> {
   if (updates.length === 0) return;
   if (!send) throw new Error('the budget is not open');
 

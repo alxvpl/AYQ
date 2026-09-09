@@ -24,7 +24,8 @@ import type {
   AyqTransactionDetail,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
-import { ayqReadStore } from './ayq-store.ts';
+import { ayqCanonicalKey } from './ayq-aliases.ts';
+import { ayqReadStore, ayqRowKey } from './ayq-store.ts';
 
 /** How many rows the screen is given when it does not ask for a number. */
 export const AYQ_LEDGER_LIMIT = 500;
@@ -92,14 +93,6 @@ function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
   const rightOrder = right.sort_order ?? 0;
   if (leftOrder !== rightOrder) return rightOrder - leftOrder;
   return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
-}
-
-/** The key a decision and a provenance record are filed under. */
-export function ayqRowKey(row: {
-  imported_id: string | null;
-  id: string;
-}): string {
-  return row.imported_id ?? row.id;
 }
 
 function toRow(row: AyqQueriedRow, source: AyqCategorySource): AyqLedgerRow {
@@ -226,7 +219,12 @@ export async function ayqUnfiled(
     const cents = Number(row.amount ?? 0);
     if (cents >= 0) continue;
 
-    const key = store.provenance[ayqRowKey(row)]?.counterpartyKey;
+    // The counterparty a person would recognise, aliases applied: two names
+    // one shop was printed under are one line and one decision.
+    const key = ayqCanonicalKey(
+      store,
+      store.provenance[ayqRowKey(row)]?.counterpartyKey,
+    );
     if (!key) continue;
 
     const date = String(row.date);
@@ -264,9 +262,12 @@ export async function ayqLedger(
     if (filter.categoryId && row.categoryId !== filter.categoryId) return false;
 
     if (filter.counterpartyKey) {
-      const key = row.imported_id
-        ? (store.provenance[row.imported_id]?.counterpartyKey ?? null)
-        : null;
+      // Canonical, so a counterparty opened from anywhere brings in every
+      // variant a person has said belongs to it.
+      const key = ayqCanonicalKey(
+        store,
+        store.provenance[ayqRowKey(row)]?.counterpartyKey,
+      );
       if (key !== filter.counterpartyKey) return false;
     }
 
@@ -370,9 +371,10 @@ export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
 
   for (const row of all) {
     if (!row.categoryId) uncategorised += 1;
-    const key = row.imported_id
-      ? store.provenance[row.imported_id]?.counterpartyKey
-      : null;
+    const key = ayqCanonicalKey(
+      store,
+      store.provenance[ayqRowKey(row)]?.counterpartyKey,
+    );
     counterparties.add(key ?? row.payee ?? row.id);
 
     if (month !== null && row.date.startsWith(month)) {

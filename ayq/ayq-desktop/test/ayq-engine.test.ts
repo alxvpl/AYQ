@@ -44,7 +44,20 @@ import type {
 
 // `require('electron')` resolves to the binary's path, not to Electron's own
 // module surface, which is exactly what is wanted here.
-const electronPath = createRequire(import.meta.url)('electron') as string;
+/**
+ * The binary the engine is forked with.
+ *
+ * Electron as Node, because that is the runtime the shipped engine gets and the
+ * ABI its SQLite binding is built for. AYQ_TEST_NODE=1 forks this Node instead:
+ * on a machine without the toolchain to build that binding for Electron it is
+ * the difference between running these tests and not running them. CI never
+ * sets it — the Windows workflow exists to prove the shipped path, and would
+ * prove nothing about it on a substitute runtime.
+ */
+function engineBinary(): string {
+  if (process.env.AYQ_TEST_NODE === '1') return process.execPath;
+  return createRequire(import.meta.url)('electron') as string;
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const enginePath = join(here, '..', 'dist', 'ayq-engine.js');
@@ -83,7 +96,7 @@ function engineFor(dataDir: string): EngineChild {
   if (running) return running;
 
   const child = fork(enginePath, [], {
-    execPath: electronPath,
+    execPath: engineBinary(),
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', AYQ_DATA_DIR: dataDir },
     stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
   });
@@ -183,7 +196,7 @@ test('a fresh budget is created, and it is empty', async () => {
   assert.equal(status.engineHost, 'node child_process fork');
   assert.equal(status.budgetCreated, true, 'nothing existed in a fresh dir');
   assert.ok(status.budgetId.length > 0);
-  assert.equal(status.storeVersion, 1, 'the AYQ store declares its version');
+  assert.equal(status.storeVersion, 2, 'the AYQ store declares its version');
 
   // Empty means empty: no demo account, no invented entries.
   assert.deepEqual(await ask(dataDir, { kind: 'accounts.list' }), []);
@@ -651,10 +664,12 @@ test('what AYQ keeps survives a restart', async () => {
     rules: unknown[];
     imports: unknown[];
     provenance: Record<string, unknown>;
+    aliases: unknown[];
   };
 
-  assert.equal(store.version, 1);
+  assert.equal(store.version, 2);
   assert.equal(store.rules.length, 1);
+  assert.deepEqual(store.aliases, [], 'nobody has aliased anything here');
   assert.equal(store.imports.length, 1);
   assert.equal(Object.keys(store.provenance).length, 14);
 
@@ -1319,4 +1334,500 @@ test('the ledger can be narrowed to one category or one counterparty', async () 
     filter: { counterpartyKey: 'ALBERT HEIJN', categoryId: groceries.id },
   });
   assert.equal(both.total, 6);
+});
+
+/* ------------------------------------------------ counterparties and aliases
+
+   The situation these exercise is the one the automatic resolver cannot solve
+   on its own: a filling station whose terminal prints TESTFUEL on some visits
+   and TEST FUEL STATION on others. Nothing in the statement connects them —
+   no shared IBAN, no mandate, no similarity a program has any business acting
+   on — so AYQ reads two counterparties and a person says they are one.
+
+   The fixture is invented, and so is everything asserted about it.           */
+
+const variants = join(
+  here,
+  '..',
+  '..',
+  'ayq-camt',
+  'test',
+  'fixtures',
+  'ayq-alias-variants.xml',
+);
+
+const later = join(
+  here,
+  '..',
+  '..',
+  'ayq-camt',
+  'test',
+  'fixtures',
+  'ayq-alias-later.xml',
+);
+
+/** The counterparty by that key, or a failure naming what was there instead. */
+function counterparty(
+  list: AyqResults['counterparties.list'],
+  key: string,
+): AyqResults['counterparties.list']['rows'][number] {
+  const found = list.rows.find(row => row.key === key);
+  assert.ok(
+    found,
+    `no counterparty ${key}; the budget holds ${list.rows
+      .map(row => row.key)
+      .join(', ')}`,
+  );
+  return found;
+}
+
+/** Imports the two-name fixture and says the two names are one shop. */
+async function aliasedBudget(dataDir: string): Promise<void> {
+  await ask(dataDir, { kind: 'import.camt', paths: [variants] });
+  await ask(dataDir, {
+    kind: 'alias.create',
+    variantKey: 'TEST FUEL STATION',
+    variant: 'TEST FUEL STATION',
+    counterpartyKey: 'TESTFUEL',
+  });
+}
+
+test('the counterparties are grouped by who they are, not by what was printed', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const list = await ask(dataDir, { kind: 'counterparties.list' });
+
+  // Fourteen transactions, five counterparties. Six visits to one supermarket
+  // arrived under six different raw strings and are one line.
+  assert.equal(list.total, 5);
+  assert.equal(list.shown, 5);
+
+  // The key is AYQ's — normalised, so six terminal strings are one shop. The
+  // name is the budget's: Actual titles the payee names it is given, and what a
+  // counterparty is called on screen is its business rather than AYQ's.
+  const shop = counterparty(list, 'ALBERT HEIJN');
+  assert.equal(shop.name, 'Albert Heijn');
+  assert.equal(shop.transactions, 6);
+  assert.equal(shop.outgoingCents, 15259, "the engine's own total");
+  assert.equal(shop.firstDate, '2026-06-02');
+  assert.equal(shop.lastDate, '2026-06-27');
+  assert.equal(shop.categoryName, null, 'nothing has been filed here yet');
+  assert.equal(shop.aliases, 0);
+
+  assert.equal(counterparty(list, 'TESTFUEL').transactions, 4);
+  assert.equal(counterparty(list, 'KOFFIEHUIS DE TEST').transactions, 2);
+
+  // Money coming in is a counterparty too, and it has spent nothing.
+  const employer = counterparty(list, 'TESTWERKGEVER B V');
+  assert.equal(employer.transactions, 1);
+  assert.equal(employer.outgoingCents, 0);
+
+  // Biggest spend first: a list of counterparties is read to find out where
+  // the money went.
+  assert.deepEqual(
+    list.rows.map(row => row.key),
+    [
+      'TESTFUEL',
+      'ALBERT HEIJN',
+      'TESTENERGIE NEDERLAND B V',
+      'KOFFIEHUIS DE TEST',
+      'TESTWERKGEVER B V',
+    ],
+  );
+
+  // And searching narrows it, by name or by key.
+  const searched = await ask(dataDir, {
+    kind: 'counterparties.list',
+    filter: { search: 'heijn' },
+  });
+  assert.equal(searched.total, 1);
+  assert.equal(searched.rows[0].key, 'ALBERT HEIJN');
+});
+
+test('a counterparty says what AYQ has seen it called', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const detail = await ask(dataDir, {
+    kind: 'counterparty.detail',
+    key: 'ALBERT HEIJN',
+  });
+
+  assert.equal(detail.counterparty.transactions, 6);
+  assert.equal(detail.variants.length, 1, 'one key, however many strings');
+  assert.equal(detail.variants[0].key, 'ALBERT HEIJN');
+  assert.equal(detail.variants[0].transactions, 6);
+  assert.equal(detail.variants[0].aliased, false, 'the statement said so');
+
+  // The names the terminal actually printed, which is the evidence for the
+  // grouping rather than the identity itself.
+  assert.deepEqual(
+    [...detail.variants[0].names].sort(),
+    ['ALBERT HEIJN 1234', 'ALBERT HEIJN 5678', 'ALBERT HEIJN 9012'],
+  );
+
+  assert.equal(detail.recent.length, 6, 'the newest transactions of this shop');
+  assert.ok(
+    detail.recent.every(row => row.payee === 'Albert Heijn'),
+    'the ledger rows belong to the counterparty they were asked for',
+  );
+});
+
+test('an alias moves the transactions it is true of, and no others', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [variants] });
+
+  const before = await ask(dataDir, { kind: 'counterparties.list' });
+  assert.equal(before.total, 3, 'the resolver reads three counterparties');
+  assert.equal(counterparty(before, 'TESTFUEL').transactions, 2);
+  assert.equal(counterparty(before, 'TEST FUEL STATION').transactions, 2);
+  assert.equal(counterparty(before, 'TESTBOEKHANDEL').transactions, 3);
+  const bookshopBefore = counterparty(before, 'TESTBOEKHANDEL');
+
+  const applied = await ask(dataDir, {
+    kind: 'alias.create',
+    variantKey: 'TEST FUEL STATION',
+    variant: 'TEST FUEL STATION',
+    counterpartyKey: 'TESTFUEL',
+  });
+
+  // Exactly the two transactions provenance proves were imported under that
+  // key. Not the three from the bookshop, and not the two that were already
+  // TESTFUEL and already carry the right name.
+  assert.equal(applied.moved, 2);
+  assert.equal(applied.counterpartyKey, 'TESTFUEL');
+  assert.equal(applied.counterpartyName, 'Testfuel');
+  assert.equal(applied.aliases.length, 1);
+  assert.equal(applied.aliases[0].variantKey, 'TEST FUEL STATION');
+  assert.equal(applied.aliases[0].counterpartyKey, 'TESTFUEL');
+
+  const after = await ask(dataDir, { kind: 'counterparties.list' });
+  assert.equal(after.total, 2, 'two counterparties became one');
+  const fuel = counterparty(after, 'TESTFUEL');
+  assert.equal(fuel.transactions, 4);
+  assert.equal(fuel.outgoingCents, 16600, '40 + 41 + 42 + 43');
+  assert.equal(fuel.firstDate, '2026-01-05');
+  assert.equal(fuel.lastDate, '2026-04-05');
+  assert.equal(fuel.aliases, 1);
+
+  // The unrelated counterparty is untouched in every particular.
+  assert.deepEqual(counterparty(after, 'TESTBOEKHANDEL'), bookshopBefore);
+
+  // The ledger agrees, which is the part a person actually sees.
+  const ledger = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'TESTFUEL' },
+  });
+  assert.equal(ledger.total, 4);
+  assert.ok(ledger.rows.every(row => row.payee === 'Testfuel'));
+
+  const bookshop = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'TESTBOEKHANDEL' },
+  });
+  assert.equal(bookshop.total, 3);
+  // Not renamed, not re-cased, not touched.
+  assert.ok(bookshop.rows.every(row => row.payee === 'Testboekhandel'));
+});
+
+test('an alias never rewrites what the bank sent', async () => {
+  const dataDir = await budget();
+  await aliasedBudget(dataDir);
+
+  const ledger = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'TESTFUEL' },
+  });
+  const moved = ledger.rows.find(row => row.date === '2026-04-05');
+  assert.ok(moved, 'the transaction that was moved is in the ledger');
+  assert.equal(moved.payee, 'Testfuel', 'it is filed under the chosen name');
+
+  const detail = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: moved.id,
+  });
+
+  // The evidence, exactly as it was imported: the key the automatic resolver
+  // decided, the name it pronounced, and the string the terminal printed.
+  assert.ok(detail.provenance, 'the transaction still has its provenance');
+  assert.equal(detail.provenance.counterpartyKey, 'TEST FUEL STATION');
+  assert.equal(detail.provenance.counterpartyName, 'TEST FUEL STATION');
+  assert.equal(detail.provenance.resolvedBy, 'description');
+  assert.match(detail.importedPayee ?? '', /TEST FUEL STATION/);
+  assert.match(detail.provenance.description ?? '', /TEST FUEL STATION/);
+
+  // And the variant is still listed under the counterparty it was moved to,
+  // marked as a decision rather than as something the statement said.
+  const counterpartyDetail = await ask(dataDir, {
+    kind: 'counterparty.detail',
+    key: 'TESTFUEL',
+  });
+  const variant = counterpartyDetail.variants.find(
+    one => one.key === 'TEST FUEL STATION',
+  );
+  assert.ok(variant, 'the variant is not shown under the counterparty');
+  assert.equal(variant.aliased, true);
+  assert.equal(variant.transactions, 2);
+  assert.deepEqual(variant.names, ['TEST FUEL STATION']);
+});
+
+test('an alias survives a restart, and the store carries it', async () => {
+  const dataDir = await budget();
+  await aliasedBudget(dataDir);
+
+  await restart(dataDir);
+
+  // Read from the file the engine left behind, before anything reopens it.
+  const store = JSON.parse(
+    await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
+  ) as { version: number; aliases: Array<Record<string, string>> };
+  assert.equal(store.version, 2);
+  assert.equal(store.aliases.length, 1);
+  assert.equal(store.aliases[0].variantKey, 'TEST FUEL STATION');
+  assert.equal(store.aliases[0].counterpartyKey, 'TESTFUEL');
+  assert.equal(store.aliases[0].variant, 'TEST FUEL STATION');
+
+  const aliases = await ask(dataDir, { kind: 'aliases.list' });
+  assert.equal(aliases.length, 1);
+  assert.equal(aliases[0].counterpartyName, 'Testfuel');
+
+  const list = await ask(dataDir, { kind: 'counterparties.list' });
+  assert.equal(list.total, 2);
+  assert.equal(counterparty(list, 'TESTFUEL').transactions, 4);
+});
+
+test('a later import of the same variant obeys the alias', async () => {
+  const dataDir = await budget();
+  await aliasedBudget(dataDir);
+  await restart(dataDir);
+
+  const imported = await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [later],
+  });
+  assert.equal(imported.imported, 2);
+
+  const list = await ask(dataDir, { kind: 'counterparties.list' });
+  assert.equal(list.total, 2, 'nothing new appeared under the old name');
+  assert.equal(counterparty(list, 'TESTFUEL').transactions, 6);
+
+  const ledger = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'TESTFUEL' },
+  });
+  assert.equal(ledger.total, 6);
+  const newest = ledger.rows[0];
+  assert.equal(newest.date, '2026-06-05');
+  assert.equal(newest.payee, 'Testfuel', 'the person had the last word');
+
+  // The precedence, in one pair of assertions: the automatic resolver read
+  // TEST FUEL STATION out of this entry and recorded it, and the name the
+  // transaction carries is the one the person chose.
+  const detail = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: newest.id,
+  });
+  assert.equal(detail.provenance?.counterpartyKey, 'TEST FUEL STATION');
+  assert.equal(detail.provenance?.counterpartyName, 'TEST FUEL STATION');
+  assert.equal(detail.row.payee, 'Testfuel');
+});
+
+test('an alias does not overwrite a category a person filed by hand', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [variants] });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(one => one.name === 'Groceries');
+  const transport = categories.find(one => one.name === 'Transport');
+  assert.ok(groceries && transport, 'the seeded categories are there');
+
+  // One of the station's transactions is filed by hand, deliberately under a
+  // category that has nothing to do with the rule below.
+  const station = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'TEST FUEL STATION' },
+  });
+  const byHand = station.rows[0];
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: byHand.id,
+    categoryId: groceries.id,
+    createRule: false,
+  });
+
+  // And the counterparty it is about to join has a standing rule of its own.
+  await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: 'TESTFUEL',
+    categoryId: transport.id,
+  });
+
+  await ask(dataDir, {
+    kind: 'alias.create',
+    variantKey: 'TEST FUEL STATION',
+    variant: 'TEST FUEL STATION',
+    counterpartyKey: 'TESTFUEL',
+  });
+
+  const after = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { counterpartyKey: 'TESTFUEL' },
+  });
+  const kept = after.rows.find(row => row.id === byHand.id);
+  assert.ok(kept, 'the transaction is still there, under its new counterparty');
+  assert.equal(kept.category, 'Groceries', 'a person outranks the automation');
+  assert.equal(kept.categorySource, 'manual');
+
+  // The rule did file the other three, which is the point of it.
+  const filed = after.rows.filter(row => row.category === 'Transport');
+  assert.equal(filed.length, 3);
+
+  // An alias is not a rule: the counterparty has one category rule, the one it
+  // had before, and aliasing wrote no second one.
+  const rules = await ask(dataDir, { kind: 'rules.list' });
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].counterpartyKey, 'TESTFUEL');
+  assert.equal(rules[0].categoryName, 'Transport');
+});
+
+test('recurring reads the counterparty a person settled on', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [variants] });
+
+  const before = await ask(dataDir, { kind: 'recurring.list' });
+  // Two visits under each name is a coincidence, and AYQ says nothing about
+  // coincidences. The bookshop's three are a rhythm.
+  assert.deepEqual(
+    before.map(one => one.key),
+    ['TESTBOEKHANDEL'],
+  );
+
+  await ask(dataDir, {
+    kind: 'alias.create',
+    variantKey: 'TEST FUEL STATION',
+    variant: 'TEST FUEL STATION',
+    counterpartyKey: 'TESTFUEL',
+  });
+
+  const after = await ask(dataDir, { kind: 'recurring.list' });
+  const fuel = after.find(one => one.key === 'TESTFUEL');
+  assert.ok(fuel, 'the merged counterparty does not recur');
+  assert.equal(fuel.occurrences, 4, 'the four visits are one series');
+  assert.equal(fuel.cadence, 'monthly');
+  assert.equal(fuel.firstDate, '2026-01-05');
+  assert.equal(fuel.lastDate, '2026-04-05');
+  assert.equal(fuel.name, 'Testfuel');
+
+  // And the bookshop is exactly as it was.
+  const bookshop = after.find(one => one.key === 'TESTBOEKHANDEL');
+  assert.ok(bookshop);
+  assert.equal(bookshop.occurrences, 3);
+
+  // The counterparties workspace says the same thing, from the same source.
+  const list = await ask(dataDir, { kind: 'counterparties.list' });
+  assert.equal(counterparty(list, 'TESTFUEL').recurring, true);
+});
+
+test('an alias can be taken back, and the names go back with it', async () => {
+  const dataDir = await budget();
+  await aliasedBudget(dataDir);
+
+  const aliases = await ask(dataDir, { kind: 'aliases.list' });
+  const undone = await ask(dataDir, {
+    kind: 'alias.remove',
+    aliasId: aliases[0].id,
+  });
+  assert.equal(undone.aliases.length, 0);
+  assert.equal(undone.moved, 2, 'the two that were moved came back');
+
+  const list = await ask(dataDir, { kind: 'counterparties.list' });
+  assert.equal(list.total, 3, 'the counterparty the resolver read is back');
+  assert.equal(counterparty(list, 'TESTFUEL').transactions, 2);
+  assert.equal(counterparty(list, 'TEST FUEL STATION').transactions, 2);
+  assert.equal(counterparty(list, 'TESTBOEKHANDEL').transactions, 3);
+});
+
+test('an alias must point at a counterparty that exists', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [variants] });
+
+  const refused = await send(
+    {
+      id: 'nowhere',
+      kind: 'alias.create',
+      variantKey: 'TEST FUEL STATION',
+      variant: 'TEST FUEL STATION',
+      counterpartyKey: 'A SHOP NOBODY HAS EVER VISITED',
+    },
+    dataDir,
+  );
+  assert.equal(refused.ok, false);
+  if (refused.ok) return;
+  assert.match(refused.message, /no counterparty in this budget has that key/);
+
+  const itself = await send(
+    {
+      id: 'itself',
+      kind: 'alias.create',
+      variantKey: 'TESTFUEL',
+      variant: 'TESTFUEL 22',
+      counterpartyKey: 'TESTFUEL',
+    },
+    dataDir,
+  );
+  assert.equal(itself.ok, false);
+  if (itself.ok) return;
+  assert.match(itself.message, /cannot be an alias of itself/);
+
+  // Neither refusal changed anything.
+  const list = await ask(dataDir, { kind: 'counterparties.list' });
+  assert.equal(list.total, 3);
+  assert.deepEqual(await ask(dataDir, { kind: 'aliases.list' }), []);
+});
+
+test('a damaged store loses the aliases and nothing else', async () => {
+  const dataDir = await budget();
+  await aliasedBudget(dataDir);
+  await restart(dataDir);
+
+  // Truncated mid-array, the way a crash during a write would leave it.
+  await writeFile(
+    join(dataDir, 'ayq-store.json'),
+    '{"version": 2, "aliases": [',
+    'utf8',
+  );
+
+  const status = await ask(dataDir, { kind: 'engine.status' });
+  assert.match(
+    status.storeDamaged ?? '',
+    /^ayq-store\.damaged-.+\.json$/,
+    'the unreadable store was kept rather than overwritten',
+  );
+  assert.equal(status.storeVersion, 2, 'and a fresh store took its place');
+
+  // The transactions are Actual's and none of this was theirs to lose. Without
+  // the alias the resolver's own reading is what is left, which is the honest
+  // outcome: AYQ lost the decision, not the evidence.
+  assert.deepEqual(await ask(dataDir, { kind: 'aliases.list' }), []);
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  assert.equal(ledger.total, 7);
+
+  const detail = await ask(dataDir, {
+    kind: 'counterparty.detail',
+    key: 'TESTFUEL',
+  });
+  assert.equal(detail.variants.length, 0, 'the provenance went with the store');
+
+  // A newer store is still refused rather than replaced, aliases or not.
+  await restart(dataDir);
+  await writeFile(
+    join(dataDir, 'ayq-store.json'),
+    JSON.stringify({ version: 99, aliases: [] }),
+    'utf8',
+  );
+  const refused = await send({ id: 'newer-2', kind: 'aliases.list' }, dataDir);
+  assert.equal(refused.ok, false);
+  if (refused.ok) return;
+  assert.match(refused.message, /version 99/);
 });

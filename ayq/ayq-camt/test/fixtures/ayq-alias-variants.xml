@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An invented four months, built for one situation the automatic resolver
+  cannot get right on its own: a merchant whose terminal prints two different
+  names.
+
+  Seven entries, and by the resolver's own reading three counterparties:
+
+    TESTFUEL            two visits, January and March
+    TEST FUEL STATION   two visits, February and April
+    TESTBOEKHANDEL      three visits, monthly
+
+  The first two are one filling station. Nothing in the statement says so —
+  there is no shared IBAN, no mandate and no similarity a program should be
+  trusted to act on — so AYQ does not guess it. A person says it, once, and
+  that is what an alias is.
+
+  Read as three, neither half of the filling station recurs: two visits is a
+  coincidence. Read as one, four visits a month apart are a rhythm. That is the
+  difference an alias makes, and it is what the recurring test asserts.
+
+  Every name, IBAN, terminal and amount here belongs to nobody.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-2026-alias-variants</MsgId>
+      <CreDtTm>2026-05-01T03:04:05</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0246813579.2026-alias</Id>
+      <LglSeqNb>201</LglSeqNb>
+      <CreDtTm>2026-05-01T03:04:05</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-01-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-04-30T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL00TEST0246813579</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+
+      <!-- The filling station, printed as TESTFUEL. -->
+      <Ntry>
+        <Amt Ccy="EUR">40.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-01-05</Dt></BookgDt><ValDt><Dt>2026-01-05</Dt></ValDt>
+        <AcctSvcrRef>2026010500000201</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTFUEL 22,PAS421 NR:00D101, 05.01.26/07:15   UTRECHT</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">41.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-05</Dt></BookgDt><ValDt><Dt>2026-03-05</Dt></ValDt>
+        <AcctSvcrRef>2026030500000202</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTFUEL 22,PAS421 NR:00D102, 05.03.26/07:11   UTRECHT</AddtlNtryInf>
+      </Ntry>
+
+      <!-- The same filling station, printed as TEST FUEL STATION. -->
+      <Ntry>
+        <Amt Ccy="EUR">42.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-02-05</Dt></BookgDt><ValDt><Dt>2026-02-05</Dt></ValDt>
+        <AcctSvcrRef>2026020500000203</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TEST FUEL STATION,PAS421 NR:00D103, 05.02.26/07:20   UTRECHT</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">43.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-04-05</Dt></BookgDt><ValDt><Dt>2026-04-05</Dt></ValDt>
+        <AcctSvcrRef>2026040500000204</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TEST FUEL STATION,PAS421 NR:00D104, 05.04.26/07:03   UTRECHT</AddtlNtryInf>
+      </Ntry>
+
+      <!-- An unrelated shop, monthly, which nothing about an alias may touch. -->
+      <Ntry>
+        <Amt Ccy="EUR">12.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-01-09</Dt></BookgDt><ValDt><Dt>2026-01-09</Dt></ValDt>
+        <AcctSvcrRef>2026010900000205</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTBOEKHANDEL 77,PAS421 NR:00E101, 09.01.26/16:40   HAARLEM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">13.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-02-09</Dt></BookgDt><ValDt><Dt>2026-02-09</Dt></ValDt>
+        <AcctSvcrRef>2026020900000206</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTBOEKHANDEL 77,PAS421 NR:00E102, 09.02.26/16:12   HAARLEM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">14.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-09</Dt></BookgDt><ValDt><Dt>2026-03-09</Dt></ValDt>
+        <AcctSvcrRef>2026030900000207</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTBOEKHANDEL 77,PAS421 NR:00E103, 09.03.26/16:55   HAARLEM</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

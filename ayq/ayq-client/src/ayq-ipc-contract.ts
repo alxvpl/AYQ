@@ -143,7 +143,23 @@ export type AyqLedger = {
  */
 export type AyqProvenance = {
   importId: string;
+  /**
+   * The counterparty key the automatic resolver decided, at import time.
+   *
+   * This is evidence, and it is never rewritten. An alias is a later and
+   * separate decision about which canonical counterparty this key belongs to,
+   * and it is applied when the ledger is read rather than by editing what the
+   * bank sent.
+   */
   counterpartyKey: string | null;
+  /**
+   * The name the automatic resolver pronounced, before canonicalisation.
+   *
+   * This is the imported name variant an alias is written against — 'TESTFUEL
+   * 22' rather than the whole string the terminal printed, which is kept in
+   * the description field. Absent on records written by AYQ store version 1.
+   */
+  counterpartyName?: string | null;
   /** The layer of the resolver that pronounced the name. */
   resolvedBy: string;
   /** The payment kind read off BkTxCd. */
@@ -216,6 +232,104 @@ export type AyqRecurring = {
   nextExpectedDate: string | null;
   /** A SEPA mandate makes it a subscription rather than a habit. */
   mandateId: string | null;
+};
+
+/* ---------------------------------------------------- counterparties, aliases
+
+   A counterparty is who the money went to, as a thing a person can look at and
+   manage — not a string on a row. It is identified by its canonical key, and
+   everything about it below is counted by the engine.
+
+   An alias is one explicit decision: this imported name variant is that
+   counterparty. It is not a guess, not a similarity score and not a merchant
+   AYQ was taught in advance. It is also not a category rule: an alias answers
+   "who is this?", a rule answers "where does it belong?", and the two never
+   speak for each other.                                                      */
+
+/** A counterparty as the workspace lists it. Every figure is the engine's. */
+export type AyqCounterparty = {
+  /** The canonical key, aliases applied. Rules and filters use this. */
+  key: string;
+  /** What to call it: the payee the newest of its transactions carries. */
+  name: string;
+  transactions: number;
+  /** Spending, stated positive, over everything the budget holds. */
+  outgoingCents: number;
+  firstDate: string;
+  lastDate: string;
+  /** The category its rule files it under, when it has one. */
+  categoryName: string | null;
+  /** Whether the recurring view currently finds a rhythm here. */
+  recurring: boolean;
+  /** Imported name variants a person has explicitly assigned to it. */
+  aliases: number;
+};
+
+export type AyqCounterpartyFilter = {
+  /** Matched against the name and the key, case-blind. */
+  search?: string;
+  limit?: number;
+};
+
+export type AyqCounterpartyList = {
+  /** Biggest spend first. */
+  rows: AyqCounterparty[];
+  total: number;
+  shown: number;
+};
+
+/**
+ * One imported name variant AYQ has actually seen under a counterparty.
+ *
+ * `key` is what an alias matches on, and it is the key the automatic resolver
+ * decided for these transactions. `names` are the strings the bank printed that
+ * normalised to it — evidence, not identity.
+ */
+export type AyqCounterpartyVariant = {
+  key: string;
+  /** Newest first, and capped: a list, not a transcript. */
+  names: string[];
+  transactions: number;
+  firstDate: string;
+  lastDate: string;
+  /** True when this variant is under this counterparty because a person said so. */
+  aliased: boolean;
+};
+
+export type AyqCounterpartyDetail = {
+  counterparty: AyqCounterparty;
+  variants: AyqCounterpartyVariant[];
+  /** The rhythm, when the recurring view finds one. */
+  recurring: AyqRecurring | null;
+  /** The newest transactions of this counterparty. */
+  recent: AyqLedgerRow[];
+};
+
+/**
+ * An explicit decision that one imported name variant is one counterparty.
+ *
+ * `variantKey` is what it matches on and is derived from the variant by the
+ * same normalisation the importer uses, so matching is exact rather than
+ * approximate. `variant` is the name the person was looking at when they
+ * decided, kept so the decision can be read back and explained.
+ */
+export type AyqAliasRecord = {
+  id: string;
+  variant: string;
+  variantKey: string;
+  counterpartyKey: string;
+  counterpartyName: string;
+  createdAt: string;
+};
+
+/** What creating or removing an alias did. */
+export type AyqAliasApplied = {
+  aliases: AyqAliasRecord[];
+  /** Transactions whose payee the engine changed as a result. */
+  moved: number;
+  /** The counterparty they now belong to. */
+  counterpartyKey: string;
+  counterpartyName: string;
 };
 
 export type AyqImportRecord = {
@@ -346,6 +460,11 @@ export type AyqResults = {
   'rules.remove': AyqCategoryRule[];
   'rules.apply': { categorised: number };
   'recurring.list': AyqRecurring[];
+  'counterparties.list': AyqCounterpartyList;
+  'counterparty.detail': AyqCounterpartyDetail;
+  'aliases.list': AyqAliasRecord[];
+  'alias.create': AyqAliasApplied;
+  'alias.remove': AyqAliasApplied;
   'imports.list': AyqImportRecord[];
   summary: AyqSummary;
   spending: AyqSpending;
@@ -391,6 +510,23 @@ export type AyqRequestBody =
   | { kind: 'rules.remove'; ruleId: string }
   | { kind: 'rules.apply' }
   | { kind: 'recurring.list' }
+  | { kind: 'counterparties.list'; filter?: AyqCounterpartyFilter }
+  | { kind: 'counterparty.detail'; key: string }
+  | { kind: 'aliases.list' }
+  | {
+      /**
+       * Says that one imported name variant is one counterparty, and applies it.
+       *
+       * `variantKey` is the match; `variant` is the name the person saw when
+       * they decided. Existing transactions the provenance proves were imported
+       * under that key move to the chosen counterparty; nothing else does.
+       */
+      kind: 'alias.create';
+      variantKey: string;
+      variant: string;
+      counterpartyKey: string;
+    }
+  | { kind: 'alias.remove'; aliasId: string }
   | { kind: 'imports.list' }
   | { kind: 'summary' }
   | { kind: 'spending'; filter?: AyqSpendingFilter }

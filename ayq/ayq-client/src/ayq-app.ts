@@ -24,6 +24,11 @@ import type {
   AyqSummary,
 } from './ayq-ipc-contract.ts';
 import {
+  ayqEmptyCounterpartiesState,
+  ayqRenderCounterparties,
+  type AyqCounterpartiesState,
+} from './ayq-counterparties.ts';
+import {
   ayqRenderImports,
   ayqRenderRecurring,
   ayqRenderRules,
@@ -53,6 +58,7 @@ type AyqState = {
   summary: AyqSummary | null;
   transactions: AyqTransactionsState;
   spending: AyqSpendingState;
+  counterparties: AyqCounterpartiesState;
   recurring: AyqRecurring[];
   rules: AyqCategoryRule[];
   imports: AyqImportRecord[];
@@ -65,6 +71,7 @@ const state: AyqState = {
   summary: null,
   transactions: ayqEmptyTransactionsState(),
   spending: ayqEmptySpendingState(),
+  counterparties: ayqEmptyCounterpartiesState(),
   recurring: [],
   rules: [],
   imports: [],
@@ -244,6 +251,15 @@ async function loadView(): Promise<void> {
       };
       return;
     }
+    case 'counterparties': {
+      state.counterparties.list = (
+        await need({
+          kind: 'counterparties.list',
+          filter: state.counterparties.filter,
+        })
+      ).result;
+      return;
+    }
     case 'recurring':
       state.recurring = (await need({ kind: 'recurring.list' })).result;
       return;
@@ -389,6 +405,20 @@ function openAccount(accountId: string | null): void {
   void refresh(true);
 }
 
+/**
+ * Opens the ledger on one counterparty.
+ *
+ * The same move the recurring view makes, and it belongs in one place: the
+ * ledger's own filter is where "which counterparty" lives, whichever workspace
+ * a person asked the question from.
+ */
+function openCounterpartyLedger(counterpartyKey: string): void {
+  state.transactions.filter = { counterpartyKey };
+  state.transactions.openId = null;
+  state.view = 'transactions';
+  void refresh(true);
+}
+
 /** The account the ledger is filtered to, as the engine described it. */
 function selectedAccount(): AyqAccountSummary | null {
   const id = state.transactions.filter.accountId;
@@ -476,13 +506,16 @@ function drawView(): void {
         },
       );
       return;
+    case 'counterparties':
+      ayqRenderCounterparties(
+        state.counterparties,
+        target,
+        reload => void refresh(reload),
+        counterpartyKey => openCounterpartyLedger(counterpartyKey),
+      );
+      return;
     case 'recurring':
-      ayqRenderRecurring(state.recurring, target, counterpartyKey => {
-        state.transactions.filter = { counterpartyKey };
-        state.transactions.openId = null;
-        state.view = 'transactions';
-        void refresh(true);
-      });
+      ayqRenderRecurring(state.recurring, target, openCounterpartyLedger);
       return;
     case 'rules':
       ayqRenderRules(

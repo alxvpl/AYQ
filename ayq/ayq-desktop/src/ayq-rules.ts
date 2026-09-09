@@ -19,13 +19,14 @@ import api from '@actual-app/api';
 
 import type { AyqCategoryRule } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqCanonicalKey } from './ayq-aliases.ts';
 import { ayqSetCategories } from './ayq-batch.ts';
 import { ayqCategories } from './ayq-categories.ts';
-import { ayqRowKey } from './ayq-ledger.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import {
   ayqId,
   ayqReadStore,
+  ayqRowKey,
   ayqWriteStore,
   type AyqStore,
 } from './ayq-store.ts';
@@ -151,7 +152,12 @@ export async function ayqApplyRules(
     const decision = store.decisions[key];
     if (decision?.source === 'manual') continue;
 
-    const counterpartyKey = store.provenance[key]?.counterpartyKey;
+    // The canonical counterparty, so a rule written for one shop also files
+    // the variants a person has said are that shop.
+    const counterpartyKey = ayqCanonicalKey(
+      store,
+      store.provenance[key]?.counterpartyKey,
+    );
     if (!counterpartyKey) continue;
 
     const target = targets.get(counterpartyKey);
@@ -194,7 +200,8 @@ export function ayqKeyOfTransaction(
   importedId: string | null,
 ): string | null {
   if (!importedId) return null;
-  return ayqReadStore(dataDir).provenance[importedId]?.counterpartyKey ?? null;
+  const store = ayqReadStore(dataDir);
+  return ayqCanonicalKey(store, store.provenance[importedId]?.counterpartyKey);
 }
 
 /**
@@ -214,6 +221,9 @@ export async function ayqPendingForCounterparty(
     const key = ayqRowKey(row);
     if (store.decisions[key]?.source === 'manual') return false;
     if (row.categoryId) return false;
-    return store.provenance[key]?.counterpartyKey === counterpartyKey;
+    return (
+      ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) ===
+      counterpartyKey
+    );
   }).length;
 }

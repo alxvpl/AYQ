@@ -21,6 +21,7 @@ import {
 import { join } from 'node:path';
 
 import type {
+  AyqAliasRecord,
   AyqCategoryRule,
   AyqImportRecord,
   AyqProvenance,
@@ -39,8 +40,15 @@ export type AyqCategoryDecision = {
   at: string;
 };
 
-/** Bump this when the shape changes, and add a step to `migrate`. */
-export const AYQ_STORE_VERSION = 1;
+/**
+ * Bump this when the shape changes, and add a step to `migrate`.
+ *
+ *   1  imports, rules, provenance, decisions.
+ *   2  aliases: the explicit "this imported variant is that counterparty"
+ *      table. Version 1 stores gain an empty one; nothing else moves, and
+ *      nothing already written is rewritten.
+ */
+export const AYQ_STORE_VERSION = 2;
 
 export type AyqStore = {
   version: number;
@@ -50,7 +58,28 @@ export type AyqStore = {
   provenance: Record<string, AyqProvenance>;
   /** Keyed the same way: who decided each category. */
   decisions: Record<string, AyqCategoryDecision>;
+  /**
+   * Explicit counterparty identity decisions, since version 2.
+   *
+   * Flat by construction: no alias points at a variant that is itself aliased,
+   * because adding one re-points the old ones. See `ayq-aliases.ts`.
+   */
+  aliases: AyqAliasRecord[];
 };
+
+/**
+ * The key a decision, a provenance record and an alias match are filed under.
+ *
+ * The bank's own reference when the import had one, and the transaction's id
+ * when it did not — which is what makes a record survive a re-import of the
+ * same statement.
+ */
+export function ayqRowKey(row: {
+  imported_id: string | null;
+  id: string;
+}): string {
+  return row.imported_id ?? row.id;
+}
 
 const FILE = 'ayq-store.json';
 
@@ -61,15 +90,20 @@ function empty(): AyqStore {
     rules: [],
     provenance: {},
     decisions: {},
+    aliases: [],
   };
 }
 
 /**
  * Brings an older store up to the current shape.
  *
- * There is one version so far, so this is a shape check rather than a chain of
- * steps. It exists now, with the fields defaulted one by one, because the first
- * upgrade is exactly when nobody wants to be writing it.
+ * Every field is defaulted one by one rather than spread from what was read, so
+ * a store written by version 1 comes back complete and a field this AYQ does
+ * not know about cannot ride along into the next write.
+ *
+ * A store from a newer AYQ is refused rather than migrated downwards. Losing
+ * somebody's aliases and rules to a downgrade is not an acceptable failure, and
+ * a version this code has never seen cannot be read safely by guessing.
  */
 function migrate(raw: unknown): AyqStore {
   if (typeof raw !== 'object' || raw === null) return empty();
@@ -96,6 +130,9 @@ function migrate(raw: unknown): AyqStore {
       typeof value.decisions === 'object' && value.decisions !== null
         ? value.decisions
         : {},
+    // Version 1 had no alias table. An empty one is the whole of that upgrade:
+    // a budget imported before aliases existed has made no alias decisions.
+    aliases: Array.isArray(value.aliases) ? value.aliases : [],
   };
 }
 

@@ -19,6 +19,12 @@ import type {
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import {
+  ayqAliases,
+  ayqApplyAliases,
+  ayqForgetAlias,
+  ayqRememberAlias,
+} from './ayq-aliases.ts';
 import { ayqUseSend } from './ayq-batch.ts';
 import { ayqImportCamt, ayqImports } from './ayq-camt-import.ts';
 import {
@@ -27,6 +33,10 @@ import {
   ayqRenameCategory,
   ayqSeedCategories,
 } from './ayq-categories.ts';
+import {
+  ayqCounterparties,
+  ayqCounterpartyDetail,
+} from './ayq-counterparties.ts';
 import {
   ayqAccounts,
   ayqDetail,
@@ -397,6 +407,87 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         kind: 'recurring.list',
         result: await ayqRecurring(dataDir),
       };
+
+    case 'counterparties.list':
+      return {
+        id,
+        ok: true,
+        kind: 'counterparties.list',
+        result: await ayqCounterparties(dataDir, request.filter ?? {}),
+      };
+
+    case 'counterparty.detail':
+      return {
+        id,
+        ok: true,
+        kind: 'counterparty.detail',
+        result: await ayqCounterpartyDetail(dataDir, request.key),
+      };
+
+    case 'aliases.list':
+      return { id, ok: true, kind: 'aliases.list', result: ayqAliases(dataDir) };
+
+    case 'alias.create': {
+      // The target is named by the budget rather than by the renderer: the
+      // screen sends a key, and what that counterparty is called is the
+      // engine's answer to it, not a string that crossed the boundary and may
+      // already be stale.
+      const target = await ayqCounterpartyDetail(
+        dataDir,
+        request.counterpartyKey,
+      );
+      if (target.counterparty.transactions === 0) {
+        throw new Error(
+          'no counterparty in this budget has that key; an alias points at one ' +
+            'that exists',
+        );
+      }
+
+      const aliases = ayqRememberAlias(dataDir, {
+        variantKey: request.variantKey,
+        variant: request.variant,
+        counterpartyKey: request.counterpartyKey,
+        counterpartyName: target.counterparty.name,
+      });
+      const { moved } = await ayqApplyAliases(dataDir);
+      // The counterparty may already have a rule, and the transactions that
+      // have just joined it were never filed under it. Applying the rules is
+      // the existing mechanism and keeps the existing limit: a category a
+      // person chose themselves is never overwritten, by a rule or by this.
+      await ayqApplyRules(dataDir);
+
+      return {
+        id,
+        ok: true,
+        kind: 'alias.create',
+        result: {
+          aliases,
+          moved,
+          counterpartyKey: request.counterpartyKey,
+          counterpartyName: target.counterparty.name,
+        },
+      };
+    }
+
+    case 'alias.remove': {
+      const { aliases, removed } = ayqForgetAlias(dataDir, request.aliasId);
+      // The names go back to what the automatic resolver pronounced, which is
+      // still in provenance because an alias never rewrote it.
+      const { moved } = await ayqApplyAliases(dataDir);
+      await ayqApplyRules(dataDir);
+
+      return {
+        id,
+        ok: true,
+        kind: 'alias.remove',
+        result: {
+          aliases,
+          moved,
+          counterpartyKey: removed?.variantKey ?? '',
+          counterpartyName: removed?.variant ?? '',
+        },
+      };
+    }
 
     case 'imports.list':
       return {

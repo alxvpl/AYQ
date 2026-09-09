@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Two months later, on the same invented account: two more visits to the
+  filling station, printed the way the terminal prints it.
+
+  This is the file that proves an alias is not a one-off repair of what is
+  already in the budget. Nothing in these entries has changed and the automatic
+  resolver still reads TEST FUEL STATION out of them — the provenance written
+  for them says so. What has changed is that a person has said which
+  counterparty that is, and the import obeys them.
+
+  Invented, like everything else in this directory.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-2026-alias-later</MsgId>
+      <CreDtTm>2026-07-01T03:04:05</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0246813579.2026-alias-later</Id>
+      <LglSeqNb>202</LglSeqNb>
+      <CreDtTm>2026-07-01T03:04:05</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-05-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-06-30T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL00TEST0246813579</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+
+      <Ntry>
+        <Amt Ccy="EUR">44.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-05-05</Dt></BookgDt><ValDt><Dt>2026-05-05</Dt></ValDt>
+        <AcctSvcrRef>2026050500000208</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TEST FUEL STATION,PAS421 NR:00D105, 05.05.26/07:31   UTRECHT</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">45.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-05</Dt></BookgDt><ValDt><Dt>2026-06-05</Dt></ValDt>
+        <AcctSvcrRef>2026060500000209</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TEST FUEL STATION,PAS421 NR:00D106, 05.06.26/07:47   UTRECHT</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

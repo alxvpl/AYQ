@@ -28,6 +28,7 @@ import type {
   AyqProvenance,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqAliasMap } from './ayq-aliases.ts';
 import { ayqTransactionCount } from './ayq-ledger.ts';
 import { ayqApplyRules } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
@@ -136,8 +137,28 @@ export async function ayqImportCamt(
   const provenance: Record<string, AyqProvenance> = {};
   let skipped = 0;
 
+  // Line 1 of the counterparty precedence, applied where a name is first
+  // decided: the automatic resolver says what it makes of the statement, and an
+  // explicit alias for that key overrules it. Two things stay true because the
+  // alias is applied here rather than inside the resolver — the provenance
+  // written below records what the automatic layers decided, untouched, and a
+  // future import of the same variant lands on the same counterparty as the
+  // rows already in the budget, which are aliased when they are read.
+  const aliases = ayqAliasMap(store);
+
   for (const entry of records) {
-    const counterparty = ayqResolveCounterparty(entry);
+    const resolved = ayqResolveCounterparty(entry);
+    const alias = resolved.key === null ? undefined : aliases.get(resolved.key);
+    const counterparty =
+      alias === undefined
+        ? resolved
+        : {
+            ...resolved,
+            name: alias.counterpartyName,
+            key: alias.counterpartyKey,
+            resolvedBy: 'alias' as const,
+          };
+
     const transaction = ayqToActualTransaction(entry, counterparty);
     if (transaction === null) {
       skipped += 1;
@@ -149,14 +170,19 @@ export async function ayqImportCamt(
       if (seen.has(key)) continue;
       seen.add(key);
 
+      // What the automatic resolver decided, and only that. The alias above
+      // changed which counterparty the transaction is filed under; it did not
+      // change what the bank sent or what AYQ made of it unaided, and this
+      // record is the evidence that lets the decision be read back or undone.
       provenance[key] = {
         importId,
-        counterpartyKey: counterparty.key,
-        resolvedBy: counterparty.resolvedBy,
-        kind: counterparty.kind,
-        counterpartyIban: counterparty.iban,
-        intermediary: counterparty.intermediary,
-        mandateId: counterparty.mandateId,
+        counterpartyKey: resolved.key,
+        counterpartyName: resolved.name,
+        resolvedBy: resolved.resolvedBy,
+        kind: resolved.kind,
+        counterpartyIban: resolved.iban,
+        intermediary: resolved.intermediary,
+        mandateId: resolved.mandateId,
         endToEndId: entry.references.endToEndId,
         bankTransactionCode: bankCode(entry),
         valueDate: entry.valueDate.date,

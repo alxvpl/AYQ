@@ -13,7 +13,9 @@
 import api from '@actual-app/api';
 
 import type { AyqRecurring } from '../../ayq-client/src/ayq-ipc-contract.ts';
-import { ayqReadStore } from './ayq-store.ts';
+
+import { ayqCanonicalKey } from './ayq-aliases.ts';
+import { ayqReadStore, ayqRowKey } from './ayq-store.ts';
 
 /** Below this a rhythm is a coincidence. */
 const MINIMUM_OCCURRENCES = 3;
@@ -79,6 +81,7 @@ export async function ayqRecurring(dataDir: string): Promise<AyqRecurring[]> {
       .select(['id', 'date', 'amount', 'imported_id', { payee: 'payee.name' }]),
   )) as {
     data?: Array<{
+      id: string;
       date: string;
       amount: number;
       imported_id: string | null;
@@ -91,10 +94,11 @@ export async function ayqRecurring(dataDir: string): Promise<AyqRecurring[]> {
     const amount = Number(row.amount ?? 0);
     if (amount >= 0) continue;
 
-    const provenance = row.imported_id
-      ? store.provenance[row.imported_id]
-      : undefined;
-    const key = provenance?.counterpartyKey ?? row.payee;
+    const provenance = store.provenance[ayqRowKey(row)];
+    // The canonical identity, aliases applied. A shop the bank printed two ways
+    // is one rhythm the moment a person says the two names are one shop —
+    // otherwise a monthly charge looks like two coincidences.
+    const key = ayqCanonicalKey(store, provenance?.counterpartyKey) ?? row.payee;
     if (!key) continue;
 
     const bucket = series.get(key);

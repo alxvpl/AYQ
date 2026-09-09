@@ -43,6 +43,8 @@ never a second channel.
 | `categories.list` | Actual's categories and their groups |
 | `rules.list` · `rules.remove` · `rules.apply` | the standing decisions |
 | `recurring.list` | what comes back, and when it is next due |
+| `counterparties.list` · `counterparty.detail` | who the money went to |
+| `aliases.list` · `alias.create` · `alias.remove` | who a name variant is |
 | `imports.list` | what has been imported, and what each run did |
 | `import.pick` · `import.camt` | the native picker, then the import |
 
@@ -67,8 +69,42 @@ was imported. A verified wait, not a sleep.
 Actual's schema has no counterparty account, no bank transaction code and no
 SEPA mandate, and no notion of a rule. Those live in `ayq-store.json` beside
 the budget, keyed by the same `imported_id` the transaction carries, together
-with the rules and the import history. It is versioned and written atomically,
-and a store written by a newer AYQ is refused rather than quietly overwritten.
+with the rules, the aliases and the import history. It is versioned and written
+atomically, and a store written by a newer AYQ is refused rather than quietly
+overwritten.
+
+Schema versions: **1** imports, rules, provenance, decisions. **2** adds the
+alias table; a version 1 store gains an empty one and nothing already written
+is rewritten.
+
+## Who a counterparty is
+
+The importer resolves a name through `ayq-camt`'s chain of layers and records
+what it decided. It is right most of the time and cannot be right always: a
+shop that renames itself, or a terminal that prints one merchant two ways,
+produces two counterparties where a person sees one. An **alias** is the person
+saying so — one imported name variant is one canonical counterparty. It is an
+exact match on a normalised key, never a similarity score, and AYQ never
+invents one.
+
+The precedence, and it is the same one whether a transaction was imported years
+ago or arrives tomorrow:
+
+1. an alias whose `variantKey` is the counterparty key provenance recorded for
+   the transaction — a person's decision, and the last word;
+2. that recorded key itself, whatever resolver layer pronounced it;
+3. the payee Actual holds, for a transaction AYQ did not import;
+4. nothing, and the transaction belongs to no counterparty.
+
+Line 1 is applied when the ledger is read — `ayqCanonicalKey` in
+`src/ayq-aliases.ts`, which every view that groups by counterparty goes
+through — and again at import, where it decides the payee a new transaction
+gets. Provenance is never rewritten: the key the resolver decided, the name it
+pronounced and the string the bank printed stay exactly as they arrived, which
+is what lets an alias be taken back.
+
+An alias answers *who this is*. A category rule answers *where it belongs*.
+They are separate, and neither may overwrite a category a person filed by hand.
 
 ## Importing a statement
 
