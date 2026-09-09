@@ -268,18 +268,14 @@ jobs:
           # Nothing is published from here; saying so keeps electron-builder
           # from reaching for a release API it has no business calling.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: |
-          # electron-builder logs "signing with signtool.exe" for this build,
-          # which it should not do without a certificate — and a signature
-          # appended after NSIS has written its checksum is one of the few
-          # things that would make the checksum pass fault while leaving the
-          # payload perfectly good, which is exactly what is being seen.
-          foreach ($name in 'CSC_LINK', 'WIN_CSC_LINK', 'CSC_KEY_PASSWORD') {
-            $set = [Environment]::GetEnvironmentVariable($name)
-            Write-Host ("{0}: {1}" -f $name, ($(if ($set) { 'set' } else { 'unset' })))
-          }
-          npm run package
-        shell: pwsh
+        # The "signing with signtool.exe" line this step prints does not mean
+        # the installer is signed. electron-builder logs it before it looks for
+        # a certificate; with none configured, signFile logs "signing is
+        # skipped" at debug level and returns false. Read in
+        # app-builder-lib/out/codeSign/, not inferred. So the installer is
+        # unsigned, and a signature appended after NSIS wrote its checksum —
+        # the one explanation that fitted the crash — is ruled out.
+        run: npm run package
 
       - name: Install it and run what was installed
         shell: pwsh
@@ -336,11 +332,17 @@ jobs:
           # and offset for every crashed process.
           if ($install.ExitCode -eq -1073741819) {
             Write-Host 'the installer crashed with an access violation (0xC0000005)'
+            # Two logs, because the Application log stayed empty for this and
+            # antivirus is the remaining candidate: real-time scanning reads
+            # every byte of a 118 MB executable as the installer's own checksum
+            # pass reads it, and an access violation inside that read is a
+            # known shape for it. The payload is provably fine — /NCRC unpacks
+            # an application that then runs — so what faults is a full-file
+            # read, and this is what would say who else was reading it.
             $crashes = Get-WinEvent -FilterHashtable @{
-              LogName = 'Application'
-              ProviderName = 'Application Error', 'Windows Error Reporting'
+              LogName = 'Application', 'Microsoft-Windows-Windows Defender/Operational'
               StartTime = (Get-Date).AddMinutes(-5)
-            } -MaxEvents 5 -ErrorAction SilentlyContinue
+            } -MaxEvents 8 -ErrorAction SilentlyContinue
             if ($crashes) {
               foreach ($crash in $crashes) {
                 Write-Host "--- $($crash.TimeCreated) $($crash.ProviderName)"
