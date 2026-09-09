@@ -287,10 +287,44 @@ jobs:
           # installer is per-user, so it needs no administrator; naming the
           # directory means the check below looks where the files were actually
           # asked to go rather than guessing at a default.
+          # Said before the attempt, because the installer has twice now died
+          # with an access violation rather than refusing politely, and an
+          # installer that unpacks 300 MB onto a drive that has none is the
+          # first explanation to rule out. Everything named here has already
+          # done its job: the unpacked build is what the installer was made
+          # from, and the budgets belong to acceptance steps that have passed.
+          foreach ($spent in @(
+            (Join-Path $PWD 'release\win-unpacked'),
+            "$env:RUNNER_TEMP\ayq-category-budget",
+            "$env:RUNNER_TEMP\ayq-import-budget",
+            "$env:RUNNER_TEMP\ayq-badimport-budget",
+            "$env:RUNNER_TEMP\ayq-damaged-budget",
+            "$env:RUNNER_TEMP\ayq-lock-budget"
+          )) {
+            if (Test-Path $spent) {
+              Remove-Item -Recurse -Force $spent -ErrorAction SilentlyContinue
+            }
+          }
+
+          foreach ($drive in @('C', 'D')) {
+            $free = Get-PSDrive -Name $drive -ErrorAction SilentlyContinue
+            if ($free) {
+              Write-Host ("free on {0}: {1} GB" -f $drive,
+                [math]::Round($free.Free / 1GB, 2))
+            }
+          }
+
           $target = Join-Path $env:RUNNER_TEMP 'ayq-install'
           $install = Start-Process -FilePath $setup.FullName `
             -ArgumentList '/S', "/D=$target" -PassThru -Wait
           Write-Host "installer exit code : $($install.ExitCode)"
+
+          # 0xC0000005 is a crash, not a refusal, and it is worth naming as one:
+          # a reader who sees a nine-digit negative number learns nothing, and a
+          # reader who sees "access violation" knows where to look.
+          if ($install.ExitCode -eq -1073741819) {
+            throw 'the installer crashed with an access violation (0xC0000005)'
+          }
 
           # The installer's own verdict, which this step used to discard. An
           # installer that refuses says so in its exit code and returns at once;
