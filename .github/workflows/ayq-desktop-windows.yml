@@ -268,7 +268,18 @@ jobs:
           # Nothing is published from here; saying so keeps electron-builder
           # from reaching for a release API it has no business calling.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npm run package
+        run: |
+          # electron-builder logs "signing with signtool.exe" for this build,
+          # which it should not do without a certificate — and a signature
+          # appended after NSIS has written its checksum is one of the few
+          # things that would make the checksum pass fault while leaving the
+          # payload perfectly good, which is exactly what is being seen.
+          foreach ($name in 'CSC_LINK', 'WIN_CSC_LINK', 'CSC_KEY_PASSWORD') {
+            $set = [Environment]::GetEnvironmentVariable($name)
+            Write-Host ("{0}: {1}" -f $name, ($(if ($set) { 'set' } else { 'unset' })))
+          }
+          npm run package
+        shell: pwsh
 
       - name: Install it and run what was installed
         shell: pwsh
@@ -359,7 +370,9 @@ jobs:
           # without reading it, a refusal was indistinguishable from a slow
           # install and cost three minutes of waiting before a message that
           # could only say what was missing, never why.
-          if ($install.ExitCode -ne 0) {
+          # A refusal that is not the crash handled below. The crash branch runs
+          # after this one and can recover, so this must not speak for it.
+          if ($install.ExitCode -ne 0 -and $install.ExitCode -ne -1073741819) {
             throw "the installer refused with exit code $($install.ExitCode)"
           }
 
