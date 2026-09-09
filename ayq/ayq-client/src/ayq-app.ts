@@ -168,6 +168,30 @@ let damagedTold = '';
 /** Held until the reload finishes, because a successful reload clears the bar. */
 let damagedNotice: string | null = null;
 
+/**
+ * Files every transaction from one counterparty, and says so if it cannot.
+ *
+ * The engine writes the rule and applies it; the screen only asks. Reloading
+ * afterwards is the point — the row leaves the backlog and the amount appears
+ * in the breakdown above it, which is the whole reason a person is here.
+ */
+async function fileCounterparty(
+  key: string,
+  categoryId: string,
+): Promise<void> {
+  try {
+    const answer = await ayqAsk({
+      kind: 'transaction.categoriseCounterparty',
+      counterpartyKey: key,
+      categoryId,
+    });
+    if (!answer.ok) showProblem(answer.message);
+  } catch (error) {
+    showProblem(error instanceof Error ? error.message : String(error));
+  }
+  await refresh(true);
+}
+
 async function loadShell(): Promise<void> {
   state.status = (await need({ kind: 'engine.status' })).result;
   state.summary = (await need({ kind: 'summary' })).result;
@@ -212,6 +236,12 @@ async function loadView(): Promise<void> {
         ...state.spending,
         spending: (
           await need({ kind: 'spending', filter: state.spending.filter })
+        ).result,
+        unfiled: (
+          await need({
+            kind: 'counterparties.unfiled',
+            filter: state.spending.filter,
+          })
         ).result,
       };
       return;
@@ -381,6 +411,7 @@ function drawView(): void {
     case 'spending':
       ayqRenderSpending(
         state.spending,
+        state.transactions.categories,
         target,
         reload => void refresh(reload),
         categoryId => {
@@ -394,6 +425,9 @@ function drawView(): void {
           state.transactions.openId = null;
           state.view = 'transactions';
           void refresh(true);
+        },
+        (key, categoryId) => {
+          void fileCounterparty(key, categoryId);
         },
       );
       return;

@@ -33,6 +33,7 @@ import {
   ayqLedger,
   ayqSpending,
   ayqSummary,
+  ayqUnfiled,
 } from './ayq-ledger.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import {
@@ -419,6 +420,14 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'spending',
         result: await ayqSpending(request.filter ?? {}),
+      };
+
+    case 'counterparties.unfiled':
+      return {
+        id,
+        ok: true,
+        kind: 'counterparties.unfiled',
+        result: await ayqUnfiled(dataDir, request.filter ?? {}),
       };
 
     case 'import.camt':

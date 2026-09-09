@@ -915,6 +915,59 @@ test('spending narrows to a period without losing the periods on offer', async (
   assert.deepEqual(empty.months, all.months, 'still offers the real months');
 });
 
+test('the backlog is a list of shops, largest first, and shrinks by one decision', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const backlog = await ask(dataDir, { kind: 'counterparties.unfiled' });
+
+  // Fourteen transactions, but four counterparties to decide about — and the
+  // salary is not among them, because income is not spending to be filed.
+  assert.equal(backlog.length, 4);
+  assert.ok(
+    backlog.every(one => one.name !== 'Testwerkgever B.V.'),
+    'what came in is not a shop to categorise',
+  );
+
+  const amounts = backlog.map(one => one.cents);
+  assert.deepEqual(
+    [...amounts].sort((left, right) => right - left),
+    amounts,
+    'largest first, because that is where the attention is worth spending',
+  );
+
+  const fuel = backlog.find(one => one.name === 'Testfuel');
+  assert.ok(fuel);
+  assert.equal(fuel.transactions, 4, 'every variant the bank printed, as one');
+  assert.ok(fuel.firstDate <= fuel.lastDate);
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const transport = categories.find(category => category.name === 'Transport');
+  assert.ok(transport);
+
+  const filed = await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: fuel.key,
+    categoryId: transport.id,
+  });
+  assert.equal(filed.categorised, 4, 'one decision, all four');
+
+  const after = await ask(dataDir, { kind: 'counterparties.unfiled' });
+  assert.equal(after.length, 3, 'and the backlog is one shorter');
+  assert.ok(after.every(one => one.key !== fuel.key));
+
+  // What left the backlog arrived in the breakdown; nothing was lost between.
+  const spending = await ask(dataDir, { kind: 'spending' });
+  const row = spending.rows.find(one => one.categoryId === transport.id);
+  assert.ok(row);
+  assert.equal(row.cents, fuel.cents);
+  assert.equal(
+    spending.uncategorisedCents,
+    after.reduce((sum, one) => sum + one.cents, 0),
+    'and what is left unfiled is exactly what the backlog still lists',
+  );
+});
+
 test('a fresh budget has a short, usable set of categories', async () => {
   const dataDir = await budget();
   const categories = await ask(dataDir, { kind: 'categories.list' });

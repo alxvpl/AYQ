@@ -11,12 +11,14 @@
 // that omits it is a total that understates the year and says nothing about why.
 
 import { ayqElement, ayqSelect, ayqTable } from './ayq-dom.ts';
-import { ayqEuro, ayqMonth } from './ayq-format.ts';
+import { ayqDay, ayqEuro, ayqMonth } from './ayq-format.ts';
 import type { AyqSpending, AyqSpendingFilter } from './ayq-ipc-contract.ts';
 
 export type AyqSpendingState = {
   filter: AyqSpendingFilter;
   spending: AyqSpending | null;
+  /** The counterparties nobody has filed, biggest first. */
+  unfiled: AyqUnfiled[];
   /** 'all' | 'year' | 'month', remembered so the control reads back. */
   period: 'all' | 'year' | 'month';
   /** The year or month chosen, when the period is one of those. */
@@ -24,7 +26,7 @@ export type AyqSpendingState = {
 };
 
 export function ayqEmptySpendingState(): AyqSpendingState {
-  return { filter: {}, spending: null, period: 'all', chosen: '' };
+  return { filter: {}, spending: null, unfiled: [], period: 'all', chosen: '' };
 }
 
 /** The bounds a period choice means, which is all the engine is told. */
@@ -45,9 +47,11 @@ export function ayqSpendingBounds(
 
 export function ayqRenderSpending(
   state: AyqSpendingState,
+  categories: AyqCategory[],
   target: HTMLElement,
   redraw: (reload: boolean) => void,
   openCategory: (categoryId: string | null) => void,
+  fileCounterparty: (key: string, categoryId: string) => void,
 ): void {
   target.replaceChildren();
   const spending = state.spending;
@@ -116,6 +120,93 @@ export function ayqRenderSpending(
     },
   );
   target.append(table);
+
+  if (state.unfiled.length > 0) {
+    target.append(backlog(state, categories, fileCounterparty));
+  }
+}
+
+/**
+ * The backlog, as a list of shops rather than a list of transactions.
+ *
+ * On the day someone imports six years of statements, everything is unfiled and
+ * the ledger is twelve thousand rows long. It is also about thirty shops, and
+ * one decision about each files every transaction from it. So the work is
+ * offered that way, largest amount first, because that is the order in which
+ * the answers on the screen above stop being mostly "not yet filed".
+ */
+function backlog(
+  state: AyqSpendingState,
+  categories: AyqCategory[],
+  fileCounterparty: (key: string, categoryId: string) => void,
+): HTMLElement {
+  const box = ayqElement('div', 'backlog');
+  box.append(
+    ayqElement(
+      'h2',
+      'backlog-title',
+      state.unfiled.length === 1
+        ? 'One counterparty is not filed yet'
+        : `${state.unfiled.length} counterparties are not filed yet`,
+    ),
+    ayqElement(
+      'p',
+      'empty-body',
+      'Filing one of these files every transaction from it, and everything ' +
+        'that arrives from it later.',
+    ),
+  );
+
+  box.append(
+    ayqTable<AyqUnfiled>(
+      [
+        {
+          label: 'Counterparty',
+          className: 'col-payee',
+          cell: row => row.name,
+        },
+        {
+          label: 'Transactions',
+          className: 'col-count',
+          cell: row => String(row.transactions),
+        },
+        {
+          label: 'Since',
+          className: 'col-date',
+          cell: row => ayqDay(row.firstDate),
+        },
+        {
+          label: 'File as',
+          className: 'col-category',
+          cell: row =>
+            ayqSelect(
+              [
+                { value: '', label: '—' },
+                ...categories
+                  .filter(category => !category.isIncome)
+                  .map(category => ({
+                    value: category.id,
+                    label: category.name,
+                  })),
+              ],
+              '',
+              value => {
+                if (value !== '') fileCounterparty(row.key, value);
+              },
+              'category-unset',
+            ),
+        },
+        {
+          label: 'Spent',
+          className: 'col-amount',
+          cell: row => ayqElement('span', 'out', ayqEuro(row.cents)),
+        },
+      ],
+      state.unfiled,
+    ),
+  );
+
+  return box;
 }
 
 /** The period control: everything, a year, or a month the budget has. */

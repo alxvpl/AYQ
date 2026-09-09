@@ -18,6 +18,7 @@ import type {
   AyqSpending,
   AyqSpendingFilter,
   AyqSpendingRow,
+  AyqUnfiled,
   AyqLedgerRow,
   AyqSummary,
   AyqTransactionDetail,
@@ -197,6 +198,57 @@ export async function ayqSpending(
     months: [...new Set(dates.map(date => date.slice(0, 7)))],
     years: [...new Set(dates.map(date => date.slice(0, 4)))],
   };
+}
+
+/**
+ * The counterparties nobody has filed yet, biggest first.
+ *
+ * Grouped by the canonical key rather than by the string the bank printed, so
+ * a shop that appears under eleven different terminal ids is one line and one
+ * decision. Ordered by what it comes to, because a person with a backlog wants
+ * to spend their attention where the money is, not where the alphabet is.
+ *
+ * Transactions the resolver could not give a key are left out: there is no rule
+ * that could be written for them, so offering one would be a promise AYQ cannot
+ * keep. They stay in the ledger, and stay filable by hand.
+ */
+export async function ayqUnfiled(
+  dataDir: string,
+  filter: AyqSpendingFilter = {},
+): Promise<AyqUnfiled[]> {
+  const store = ayqReadStore(dataDir);
+  const rows = await queried(filter);
+
+  const byKey = new Map<string, AyqUnfiled>();
+
+  for (const row of rows) {
+    if (row.categoryId) continue;
+    const cents = Number(row.amount ?? 0);
+    if (cents >= 0) continue;
+
+    const key = store.provenance[ayqRowKey(row)]?.counterpartyKey;
+    if (!key) continue;
+
+    const date = String(row.date);
+    const found = byKey.get(key);
+    if (found) {
+      found.cents += -cents;
+      found.transactions += 1;
+      if (date < found.firstDate) found.firstDate = date;
+      if (date > found.lastDate) found.lastDate = date;
+    } else {
+      byKey.set(key, {
+        key,
+        name: row.payee ?? 'Unknown',
+        cents: -cents,
+        transactions: 1,
+        firstDate: date,
+        lastDate: date,
+      });
+    }
+  }
+
+  return [...byKey.values()].sort((left, right) => right.cents - left.cents);
 }
 
 /** The ledger, filtered, newest first. */

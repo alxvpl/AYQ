@@ -99,6 +99,25 @@ export type AyqLedgerFilter = {
   limit?: number;
 };
 
+/**
+ * One counterparty nobody has filed yet, and what it comes to.
+ *
+ * The backlog on day one is not a list of transactions — it is a list of shops.
+ * Twelve thousand rows across six years is perhaps thirty counterparties, and
+ * one decision about each files all of them, so the work is ordered by what it
+ * is worth rather than by date.
+ */
+export type AyqUnfiled = {
+  /** The canonical counterparty key a rule would be written against. */
+  key: string;
+  name: string;
+  /** Spending, positive, over the period asked about. */
+  cents: number;
+  transactions: number;
+  firstDate: string;
+  lastDate: string;
+};
+
 /** Which period, and which account, the spending question is being asked of. */
 export type AyqSpendingFilter = {
   /** Inclusive YYYY-MM-DD bounds; both absent means everything there is. */
@@ -330,6 +349,7 @@ export type AyqResults = {
   'imports.list': AyqImportRecord[];
   summary: AyqSummary;
   spending: AyqSpending;
+  'counterparties.unfiled': AyqUnfiled[];
   'import.pick': AyqPickedFile;
   'import.camt': AyqImportSummary;
 };
@@ -374,6 +394,7 @@ export type AyqRequestBody =
   | { kind: 'imports.list' }
   | { kind: 'summary' }
   | { kind: 'spending'; filter?: AyqSpendingFilter }
+  | { kind: 'counterparties.unfiled'; filter?: AyqSpendingFilter }
   | { kind: 'import.pick' }
   | { kind: 'import.camt'; paths: string[] };
 
