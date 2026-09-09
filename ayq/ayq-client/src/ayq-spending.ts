@@ -93,8 +93,8 @@ export function ayqRenderSpending(
         label: 'Share',
         className: 'col-share',
         cell: row => {
-          const bar = ayqElement('div', 'bar');
-          const fill = ayqElement('div', 'bar-fill');
+          const bar = ayqElement('div', 'share-bar');
+          const fill = ayqElement('div', 'share-fill');
           // Rounded to a whole percent for the label, but drawn from the exact
           // share: two categories a hair apart should not draw identically.
           fill.style.width = `${(row.share * 100).toFixed(2)}%`;

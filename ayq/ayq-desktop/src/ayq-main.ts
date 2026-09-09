@@ -17,7 +17,14 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { app, BrowserWindow, dialog, ipcMain, utilityProcess } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  utilityProcess,
+} from 'electron';
 
 import {
   AYQ_IPC_CHANNEL,
@@ -231,6 +238,12 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
 }
 
 function createWindow(): BrowserWindow {
+  // Electron gives every application a File/Edit/View/Window menu whether or
+  // not it has anything to put in one. AYQ does not: every action it offers is
+  // on the page. An empty menu bar is a row of the window's height spent on
+  // four words that lead nowhere, and on Windows it sits above the content.
+  Menu.setApplicationMenu(null);
+
   const window = new BrowserWindow({
     width: 900,
     height: 700,
@@ -396,7 +409,7 @@ async function spendingShown(window: BrowserWindow): Promise<string> {
         if (figures.length === 0) return '';
         const rows = [...document.querySelectorAll('.grid tbody tr')].map(row => {
           const cell = name => row.querySelector('.col-' + name);
-          const bar = cell('share') && cell('share').querySelector('.bar');
+          const bar = cell('share') && cell('share').querySelector('.share-bar');
           return [
             cell('payee') ? cell('payee').innerText.trim() : '',
             bar ? bar.title : '',
@@ -636,6 +649,23 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   const pagedOk =
     process.env.AYQ_SMOKE_SHOW_MORE !== '1' ||
     /^(\d+) rows, then (?!\1\b)/.test(paged);
+
+  if (process.env.AYQ_SMOKE_GEOMETRY === '1') {
+    const geometry = await window.webContents.executeJavaScript(`(() => {
+      const bar = document.querySelector('.bar');
+      const title = document.querySelector('.bar h1');
+      const box = bar ? bar.getBoundingClientRect() : null;
+      const head = title ? title.getBoundingClientRect() : null;
+      return JSON.stringify({
+        scrollY: window.scrollY,
+        innerHeight: window.innerHeight,
+        bar: box ? { top: box.top, height: box.height } : null,
+        title: head ? { top: head.top, height: head.height } : null,
+        bodyScrollHeight: document.body.scrollHeight,
+      });
+    })()`);
+    process.stdout.write(`[ayq-smoke] geometry: ${geometry}\n`);
+  }
 
   const engineHost = await dataset(window, 'ayqEngineHost');
   const body = await ledgerDump(window);
