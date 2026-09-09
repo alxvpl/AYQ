@@ -63,6 +63,8 @@ if (expectCategory) env.AYQ_SMOKE_EXPECT_CATEGORY = expectCategory;
 // started while this one still holds the budget.
 const hold = flag('hold');
 if (hold) env.AYQ_SMOKE_HOLD_MS = hold;
+// `--spending` opens the Spending view and requires it to show a breakdown.
+if (has('spending')) env.AYQ_SMOKE_SPENDING = '1';
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

@@ -27,15 +27,21 @@ import {
   ayqRenderRules,
 } from './ayq-other-views.ts';
 import {
+  ayqEmptySpendingState,
+  ayqRenderSpending,
+  type AyqSpendingState,
+} from './ayq-spending.ts';
+import {
   ayqEmptyTransactionsState,
   ayqRenderTransactions,
   type AyqTransactionsState,
 } from './ayq-transactions.ts';
 
-type AyqView = 'transactions' | 'recurring' | 'rules' | 'imports';
+type AyqView = 'transactions' | 'spending' | 'recurring' | 'rules' | 'imports';
 
 const VIEWS: Array<{ id: AyqView; label: string }> = [
   { id: 'transactions', label: 'Transactions' },
+  { id: 'spending', label: 'Spending' },
   { id: 'recurring', label: 'Recurring' },
   { id: 'rules', label: 'Rules' },
   { id: 'imports', label: 'Imports' },
@@ -48,6 +54,7 @@ type AyqState = {
   status: AyqEngineStatus | null;
   summary: AyqSummary | null;
   transactions: AyqTransactionsState;
+  spending: AyqSpendingState;
   recurring: AyqRecurring[];
   rules: AyqCategoryRule[];
   imports: AyqImportRecord[];
@@ -59,6 +66,7 @@ const state: AyqState = {
   status: null,
   summary: null,
   transactions: ayqEmptyTransactionsState(),
+  spending: ayqEmptySpendingState(),
   recurring: [],
   rules: [],
   imports: [],
@@ -192,6 +200,20 @@ async function loadView(): Promise<void> {
           filter: state.transactions.filter,
         })
       ).result;
+      return;
+    }
+    case 'spending': {
+      if (state.transactions.categories.length === 0) {
+        state.transactions.categories = (
+          await need({ kind: 'categories.list' })
+        ).result;
+      }
+      state.spending = {
+        ...state.spending,
+        spending: (
+          await need({ kind: 'spending', filter: state.spending.filter })
+        ).result,
+      };
       return;
     }
     case 'recurring':
@@ -354,6 +376,25 @@ function drawView(): void {
         state.transactions,
         target,
         reload => void refresh(reload),
+      );
+      return;
+    case 'spending':
+      ayqRenderSpending(
+        state.spending,
+        target,
+        reload => void refresh(reload),
+        categoryId => {
+          // The period being looked at, carried into the ledger: the question
+          // after "Groceries cost this much" is always "on what", and it is
+          // about the same months, not about all time.
+          state.transactions.filter = {
+            ...state.spending.filter,
+            ...(categoryId === null ? { uncategorised: true } : { categoryId }),
+          };
+          state.transactions.openId = null;
+          state.view = 'transactions';
+          void refresh(true);
+        },
       );
       return;
     case 'recurring':

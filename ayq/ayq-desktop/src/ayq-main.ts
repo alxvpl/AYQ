@@ -372,6 +372,48 @@ async function problemShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Opens the Spending view and reads back what it says.
+ *
+ * Through the tab a person clicks, and read from the rendered table rather than
+ * from any state the renderer kept — the same rule as the category control. If
+ * the screen does not show the breakdown, it did not happen.
+ */
+async function spendingShown(window: BrowserWindow): Promise<string> {
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-tab="spending"]\').click(); true',
+  );
+
+  const deadline = Date.now() + 60_000;
+  let shown = '';
+  while (Date.now() < deadline) {
+    shown = String(
+      await window.webContents.executeJavaScript(`(() => {
+        const figures = [...document.querySelectorAll('.figures .figure')].map(one => {
+          const label = one.querySelector('.figure-label');
+          const value = one.querySelector('.figure-value');
+          return (label ? label.textContent : '') + ' ' + (value ? value.textContent : '');
+        });
+        if (figures.length === 0) return '';
+        const rows = [...document.querySelectorAll('.grid tbody tr')].map(row => {
+          const cell = name => row.querySelector('.col-' + name);
+          const bar = cell('share') && cell('share').querySelector('.bar');
+          return [
+            cell('payee') ? cell('payee').innerText.trim() : '',
+            bar ? bar.title : '',
+            cell('count') ? cell('count').innerText.trim() : '',
+            cell('amount') ? cell('amount').innerText.trim() : '',
+          ].join(' | ');
+        });
+        return figures.join('   ') + '\\n' + rows.join('\\n');
+      })()`),
+    );
+    if (shown !== '') break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return shown;
+}
+
+/**
  * The ledger as a log can carry it: one line per row, the category being the
  * one the row shows rather than every option it offers.
  *
@@ -527,6 +569,21 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // Asked before the ledger is read back, because it leaves another view open;
+  // the run returns to the transactions afterwards so the dump is of those.
+  let spending = '';
+  if (process.env.AYQ_SMOKE_SPENDING === '1') {
+    spending = await spendingShown(window);
+    process.stdout.write(
+      `[ayq-smoke] spending:\n${spending || '(the view showed nothing)'}\n`,
+    );
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
+    );
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+  }
+  const spendingOk = process.env.AYQ_SMOKE_SPENDING !== '1' || spending !== '';
+
   const engineHost = await dataset(window, 'ayqEngineHost');
   const body = await ledgerDump(window);
   const said = await problemShown(window);
@@ -540,7 +597,12 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
 
   const hostOk = requiredHost === '' || engineHost === requiredHost;
   const passed =
-    state === 'ready' && hostOk && emptyOk && importOk && categoryOk;
+    state === 'ready' &&
+    hostOk &&
+    emptyOk &&
+    importOk &&
+    categoryOk &&
+    spendingOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
   // to stdout reaches the console that started it. So the outcome is also
@@ -562,6 +624,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           importOk,
           categoryOk,
           categoryShown,
+          spendingOk,
           imports: importRounds,
           dataDir,
         },

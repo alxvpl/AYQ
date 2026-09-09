@@ -840,6 +840,81 @@ test('a store that cannot be read is kept, not overwritten', async () => {
   assert.deepEqual(await ask(dataDir, { kind: 'rules.list' }), []);
 });
 
+test('spending answers by category, and counts what nobody filed', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const before = await ask(dataDir, { kind: 'spending' });
+  assert.equal(before.rows.length, 1, 'nothing is filed, so there is one row');
+  assert.equal(before.rows[0]?.categoryId, null);
+  assert.equal(before.rows[0]?.categoryName, 'Uncategorised');
+  assert.equal(before.uncategorisedCents, before.totalCents);
+  assert.ok(before.incomeCents > 0, 'the salary is income, not a category');
+  assert.deepEqual(before.years, ['2026']);
+  assert.deepEqual(before.months, ['2026-06']);
+
+  // Spending is stated positive, and income is never netted into it.
+  assert.ok(before.totalCents > 0);
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const transport = categories.find(category => category.name === 'Transport');
+  assert.ok(transport);
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const fuel = ledger.rows.find(row => row.payee === 'Testfuel');
+  assert.ok(fuel);
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: fuel.id,
+    categoryId: transport.id,
+    createRule: true,
+  });
+
+  const after = await ask(dataDir, { kind: 'spending' });
+  const filed = after.rows.find(row => row.categoryId === transport.id);
+  assert.ok(filed, 'the category it was filed in is a row now');
+  assert.equal(filed.transactions, 4, 'all four fuel stops');
+  assert.ok(filed.cents > 0);
+
+  // The total did not move: filing changes where the money is attributed and
+  // not how much there is.
+  assert.equal(after.totalCents, before.totalCents);
+  assert.equal(
+    after.uncategorisedCents,
+    before.totalCents - filed.cents,
+    'what is left unfiled is the rest, exactly',
+  );
+  assert.equal(
+    Math.round(after.rows.reduce((sum, row) => sum + row.share, 0) * 100),
+    100,
+    'the shares add up',
+  );
+});
+
+test('spending narrows to a period without losing the periods on offer', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const june = await ask(dataDir, {
+    kind: 'spending',
+    filter: { from: '2026-06-01', to: '2026-06-30' },
+  });
+  const all = await ask(dataDir, { kind: 'spending' });
+  assert.equal(june.totalCents, all.totalCents, 'the fixture is one month');
+
+  // Asked of the whole budget rather than of the period, or the control that
+  // chooses a period could never leave the one it is on.
+  assert.deepEqual(june.months, all.months);
+  assert.deepEqual(june.years, all.years);
+
+  const empty = await ask(dataDir, {
+    kind: 'spending',
+    filter: { from: '2020-01-01', to: '2020-12-31' },
+  });
+  assert.equal(empty.totalCents, 0);
+  assert.deepEqual(empty.rows, []);
+  assert.deepEqual(empty.months, all.months, 'still offers the real months');
+});
+
 test('a fresh budget has a short, usable set of categories', async () => {
   const dataDir = await budget();
   const categories = await ask(dataDir, { kind: 'categories.list' });

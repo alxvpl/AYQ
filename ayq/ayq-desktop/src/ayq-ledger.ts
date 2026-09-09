@@ -15,10 +15,14 @@ import type {
   AyqCategorySource,
   AyqLedger,
   AyqLedgerFilter,
+  AyqSpending,
+  AyqSpendingFilter,
+  AyqSpendingRow,
   AyqLedgerRow,
   AyqSummary,
   AyqTransactionDetail,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
+
 import { ayqReadStore } from './ayq-store.ts';
 
 /** How many rows the screen is given when it does not ask for a number. */
@@ -90,7 +94,10 @@ function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
 }
 
 /** The key a decision and a provenance record are filed under. */
-export function ayqRowKey(row: { imported_id: string | null; id: string }): string {
+export function ayqRowKey(row: {
+  imported_id: string | null;
+  id: string;
+}): string {
   return row.imported_id ?? row.id;
 }
 
@@ -106,6 +113,89 @@ function toRow(row: AyqQueriedRow, source: AyqCategorySource): AyqLedgerRow {
     categoryId: row.categoryId ?? null,
     categorySource: row.categoryId ? source : null,
     cleared: row.cleared === true,
+  };
+}
+
+/**
+ * What each category took over a period.
+ *
+ * Spending only, and stated positive. Income is reported once as its own total
+ * rather than netted into the categories, because "what did this year cost" and
+ * "what came in" are two questions and answering them as one difference hides
+ * both. A refund inside a category is a positive amount there and does reduce
+ * that category, which is right: it is money that came back from that shop.
+ *
+ * What nobody has filed yet is a row like any other. A total that quietly drops
+ * it would be a total that lies about the size of the year.
+ */
+export async function ayqSpending(
+  filter: AyqSpendingFilter = {},
+): Promise<AyqSpending> {
+  const rows = await queried(filter);
+
+  const byCategory = new Map<
+    string,
+    { name: string; cents: number; count: number }
+  >();
+  let income = 0;
+
+  for (const row of rows) {
+    const cents = Number(row.amount ?? 0);
+    if (cents > 0) {
+      income += cents;
+      continue;
+    }
+    if (cents === 0) continue;
+
+    const id = row.categoryId ?? '';
+    const found = byCategory.get(id);
+    if (found) {
+      found.cents += -cents;
+      found.count += 1;
+    } else {
+      byCategory.set(id, {
+        name: row.category ?? 'Uncategorised',
+        cents: -cents,
+        count: 1,
+      });
+    }
+  }
+
+  const total = [...byCategory.values()].reduce(
+    (sum, one) => sum + one.cents,
+    0,
+  );
+  const spending: AyqSpendingRow[] = [...byCategory.entries()]
+    .map(([id, one]) => ({
+      categoryId: id === '' ? null : id,
+      categoryName: one.name,
+      cents: one.cents,
+      transactions: one.count,
+      share: total === 0 ? 0 : one.cents / total,
+    }))
+    .sort((left, right) => right.cents - left.cents);
+
+  // Asked of the whole account rather than of the period, because these are
+  // what the screen offers as the periods to switch to. Taken from the filtered
+  // rows they would only ever list the period already being shown, which is a
+  // control that cannot move.
+  const everything =
+    filter.from === undefined && filter.to === undefined
+      ? rows
+      : await queried({ accountId: filter.accountId });
+  const dates = [...new Set(everything.map(row => String(row.date)))]
+    .sort()
+    .reverse();
+
+  return {
+    from: filter.from ?? null,
+    to: filter.to ?? null,
+    rows: spending,
+    totalCents: total,
+    uncategorisedCents: byCategory.get('')?.cents ?? 0,
+    incomeCents: income,
+    months: [...new Set(dates.map(date => date.slice(0, 7)))],
+    years: [...new Set(dates.map(date => date.slice(0, 4)))],
   };
 }
 
@@ -177,10 +267,10 @@ export async function ayqDetail(
 /** Every account, with the balance the engine's spreadsheet computed. */
 export async function ayqAccounts(): Promise<AyqAccountSummary[]> {
   const counts = (await api.aqlQuery(
-    api.q('transactions').groupBy('account').select([
-      { accountId: 'account.id' },
-      { count: { $count: 'id' } },
-    ]),
+    api
+      .q('transactions')
+      .groupBy('account')
+      .select([{ accountId: 'account.id' }, { count: { $count: 'id' } }]),
   )) as { data?: Array<{ accountId: string; count: number }> };
 
   const byAccount = new Map(

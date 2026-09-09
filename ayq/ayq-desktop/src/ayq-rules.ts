@@ -18,10 +18,17 @@
 import api from '@actual-app/api';
 
 import type { AyqCategoryRule } from '../../ayq-client/src/ayq-ipc-contract.ts';
+
+import { ayqSetCategories } from './ayq-batch.ts';
 import { ayqCategories } from './ayq-categories.ts';
 import { ayqRowKey } from './ayq-ledger.ts';
 import { ayqSettle } from './ayq-settle.ts';
-import { ayqId, ayqReadStore, ayqWriteStore, type AyqStore } from './ayq-store.ts';
+import {
+  ayqId,
+  ayqReadStore,
+  ayqWriteStore,
+  type AyqStore,
+} from './ayq-store.ts';
 
 export function ayqRules(dataDir: string): AyqCategoryRule[] {
   return ayqReadStore(dataDir).rules;
@@ -89,7 +96,10 @@ async function rowsToConsider(): Promise<AyqCategorisableRow[]> {
 
 async function uncategorisedCount(): Promise<number> {
   const answer = (await api.aqlQuery(
-    api.q('transactions').filter({ category: null }).calculate({ $count: 'id' }),
+    api
+      .q('transactions')
+      .filter({ category: null })
+      .calculate({ $count: 'id' }),
   )) as { data?: number };
   return Number(answer.data ?? 0);
 }
@@ -106,7 +116,8 @@ async function wanted(
   const map = new Map<string, { id: string; name: string }>();
   for (const rule of store.rules) {
     const category = byName.get(rule.categoryName.toLowerCase());
-    if (category) map.set(rule.counterpartyKey, { id: category.id, name: category.name });
+    if (category)
+      map.set(rule.counterpartyKey, { id: category.id, name: category.name });
   }
   return map;
 }
@@ -133,6 +144,7 @@ export async function ayqApplyRules(
 
   let categorised = 0;
   let filled = 0;
+  const updates: Array<{ id: string; category: string | null }> = [];
 
   for (const row of rows) {
     const key = ayqRowKey(row);
@@ -149,7 +161,7 @@ export async function ayqApplyRules(
     // arrived some other way, and is left alone.
     if (row.categoryId && decision?.source !== 'rule') continue;
 
-    await api.updateTransaction(row.id, { category: target.id });
+    updates.push({ id: row.id, category: target.id });
     store.decisions[key] = {
       source: 'rule',
       categoryName: target.name,
@@ -160,6 +172,9 @@ export async function ayqApplyRules(
   }
 
   if (categorised > 0) {
+    // One pass, then the writes. Filing every row of a counterparty is one
+    // decision a person made, and it should cost about what one decision costs.
+    await ayqSetCategories(updates);
     ayqWriteStore(dataDir, store);
     // The writes land after the calls that queued them return, so the next
     // read is only trusted once it shows them.

@@ -207,7 +207,7 @@ jobs:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-category-budget
         run: |
           node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --categorise Utilities
-          node start.mjs --smoke --require-host "electron utilityProcess" --expect-category Utilities --screenshot "${{ runner.temp }}\ayq-desktop-categories.png"
+          node start.mjs --smoke --require-host "electron utilityProcess" --expect-category Utilities --spending --screenshot "${{ runner.temp }}\ayq-desktop-categories.png"
 
       # Two AYQs over one budget would be two writers on one SQLite file. The
       # second launch has to stand aside while the first still holds it, and it

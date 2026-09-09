@@ -99,6 +99,14 @@ export type AyqLedgerFilter = {
   limit?: number;
 };
 
+/** Which period, and which account, the spending question is being asked of. */
+export type AyqSpendingFilter = {
+  /** Inclusive YYYY-MM-DD bounds; both absent means everything there is. */
+  from?: string;
+  to?: string;
+  accountId?: string;
+};
+
 export type AyqLedger = {
   /** Newest first. */
   rows: AyqLedgerRow[];
@@ -255,6 +263,46 @@ export type AyqSummary = {
 };
 
 /**
+ * What one category took over a period.
+ *
+ * Amounts are spending, stated positive: a person asking what a year cost does
+ * not want to read it as a negative number. Income is left out entirely rather
+ * than netted off, because a category's total is a question about outgoings and
+ * a refund inside it is already subtracted.
+ */
+export type AyqSpendingRow = {
+  /** Null for the transactions nobody has filed yet. */
+  categoryId: string | null;
+  categoryName: string;
+  cents: number;
+  transactions: number;
+  /** Of the period's total spending, 0 to 1. */
+  share: number;
+};
+
+/**
+ * Spending by category, over the period asked for.
+ *
+ * `uncategorisedCents` is also present as a row, and deliberately so: a total
+ * that quietly omits what has not been filed is a total that lies, and the
+ * honest answer to "what did the year cost" includes the part AYQ cannot yet
+ * account for.
+ */
+export type AyqSpending = {
+  /** The bounds actually used, so the screen can say what it is showing. */
+  from: string | null;
+  to: string | null;
+  rows: AyqSpendingRow[];
+  totalCents: number;
+  uncategorisedCents: number;
+  incomeCents: number;
+  /** Every month the budget holds a transaction in, newest first. */
+  months: string[];
+  /** Every year the budget holds a transaction in, newest first. */
+  years: string[];
+};
+
+/**
  * The files the host's picker returned; empty when the person cancelled.
  *
  * Paths, not contents: the renderer never reads them, and never could — it has
@@ -281,6 +329,7 @@ export type AyqResults = {
   'recurring.list': AyqRecurring[];
   'imports.list': AyqImportRecord[];
   summary: AyqSummary;
+  spending: AyqSpending;
   'import.pick': AyqPickedFile;
   'import.camt': AyqImportSummary;
 };
@@ -324,6 +373,7 @@ export type AyqRequestBody =
   | { kind: 'recurring.list' }
   | { kind: 'imports.list' }
   | { kind: 'summary' }
+  | { kind: 'spending'; filter?: AyqSpendingFilter }
   | { kind: 'import.pick' }
   | { kind: 'import.camt'; paths: string[] };
 

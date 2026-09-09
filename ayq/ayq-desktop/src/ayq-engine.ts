@@ -19,6 +19,7 @@ import type {
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqUseSend } from './ayq-batch.ts';
 import { ayqImportCamt, ayqImports } from './ayq-camt-import.ts';
 import {
   ayqCategories,
@@ -26,7 +27,13 @@ import {
   ayqRenameCategory,
   ayqSeedCategories,
 } from './ayq-categories.ts';
-import { ayqAccounts, ayqDetail, ayqLedger, ayqSummary } from './ayq-ledger.ts';
+import {
+  ayqAccounts,
+  ayqDetail,
+  ayqLedger,
+  ayqSpending,
+  ayqSummary,
+} from './ayq-ledger.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import {
   ayqApplyRules,
@@ -111,6 +118,9 @@ async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
   // be handed one that does.
   mkdirSync(dataDir, { recursive: true });
   lib = await api.init({ dataDir });
+  // Lent to the batch helper, so a rule can file a decade of one shop's
+  // receipts in a handful of calls rather than one call per receipt.
+  ayqUseSend((name, args) => lib!.send(name as never, args as never));
 
   const existing = await findBudgetId();
   if (existing !== null) {
@@ -401,6 +411,14 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'summary',
         result: await ayqSummary(dataDir),
+      };
+
+    case 'spending':
+      return {
+        id,
+        ok: true,
+        kind: 'spending',
+        result: await ayqSpending(request.filter ?? {}),
       };
 
     case 'import.camt':
