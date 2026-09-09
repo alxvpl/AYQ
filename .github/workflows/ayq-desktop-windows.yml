@@ -319,11 +319,39 @@ jobs:
             -ArgumentList '/S', "/D=$target" -PassThru -Wait
           Write-Host "installer exit code : $($install.ExitCode)"
 
-          # 0xC0000005 is a crash, not a refusal, and it is worth naming as one:
-          # a reader who sees a nine-digit negative number learns nothing, and a
-          # reader who sees "access violation" knows where to look.
+          # 0xC0000005 is a crash, not a refusal. Space has been ruled out —
+          # run 28 died with 218 GB free — so the next thing to ask is what
+          # faulted, and Windows already knows: it records the faulting module
+          # and offset for every crashed process.
           if ($install.ExitCode -eq -1073741819) {
-            throw 'the installer crashed with an access violation (0xC0000005)'
+            Write-Host 'the installer crashed with an access violation (0xC0000005)'
+            $crashes = Get-WinEvent -FilterHashtable @{
+              LogName = 'Application'
+              ProviderName = 'Application Error', 'Windows Error Reporting'
+              StartTime = (Get-Date).AddMinutes(-5)
+            } -MaxEvents 5 -ErrorAction SilentlyContinue
+            if ($crashes) {
+              foreach ($crash in $crashes) {
+                Write-Host "--- $($crash.TimeCreated) $($crash.ProviderName)"
+                Write-Host $crash.Message
+              }
+            } else {
+              Write-Host 'Windows recorded no crash for it.'
+            }
+
+            # NSIS verifies the whole 118 MB archive before it unpacks anything,
+            # and that is what the crash is early enough to be. /NCRC skips only
+            # that check, so a second attempt that succeeds says where the fault
+            # is, and one that crashes too says it is somewhere else. Either way
+            # the answer is printed rather than inferred.
+            Write-Host 'trying again without the integrity check (/NCRC)'
+            $again = Start-Process -FilePath $setup.FullName `
+              -ArgumentList '/S', '/NCRC', "/D=$target" -PassThru -Wait
+            Write-Host "second attempt exit code : $($again.ExitCode)"
+            if ($again.ExitCode -ne 0) {
+              throw 'the installer crashed with and without the integrity check'
+            }
+            Write-Host 'NOTE: the installer only ran with /NCRC; this is not fixed.'
           }
 
           # The installer's own verdict, which this step used to discard. An
