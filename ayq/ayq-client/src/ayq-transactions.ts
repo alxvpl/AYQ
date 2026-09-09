@@ -68,6 +68,30 @@ function narrow(
   redraw(true);
 }
 
+/**
+ * Points the ledger at one account, or at all of them.
+ *
+ * The left navigation and the filter bar's own control are two ways to the same
+ * decision, so they are one function: whichever is used, the other reads back
+ * what was chosen. Everything else being looked at — a search, a period, a
+ * category — is kept, because narrowing to an account is a narrowing and not a
+ * fresh start; the page limit is not, for the same reason any other change to
+ * the filter drops it, and an open row belongs to the ledger being left behind.
+ */
+export function ayqSelectAccount(
+  state: AyqTransactionsState,
+  accountId: string | null,
+): void {
+  state.filter = {
+    ...state.filter,
+    accountId: accountId ?? undefined,
+    limit: undefined,
+  };
+  state.openId = null;
+  state.detail = null;
+  state.offer = null;
+}
+
 /** How many more rows one "Show more" adds. The engine's own default page. */
 const AYQ_LEDGER_PAGE = 500;
 
@@ -351,14 +375,11 @@ function filterBar(
         })),
       ],
       state.filter.accountId ?? '',
-      value =>
-        narrow(
-          state,
-          () => {
-            state.filter.accountId = value === '' ? undefined : value;
-          },
-          redraw,
-        ),
+      value => {
+        // The same decision the left navigation makes, made the same way.
+        ayqSelectAccount(state, value === '' ? null : value);
+        redraw(true);
+      },
     ),
   );
 

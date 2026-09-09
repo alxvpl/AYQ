@@ -13,6 +13,7 @@
   "devDependencies": {
     "@types/node": "^22.15.3",
     "esbuild": "^0.24.2",
+    "jsdom": "26.1.0",
     "typescript": "^5.9.2"
   },
   "engines": {

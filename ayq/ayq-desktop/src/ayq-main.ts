@@ -244,9 +244,14 @@ function createWindow(): BrowserWindow {
   // four words that lead nowhere, and on Windows it sits above the content.
   Menu.setApplicationMenu(null);
 
+  // A desktop window, sized for the shell it holds: a navigation column and a
+  // ledger with six columns beside it. 900x700 was the size of a page, and it
+  // left the transactions table narrower than the window it was drawn in.
   const window = new BrowserWindow({
-    width: 900,
-    height: 700,
+    width: 1280,
+    height: 820,
+    minWidth: 640,
+    minHeight: 480,
     title: 'AYQ',
     backgroundColor: '#fbfbfa',
     show: false,

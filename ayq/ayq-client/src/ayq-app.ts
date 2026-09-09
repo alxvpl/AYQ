@@ -1,6 +1,7 @@
 // The AYQ application shell.
 //
-// A summary, four views and one action. What a person came for is their own
+// The sections and the accounts stand down the left and stay there; the
+// workspace on the right is what changes. What a person came for is their own
 // money — the ledger, what recurs, where it is filed and what has been imported
 // — so that is the screen. Which process answered and which version of the
 // engine it was are true, useful, and a footnote.
@@ -14,6 +15,7 @@ import { ayqAsk } from './ayq-bridge.ts';
 import { ayqElement } from './ayq-dom.ts';
 import { ayqEuro, ayqMoment, ayqMonth } from './ayq-format.ts';
 import type {
+  AyqAccountSummary,
   AyqCategoryRule,
   AyqEngineStatus,
   AyqImportRecord,
@@ -27,6 +29,11 @@ import {
   ayqRenderRules,
 } from './ayq-other-views.ts';
 import {
+  type AyqView,
+  ayqRenderNavigation,
+  ayqRenderWorkspaceHeader,
+} from './ayq-shell.ts';
+import {
   ayqEmptySpendingState,
   ayqRenderSpending,
   type AyqSpendingState,
@@ -34,18 +41,9 @@ import {
 import {
   ayqEmptyTransactionsState,
   ayqRenderTransactions,
+  ayqSelectAccount,
   type AyqTransactionsState,
 } from './ayq-transactions.ts';
-
-type AyqView = 'transactions' | 'spending' | 'recurring' | 'rules' | 'imports';
-
-const VIEWS: Array<{ id: AyqView; label: string }> = [
-  { id: 'transactions', label: 'Transactions' },
-  { id: 'spending', label: 'Spending' },
-  { id: 'recurring', label: 'Recurring' },
-  { id: 'rules', label: 'Rules' },
-  { id: 'imports', label: 'Imports' },
-];
 
 type AyqState = {
   view: AyqView;
@@ -308,8 +306,9 @@ async function refresh(reload: boolean): Promise<void> {
 /* ------------------------------------------------------------------ drawing */
 
 function draw(): void {
+  drawNavigation();
+  drawHeader();
   drawSummary();
-  drawTabs();
   drawView();
   drawFooter();
 
@@ -365,24 +364,70 @@ function drawSummary(): void {
   }
 }
 
-function drawTabs(): void {
-  const target = byId('ayq-tabs');
-  if (!target) return;
-  target.replaceChildren();
+/**
+ * Moves to a workspace, and reads what it needs.
+ *
+ * Asking again for a workspace that is already open would be a reload nobody
+ * asked for, so it is not one.
+ */
+function openView(view: AyqView): void {
+  if (state.view === view) return;
+  state.view = view;
+  void refresh(true);
+}
 
-  for (const view of VIEWS) {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = view.id === state.view ? 'tab current' : 'tab';
-    tab.textContent = view.label;
-    tab.dataset.ayqTab = view.id;
-    tab.addEventListener('click', () => {
-      if (state.view === view.id) return;
-      state.view = view.id;
-      void refresh(true);
-    });
-    target.append(tab);
-  }
+/**
+ * Points the ledger at an account and opens it there.
+ *
+ * The filter lives where it already lived — one field of the ledger's own
+ * filter — because a second place to record which account is being looked at
+ * is a second place for the two to disagree.
+ */
+function openAccount(accountId: string | null): void {
+  ayqSelectAccount(state.transactions, accountId);
+  state.view = 'transactions';
+  void refresh(true);
+}
+
+/** The account the ledger is filtered to, as the engine described it. */
+function selectedAccount(): AyqAccountSummary | null {
+  const id = state.transactions.filter.accountId;
+  if (id === undefined) return null;
+  return state.summary?.accounts.find(account => account.id === id) ?? null;
+}
+
+function drawNavigation(): void {
+  const sections = byId('ayq-sections');
+  const accounts = byId('ayq-accounts');
+  if (!sections || !accounts) return;
+
+  ayqRenderNavigation(
+    {
+      view: state.view,
+      accounts: state.summary?.accounts ?? [],
+      accountId: state.transactions.filter.accountId ?? null,
+    },
+    sections,
+    accounts,
+    { openView, openAccount },
+  );
+}
+
+function drawHeader(): void {
+  const title = byId('ayq-title');
+  const context = byId('ayq-context');
+  if (!title || !context) return;
+
+  ayqRenderWorkspaceHeader(
+    {
+      view: state.view,
+      account: selectedAccount(),
+      matched: state.transactions.ledger?.total ?? null,
+    },
+    title,
+    context,
+    () => openAccount(null),
+  );
 }
 
 function drawView(): void {

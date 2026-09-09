@@ -3,8 +3,10 @@
 The AYQ renderer. Ours, not Actual's: `packages/desktop-client` is not forked,
 not imported and not consulted.
 
-Today it is one screen showing one answer from the engine. What it is for at
-this stage is the boundary, not the interface.
+It is a desktop application shell: a navigation column that holds the five
+workspaces and the accounts, and a workspace beside it that fills the window.
+Every figure in it — an account's balance included — is one the engine
+computed; this side formats numbers and draws them.
 
 ## What it may touch
 
@@ -50,8 +52,21 @@ resolution at runtime, so anything it needs is either in the bundle or comes
 through the bridge. `ayq-desktop` copies `dist/` in beside its own build and
 serves it with `loadFile`.
 
+## The shell
+
+`src/ayq-shell.ts` draws the navigation and the workspace header, and it is the
+only place that knows what the workspaces are called. The account a person picks
+is not kept anywhere new: it is one field of the ledger's own filter, so the
+column on the left and the control in the filter bar cannot disagree about which
+account is being looked at.
+
+`test/ayq-shell.test.ts` draws it into the shipped `src/ayq-client.html` under
+jsdom and clicks it — the accounts come from account summaries shaped like the
+engine's, choosing one narrows the filter, and All accounts widens it again.
+jsdom is a test dependency; the renderer's own sources still import nothing but
+each other, and the boundary test says so.
+
 ## Scope
 
-One screen, deliberately. No navigation, no CAMT import surface, no design
-system, nothing migrated from Actual. The design pass comes when there is a
-product to design; this proves there is an architecture to build one on.
+No design system and nothing migrated from Actual. What has been built is
+information architecture: where things are, and how you get to them.
