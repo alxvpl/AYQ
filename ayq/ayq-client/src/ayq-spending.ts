@@ -12,7 +12,12 @@
 
 import { ayqElement, ayqSelect, ayqTable } from './ayq-dom.ts';
 import { ayqDay, ayqEuro, ayqMonth } from './ayq-format.ts';
-import type { AyqSpending, AyqSpendingFilter } from './ayq-ipc-contract.ts';
+import type {
+  AyqCategory,
+  AyqSpending,
+  AyqSpendingFilter,
+  AyqUnfiled,
+} from './ayq-ipc-contract.ts';
 
 export type AyqSpendingState = {
   filter: AyqSpendingFilter;
