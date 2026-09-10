@@ -74,6 +74,9 @@ const plan = flag('plan');
 if (plan) env.AYQ_SMOKE_PLAN = plan;
 const expectPlan = flag('expect-plan');
 if (expectPlan) env.AYQ_SMOKE_EXPECT_PLAN = expectPlan;
+// `--match` requires Upcoming to be offering a match, accepts the first one,
+// and requires the offer to go away — which it only does if the engine stored it.
+if (has('match')) env.AYQ_SMOKE_MATCH = '1';
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

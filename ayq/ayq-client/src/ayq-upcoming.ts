@@ -16,6 +16,7 @@ import type {
   AyqCategory,
   AyqForecast,
   AyqForecastEvent,
+  AyqMatchProposal,
   AyqPlan,
   AyqPlanDraft,
   AyqPlanFrequency,
@@ -27,6 +28,8 @@ import type {
 export type AyqUpcomingState = {
   forecast: AyqForecast | null;
   plan: AyqPlan | null;
+  /** Matches AYQ found and is not confident enough to apply on its own. */
+  proposals: AyqMatchProposal[];
   /** The record the pane is open on. */
   openRecordId: string | null;
   /** The occurrence selected with it, for the two decisions that are its own. */
@@ -41,6 +44,7 @@ export function ayqEmptyUpcomingState(): AyqUpcomingState {
   return {
     forecast: null,
     plan: null,
+    proposals: [],
     openRecordId: null,
     openDueDate: null,
     drafting: false,
@@ -91,6 +95,7 @@ export function ayqRenderUpcoming(
   const bench = ayqElement('div', 'workbench');
   const main = ayqElement('div', 'workbench-main');
   main.append(figures(forecast));
+  if (state.proposals.length > 0) main.append(waiting(state, redraw));
 
   if (forecast.events.length === 0) {
     main.append(
@@ -110,6 +115,116 @@ export function ayqRenderUpcoming(
   bench.append(main);
   bench.append(paneFor(state, categories, redraw));
   target.append(bench);
+}
+
+/**
+ * The matches AYQ found and will not make on its own.
+ *
+ * Above the list, because they are the only thing on this screen that is asking
+ * a person for something. Each one says what the two have in common, so
+ * agreeing is a decision rather than a shrug — and refusing is remembered, so
+ * the same pairing is not put up again after the next import.
+ */
+function waiting(
+  state: AyqUpcomingState,
+  redraw: (reload: boolean) => void,
+): HTMLElement {
+  const box = ayqElement('div', 'backlog');
+  box.dataset.ayqMatches = String(state.proposals.length);
+  box.append(
+    ayqElement(
+      'h2',
+      'backlog-title',
+      state.proposals.length === 1
+        ? 'One of these might already have happened'
+        : `${state.proposals.length} of these might already have happened`,
+    ),
+    ayqElement(
+      'p',
+      'empty-body',
+      'AYQ found a transaction that could be the expected payment, and is ' +
+        'not sure enough to say so on its own.',
+    ),
+  );
+
+  box.append(
+    ayqTable<AyqMatchProposal>(
+      [
+        {
+          label: 'Expected',
+          className: 'col-payee',
+          cell: row => `${row.recordName}, ${ayqDay(row.expectedDate)}`,
+        },
+        {
+          label: 'Could be',
+          className: 'col-payee',
+          cell: row =>
+            `${row.transactionPayee ?? 'Unknown'}, ${ayqDay(row.transactionDate)}`,
+        },
+        {
+          label: 'Because',
+          className: 'col-date',
+          cell: row => row.evidence.join(', '),
+        },
+        {
+          label: 'Amount',
+          className: 'col-amount',
+          cell: row =>
+            ayqElement(
+              'span',
+              row.transactionAmountCents < 0 ? 'out' : 'in',
+              ayqEuro(row.transactionAmountCents),
+            ),
+        },
+        {
+          label: '',
+          className: 'col-category',
+          cell: row => {
+            const buttons = ayqElement('span', 'pane-actions');
+            const yes = document.createElement('button');
+            yes.type = 'button';
+            yes.className = 'quiet small';
+            yes.dataset.ayqMatchAccept = row.transactionId;
+            yes.textContent = 'Yes, that is it';
+            yes.addEventListener('click', () => {
+              void run(
+                state,
+                {
+                  kind: 'match.apply',
+                  recordId: row.recordId,
+                  dueDate: row.dueDate,
+                  transactionId: row.transactionId,
+                },
+                redraw,
+              );
+            });
+            const no = document.createElement('button');
+            no.type = 'button';
+            no.className = 'quiet small';
+            no.dataset.ayqMatchReject = row.transactionId;
+            no.textContent = 'No';
+            no.addEventListener('click', () => {
+              void run(
+                state,
+                {
+                  kind: 'match.reject',
+                  recordId: row.recordId,
+                  dueDate: row.dueDate,
+                  transactionId: row.transactionId,
+                },
+                redraw,
+              );
+            });
+            buttons.append(yes, no);
+            return buttons;
+          },
+        },
+      ],
+      state.proposals,
+    ),
+  );
+
+  return box;
 }
 
 /**
@@ -262,6 +377,16 @@ function actionBar(
     redraw(false);
   });
   bar.append(add);
+
+  const match = document.createElement('button');
+  match.type = 'button';
+  match.id = 'ayq-plan-match';
+  match.className = 'quiet';
+  match.textContent = 'Check what has already happened';
+  match.addEventListener('click', () => {
+    void run(state, { kind: 'match.propose' }, redraw);
+  });
+  bar.append(match);
 
   const suggest = document.createElement('button');
   suggest.type = 'button';
@@ -463,6 +588,31 @@ function occurrenceActions(
     );
   });
   box.append(move);
+
+  if (occurrence?.state === 'matched') {
+    box.append(
+      ayqElement(
+        'p',
+        'pane-note',
+        occurrence.matchProvenance === 'manual'
+          ? 'You matched this to a transaction.'
+          : 'AYQ matched this to a transaction by itself.',
+      ),
+    );
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'quiet small';
+    undo.id = 'ayq-plan-unmatch';
+    undo.textContent = 'It was not that one';
+    undo.addEventListener('click', () => {
+      void run(
+        state,
+        { kind: 'match.unmatch', recordId: record.id, dueDate },
+        redraw,
+      );
+    });
+    box.append(undo);
+  }
 
   const skip = document.createElement('button');
   skip.type = 'button';

@@ -48,6 +48,13 @@ export type AyqPlanOccurrenceRecord = {
   /** A person's match outranks an automatic one and is never overwritten. */
   matchProvenance: 'manual' | 'automatic' | null;
   dismissed: boolean;
+  /**
+   * Transactions a person has said are *not* this payment.
+   *
+   * Kept so the same pairing is not offered again after the next import. A
+   * refusal is a decision like any other and outlives the pass that prompted it.
+   */
+  rejected: string[];
 };
 
 /** What AYQ knows about an account that Actual has no field for. */
@@ -83,8 +90,9 @@ export type AyqCategoryDecision = {
  *      table. Version 1 stores gain an empty one; nothing else moves, and
  *      nothing already written is rewritten.
  *   3  Plan + Forecast: planned and recurring records, what has been decided
- *      about individual occurrences of them, and the per-account "counts
- *      toward available funds" flag. Older stores gain three empty ones.
+ *      about individual occurrences of them — including the match to an actual
+ *      transaction and the pairings a person has refused — and the per-account
+ *      "counts toward available funds" flag. Older stores gain three empty ones.
  */
 export const AYQ_STORE_VERSION = 3;
 
@@ -184,7 +192,15 @@ function migrate(raw: unknown): AyqStore {
     // forecast has made no plan decisions, so an empty set is the whole
     // upgrade, and nothing already in the file is rewritten.
     planned: Array.isArray(value.planned) ? value.planned : [],
-    occurrences: Array.isArray(value.occurrences) ? value.occurrences : [],
+    // Each occurrence is normalised rather than trusted: a field added while
+    // version 3 was being built would otherwise arrive as `undefined` in code
+    // that has every right to expect an array.
+    occurrences: Array.isArray(value.occurrences)
+      ? value.occurrences.map(one => ({
+          ...one,
+          rejected: Array.isArray(one?.rejected) ? one.rejected : [],
+        }))
+      : [],
     accountFlags:
       typeof value.accountFlags === 'object' && value.accountFlags !== null
         ? value.accountFlags

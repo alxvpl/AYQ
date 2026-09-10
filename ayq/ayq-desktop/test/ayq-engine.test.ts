@@ -2543,3 +2543,280 @@ test('a month Actual keeps no budget for holds no plan, and says it cannot take 
   if (refused.ok) return;
   assert.match(refused.message, /no month 2099-01 to plan in/);
 });
+
+/* ------------------------------------------------------ matching, end to end
+
+   What counts as a match is proved on invented data in ayq-match.test.ts. What
+   these add is the part that needs a real budget: that a match is stored, that
+   it takes the payment out of the forecast, that a person's decision is not
+   overwritten, and that matching by hand teaches AYQ enough to do it itself
+   next time (04 A6).                                                        */
+
+/** The fixture's monthly direct debit: 61.90 on 30 June 2026. */
+const ENERGY_CENTS = 6_190;
+const ENERGY_DATE = '2026-06-30';
+
+async function budgetWithEnergyPlan(dataDir: string): Promise<string> {
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const plan = await ask(dataDir, {
+    kind: 'plan.save',
+    today: ENERGY_DATE,
+    record: {
+      name: 'Energy',
+      kind: 'expense',
+      amountCents: ENERGY_CENTS,
+      categoryName: 'Utilities',
+      startDate: ENERGY_DATE,
+      recurrence: { frequency: 'monthly', interval: 1 },
+    },
+  });
+  return plan.records[0].id;
+}
+
+test('a payment typed by hand is offered a match, not given one', async () => {
+  const dataDir = await budget();
+  const recordId = await budgetWithEnergyPlan(dataDir);
+
+  const found = await ask(dataDir, {
+    kind: 'match.propose',
+    today: ENERGY_DATE,
+  });
+  assert.equal(
+    found.applied,
+    0,
+    'nothing identifies the counterparty yet, so nothing is applied',
+  );
+  assert.equal(found.proposals.length, 1);
+
+  const proposal = found.proposals[0];
+  assert.equal(proposal.recordId, recordId);
+  assert.equal(proposal.dueDate, ENERGY_DATE);
+  assert.equal(proposal.transactionAmountCents, -ENERGY_CENTS);
+  assert.equal(proposal.daysApart, 0);
+  assert.equal(proposal.confident, false);
+  assert.deepEqual(proposal.evidence, ['the same amount', 'the same day']);
+});
+
+test('matching by hand takes it out of the forecast, and teaches AYQ the counterparty', async () => {
+  const dataDir = await budget();
+  const recordId = await budgetWithEnergyPlan(dataDir);
+  const proposal = (
+    await ask(dataDir, { kind: 'match.propose', today: ENERGY_DATE })
+  ).proposals[0];
+
+  const before = await ask(dataDir, { kind: 'forecast', today: ENERGY_DATE });
+  assert.ok(
+    before.events.some(one => one.date === ENERGY_DATE && one.label === 'Energy'),
+    'it is expected before it is matched',
+  );
+
+  const matched = await ask(dataDir, {
+    kind: 'match.apply',
+    recordId,
+    dueDate: ENERGY_DATE,
+    transactionId: proposal.transactionId,
+    today: ENERGY_DATE,
+  });
+  const occurrence = matched.plan.occurrences.find(
+    one => one.dueDate === ENERGY_DATE,
+  );
+  assert.equal(occurrence?.state, 'matched');
+  assert.equal(occurrence?.matchProvenance, 'manual');
+  assert.equal(occurrence?.matchedTransactionId, proposal.transactionId);
+
+  const after = await ask(dataDir, { kind: 'forecast', today: ENERGY_DATE });
+  assert.ok(
+    !after.events.some(one => one.date === ENERGY_DATE && one.label === 'Energy'),
+    'a matched payment has happened, and stops being expected (03 §7.3)',
+  );
+
+  // The transaction is untouched: matching is a statement about the expectation,
+  // not an edit to the ledger.
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  assert.equal(ledger.total, 14);
+
+  // And the record learned who it is paid to, which is what makes next month
+  // automatic. It had no counterparty when it was typed.
+  const record = matched.plan.records.find(one => one.id === recordId);
+  assert.ok(
+    record?.counterpartyKey,
+    'the key came from the transaction the person pointed at',
+  );
+
+  await restart(dataDir);
+  const kept = await ask(dataDir, { kind: 'plan.list', today: ENERGY_DATE });
+  assert.equal(
+    kept.occurrences.find(one => one.dueDate === ENERGY_DATE)?.state,
+    'matched',
+    'and it outlived the process that decided it',
+  );
+});
+
+test('once AYQ knows the counterparty it matches by itself, and never over a person', async () => {
+  const dataDir = await budget();
+  const recordId = await budgetWithEnergyPlan(dataDir);
+  const proposal = (
+    await ask(dataDir, { kind: 'match.propose', today: ENERGY_DATE })
+  ).proposals[0];
+  await ask(dataDir, {
+    kind: 'match.apply',
+    recordId,
+    dueDate: ENERGY_DATE,
+    transactionId: proposal.transactionId,
+    today: ENERGY_DATE,
+  });
+
+  // Undone, so the same evidence is on the table again — but now the record
+  // carries the counterparty the person's decision taught it.
+  await ask(dataDir, {
+    kind: 'match.unmatch',
+    recordId,
+    dueDate: ENERGY_DATE,
+    today: ENERGY_DATE,
+  });
+  const again = await ask(dataDir, {
+    kind: 'match.propose',
+    today: ENERGY_DATE,
+  });
+  assert.equal(again.applied, 1, 'the counterparty agrees, the amount is exact');
+  assert.deepEqual(again.proposals, [], 'and there is nothing left to ask');
+  const occurrence = again.plan.occurrences.find(
+    one => one.dueDate === ENERGY_DATE,
+  );
+  assert.equal(occurrence?.state, 'matched');
+  assert.equal(occurrence?.matchProvenance, 'automatic');
+
+  // A person's match is never overwritten by a later pass (03 §4.4). Matched by
+  // hand, then asked again: it stays theirs.
+  await ask(dataDir, {
+    kind: 'match.apply',
+    recordId,
+    dueDate: ENERGY_DATE,
+    transactionId: proposal.transactionId,
+    today: ENERGY_DATE,
+  });
+  const third = await ask(dataDir, {
+    kind: 'match.propose',
+    today: ENERGY_DATE,
+  });
+  assert.equal(
+    third.plan.occurrences.find(one => one.dueDate === ENERGY_DATE)
+      ?.matchProvenance,
+    'manual',
+  );
+});
+
+test('a refused pairing is not offered again', async () => {
+  const dataDir = await budget();
+  const recordId = await budgetWithEnergyPlan(dataDir);
+  const proposal = (
+    await ask(dataDir, { kind: 'match.propose', today: ENERGY_DATE })
+  ).proposals[0];
+
+  await ask(dataDir, {
+    kind: 'match.reject',
+    recordId,
+    dueDate: ENERGY_DATE,
+    transactionId: proposal.transactionId,
+    today: ENERGY_DATE,
+  });
+
+  const again = await ask(dataDir, {
+    kind: 'match.propose',
+    today: ENERGY_DATE,
+  });
+  assert.deepEqual(again.proposals, [], 'the refusal stands');
+  assert.equal(again.applied, 0);
+
+  await restart(dataDir);
+  const later = await ask(dataDir, {
+    kind: 'match.propose',
+    today: ENERGY_DATE,
+  });
+  assert.deepEqual(later.proposals, [], 'and it outlived the process');
+});
+
+test('an import looks for matches by itself, and says what it found', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const plan = await ask(dataDir, {
+    kind: 'plan.save',
+    record: {
+      name: 'Energy',
+      kind: 'expense',
+      amountCents: ENERGY_CENTS,
+      categoryName: 'Utilities',
+      startDate: ENERGY_DATE,
+      recurrence: { frequency: 'monthly', interval: 1 },
+    },
+  });
+  const recordId = plan.records[0].id;
+  const proposal = (
+    await ask(dataDir, { kind: 'match.propose', today: ENERGY_DATE })
+  ).proposals[0];
+  await ask(dataDir, {
+    kind: 'match.apply',
+    recordId,
+    dueDate: ENERGY_DATE,
+    transactionId: proposal.transactionId,
+    today: ENERGY_DATE,
+  });
+  await ask(dataDir, {
+    kind: 'match.unmatch',
+    recordId,
+    dueDate: ENERGY_DATE,
+    today: ENERGY_DATE,
+  });
+
+  // The second import adds nothing, and the matching pass that runs with it is
+  // the one under test: it has the counterparty now, so it applies the match
+  // without anybody asking.
+  const summary = await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  assert.equal(summary.imported, 0, 'still nothing new to import');
+  assert.equal(summary.matched, 1, 'and one expected payment turned out to be one');
+  assert.equal(summary.matchesWaiting, 0);
+});
+
+test('one transaction cannot be two expected payments', async () => {
+  const dataDir = await budget();
+  const recordId = await budgetWithEnergyPlan(dataDir);
+  const proposal = (
+    await ask(dataDir, { kind: 'match.propose', today: ENERGY_DATE })
+  ).proposals[0];
+  await ask(dataDir, {
+    kind: 'match.apply',
+    recordId,
+    dueDate: ENERGY_DATE,
+    transactionId: proposal.transactionId,
+    today: ENERGY_DATE,
+  });
+
+  const second = await ask(dataDir, {
+    kind: 'plan.save',
+    today: ENERGY_DATE,
+    record: {
+      name: 'Something else',
+      kind: 'expense',
+      amountCents: ENERGY_CENTS,
+      categoryName: null,
+      startDate: ENERGY_DATE,
+      recurrence: { frequency: 'once', interval: 1 },
+    },
+  });
+  const other = second.records.find(one => one.name === 'Something else');
+  assert.ok(other);
+
+  const refused = await send(
+    {
+      id: 'match-double',
+      kind: 'match.apply',
+      recordId: other.id,
+      dueDate: ENERGY_DATE,
+      transactionId: proposal.transactionId,
+    },
+    dataDir,
+  );
+  assert.equal(refused.ok, false);
+  if (refused.ok) return;
+  assert.match(refused.message, /already matched to another expected payment/);
+});

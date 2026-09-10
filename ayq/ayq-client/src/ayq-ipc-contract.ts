@@ -365,6 +365,10 @@ export type AyqImportRecord = {
   accountName: string;
   /** Categories the rules assigned during this import. */
   categorised: number;
+  /** Expected payments this import turned out to be, matched automatically. */
+  matched: number;
+  /** Matches AYQ found but is not confident enough to apply on its own. */
+  matchesWaiting: number;
   /**
    * What was chosen and could not be used, said plainly.
    *
@@ -594,6 +598,56 @@ export type AyqPlan = {
   horizon: string;
 };
 
+/* ----------------------------------------------------------------- matching
+
+   03 §7.3: matching an actual transaction to an expected payment is a core part
+   of the model, not a convenience. A matched payment leaves the forecast and
+   the transaction stays where it was. Who made the match is recorded, and a
+   person's match is never overwritten by automation (03 §4.3–§4.4).         */
+
+/** A transaction the matcher may consider, as it needs to see one. */
+export type AyqMatchCandidate = {
+  transactionId: string;
+  date: string;
+  /** Signed cents, as the ledger holds them. */
+  amountCents: number;
+  payee: string | null;
+  counterpartyKey: string | null;
+  mandateId: string | null;
+};
+
+/** One expected payment and one transaction that might be it. */
+export type AyqMatchProposal = {
+  recordId: string;
+  dueDate: string;
+  recordName: string;
+  expectedDate: string;
+  /** Positive cents. */
+  expectedAmountCents: number;
+  transactionId: string;
+  transactionDate: string;
+  transactionPayee: string | null;
+  /** Signed cents, as the ledger holds it. */
+  transactionAmountCents: number;
+  daysApart: number;
+  /** What they have in common, in words, so agreeing to it is informed. */
+  evidence: string[];
+  /**
+   * Clear enough to apply without asking: the counterparty or the mandate
+   * agrees, the amount is exact, and the date is within a week. Anything less
+   * is offered and waits for a person (03 §7.5).
+   */
+  confident: boolean;
+};
+
+export type AyqMatches = {
+  /** Matches this pass applied by itself, with automatic provenance. */
+  applied: number;
+  /** What is waiting for a person to decide. */
+  proposals: AyqMatchProposal[];
+  plan: AyqPlan;
+};
+
 /* ------------------------------------------------------------- monthly plan
 
    The per-category monthly amount. Actual's, not AYQ's: in a tracking budget
@@ -743,6 +797,10 @@ export type AyqResults = {
   'budget.month': AyqBudgetMonth;
   'budget.setPlan': AyqBudgetMonth;
   forecast: AyqForecast;
+  'match.propose': AyqMatches;
+  'match.apply': AyqMatches;
+  'match.reject': AyqMatches;
+  'match.unmatch': AyqMatches;
 };
 
 /**
@@ -869,7 +927,45 @@ export type AyqRequestBody =
       categoryId: string;
       cents: number;
     }
-  | { kind: 'forecast'; today?: string };
+  | { kind: 'forecast'; today?: string }
+  | {
+      /**
+       * Looks for matches, applies the clear ones and offers the rest.
+       *
+       * Run after every import, and available on its own so a person can ask
+       * again after correcting a counterparty or an amount.
+       */
+      kind: 'match.propose';
+      today?: string;
+    }
+  | {
+      /** A person saying these two are the same payment. */
+      kind: 'match.apply';
+      recordId: string;
+      dueDate: string;
+      transactionId: string;
+      today?: string;
+    }
+  | {
+      /**
+       * A person saying they are not.
+       *
+       * Remembered against that occurrence, so the same pairing is not offered
+       * again on the next import.
+       */
+      kind: 'match.reject';
+      recordId: string;
+      dueDate: string;
+      transactionId: string;
+      today?: string;
+    }
+  | {
+      /** Undoing a match, whoever made it. */
+      kind: 'match.unmatch';
+      recordId: string;
+      dueDate: string;
+      today?: string;
+    };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };

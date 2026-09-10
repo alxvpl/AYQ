@@ -446,6 +446,7 @@ async function spendingShown(window: BrowserWindow): Promise<string> {
 async function upcomingShown(
   window: BrowserWindow,
   addSpec: string,
+  acceptMatch: boolean,
 ): Promise<string> {
   await window.webContents.executeJavaScript(
     'document.querySelector(\'[data-ayq-tab="upcoming"]\').click(); true',
@@ -505,6 +506,40 @@ async function upcomingShown(
       const said = await problemShown(window);
       return `the payment was not listed after saving${said === '' ? '' : ` — the screen said: ${said}`}`;
     }
+  }
+
+  if (acceptMatch) {
+    // The match AYQ found and would not make on its own. It has to be offered,
+    // and accepting it has to take the payment out of what is still expected.
+    const offered = Number(
+      await window.webContents.executeJavaScript(
+        "Number(document.querySelector('[data-ayq-matches]')?.dataset.ayqMatches || 0)",
+      ),
+    );
+    if (offered < 1) return 'no match was offered to accept';
+
+    const clicked = await window.webContents.executeJavaScript(`(() => {
+      const yes = document.querySelector('[data-ayq-match-accept]');
+      if (!yes) return false;
+      yes.click();
+      return true;
+    })()`);
+    if (clicked !== true) return 'the offered match had nothing to accept';
+
+    deadline = Date.now() + 60_000;
+    let left = offered;
+    while (Date.now() < deadline && left >= offered) {
+      left = Number(
+        await window.webContents.executeJavaScript(
+          "Number(document.querySelector('[data-ayq-matches]')?.dataset.ayqMatches || 0)",
+        ),
+      );
+      if (left >= offered) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    if (left >= offered) return 'accepting the match changed nothing';
+    process.stdout.write(
+      `[ayq-smoke] matches offered: ${offered}, left after accepting one: ${left}\n`,
+    );
   }
 
   return String(
@@ -739,13 +774,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   // — a record that outlived the process that created it.
   const planSpec = process.env.AYQ_SMOKE_PLAN ?? '';
   const expectPlan = process.env.AYQ_SMOKE_EXPECT_PLAN ?? '';
+  const acceptMatch = process.env.AYQ_SMOKE_MATCH === '1';
   let upcomingOk = true;
-  if (planSpec !== '' || expectPlan !== '') {
-    upcoming = await upcomingShown(window, planSpec);
+  if (planSpec !== '' || expectPlan !== '' || acceptMatch) {
+    upcoming = await upcomingShown(window, planSpec, acceptMatch);
     process.stdout.write(
       `[ayq-smoke] upcoming:\n${upcoming || '(the view showed nothing)'}\n`,
     );
-    upcomingOk = upcoming !== '' && !upcoming.startsWith('could not') &&
+    upcomingOk =
+      upcoming !== '' &&
+      !upcoming.startsWith('could not') &&
+      !upcoming.startsWith('no match') &&
+      !upcoming.startsWith('the offered match') &&
+      !upcoming.startsWith('accepting the match') &&
       !upcoming.startsWith('the payment was not listed');
     if (expectPlan !== '') {
       const kept = upcoming.includes(expectPlan);

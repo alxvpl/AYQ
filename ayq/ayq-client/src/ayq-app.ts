@@ -249,6 +249,12 @@ async function loadView(): Promise<void> {
       // are. The pane reads a record; the table reads the projection.
       state.upcoming.forecast = (await need({ kind: 'forecast' })).result;
       state.upcoming.plan = (await need({ kind: 'plan.list' })).result;
+      // And what AYQ found but will not decide on its own. Asked on every load
+      // of this screen rather than remembered, because the answer changes with
+      // every import and every correction.
+      state.upcoming.proposals = (
+        await need({ kind: 'match.propose' })
+      ).result.proposals;
       return;
     }
     case 'spending': {

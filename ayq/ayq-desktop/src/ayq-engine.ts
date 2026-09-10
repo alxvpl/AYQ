@@ -53,14 +53,18 @@ import {
   ayqUnfiled,
 } from './ayq-ledger.ts';
 import {
+  ayqApplyMatch,
   ayqDismissOccurrence,
   ayqForecast,
   ayqPlan,
+  ayqRejectMatch,
   ayqRemovePlan,
   ayqReschedule,
+  ayqRunMatching,
   ayqSavePlan,
   ayqSetPlanState,
   ayqSuggest,
+  ayqUnmatch,
 } from './ayq-plan.ts';
 import { ayqToday } from './ayq-plan-series.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
@@ -659,6 +663,66 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'plan.dismissOccurrence',
         result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+
+    /* ---------------------------------------------------------- matching
+
+       Every one of these answers with the whole plan too, for the same reason
+       the plan requests do: a match changes what is expected on every later
+       row, not only on the one it touched.                                 */
+
+    case 'match.propose':
+      return {
+        id,
+        ok: true,
+        kind: 'match.propose',
+        result: await ayqRunMatching(
+          dataDir,
+          ayqToday(request.today),
+          new Date().toISOString(),
+        ),
+      };
+
+    case 'match.apply':
+      return {
+        id,
+        ok: true,
+        kind: 'match.apply',
+        result: await ayqApplyMatch(
+          dataDir,
+          request.recordId,
+          request.dueDate,
+          request.transactionId,
+          ayqToday(request.today),
+          new Date().toISOString(),
+        ),
+      };
+
+    case 'match.reject':
+      return {
+        id,
+        ok: true,
+        kind: 'match.reject',
+        result: ayqRejectMatch(
+          dataDir,
+          request.recordId,
+          request.dueDate,
+          request.transactionId,
+          ayqToday(request.today),
+        ),
+      };
+
+    case 'match.unmatch':
+      return {
+        id,
+        ok: true,
+        kind: 'match.unmatch',
+        result: ayqUnmatch(
+          dataDir,
+          request.recordId,
+          request.dueDate,
+          ayqToday(request.today),
+        ),
       };
 
     case 'forecast':

@@ -13,9 +13,14 @@
 // disagree with the record they were generated from. The rhythm itself lives in
 // `ayq-plan-series.ts`, which touches neither a store nor the API.
 
+import api from '@actual-app/api';
+
 import type {
   AyqForecast,
   AyqForecastPlanRow,
+  AyqMatchCandidate,
+  AyqMatchProposal,
+  AyqMatches,
   AyqPlan,
   AyqPlanDraft,
   AyqPlanFrequency,
@@ -24,11 +29,13 @@ import type {
   AyqPlannedRecord,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqCanonicalKey } from './ayq-aliases.ts';
 import { ayqBudgetMonth } from './ayq-budget.ts';
 import { ayqMonthOf, ayqMonthsBetween } from './ayq-dates.ts';
 import { ayqComputeForecast } from './ayq-forecast.ts';
 import { ayqAvailableFunds } from './ayq-funds.ts';
 import { ayqAccounts } from './ayq-ledger.ts';
+import { ayqProposeMatches } from './ayq-match.ts';
 import {
   AYQ_DATE,
   ayqIsOccurrenceOf,
@@ -39,6 +46,7 @@ import { ayqRecurring } from './ayq-recurring.ts';
 import {
   ayqId,
   ayqReadStore,
+  ayqRowKey,
   ayqWriteStore,
   type AyqPlanOccurrenceRecord,
   type AyqStore,
@@ -238,6 +246,7 @@ function decide(
     matchedAt: null,
     matchProvenance: null,
     dismissed: false,
+    rejected: [],
   };
   store.occurrences.push(created);
   return created;
@@ -351,6 +360,219 @@ export async function ayqSuggestFromRecurring(
 
   if (added > 0) ayqWriteStore(dataDir, store);
   return added;
+}
+
+/* ----------------------------------------------------------------- matching
+
+   Everything the matcher needs from the budget, and what it writes back. The
+   comparison itself is in `ayq-match.ts` and touches neither.               */
+
+/** The transactions the matcher may consider. */
+async function candidates(
+  dataDir: string,
+  store: AyqStore,
+): Promise<AyqMatchCandidate[]> {
+  const answer = (await api.aqlQuery(
+    api
+      .q('transactions')
+      // The opening balance is the account's starting point, not a payment
+      // anybody planned.
+      .filter({ starting_balance_flag: false })
+      .select(['id', 'date', 'amount', 'imported_id', { payee: 'payee.name' }]),
+  )) as {
+    data?: Array<{
+      id: string;
+      date: string;
+      amount: number;
+      imported_id: string | null;
+      payee: string | null;
+    }>;
+  };
+
+  return (answer.data ?? []).map(row => {
+    const provenance = store.provenance[ayqRowKey(row)];
+    return {
+      transactionId: String(row.id),
+      date: String(row.date),
+      amountCents: Number(row.amount ?? 0),
+      payee: row.payee ?? null,
+      // The canonical key, aliases applied, because that is what a record
+      // written against a counterparty is written against.
+      counterpartyKey: ayqCanonicalKey(store, provenance?.counterpartyKey),
+      mandateId: provenance?.mandateId ?? null,
+    };
+  });
+}
+
+function matchInput(store: AyqStore, today: string) {
+  const { from, to } = ayqPlanWindow(today);
+  const occurrences = ayqOccurrencesBetween(
+    store.planned,
+    store.occurrences,
+    from,
+    to,
+    today,
+  ).filter(
+    one => one.state !== 'matched' && one.state !== 'dismissed',
+  );
+
+  return {
+    occurrences,
+    recordKeys: new Map(
+      store.planned.map(record => [
+        record.id,
+        { key: record.counterpartyKey, mandateId: record.mandateId },
+      ]),
+    ),
+    taken: new Set(
+      store.occurrences
+        .map(one => one.matchedTransactionId)
+        .filter((id): id is string => id !== null),
+    ),
+    refused: new Map(
+      store.occurrences.map(one => [
+        `${one.recordId} ${one.dueDate}`,
+        new Set(one.rejected),
+      ]),
+    ),
+  };
+}
+
+/**
+ * Looks for matches, applies the clear ones, and offers the rest.
+ *
+ * Only the clear ones, and only where nothing is being overwritten: an
+ * occurrence a person has already matched by hand is left exactly as it is
+ * (03 §4.4). Automation revising its own earlier work would be allowed; it does
+ * not need to here, because a matched occurrence is not offered again.
+ */
+export async function ayqRunMatching(
+  dataDir: string,
+  today: string,
+  now: string,
+): Promise<AyqMatches> {
+  const store = ayqReadStore(dataDir);
+  const proposals = ayqProposeMatches({
+    ...matchInput(store, today),
+    candidates: await candidates(dataDir, store),
+  });
+
+  let applied = 0;
+  const waiting: AyqMatchProposal[] = [];
+  for (const proposal of proposals) {
+    if (!proposal.confident) {
+      waiting.push(proposal);
+      continue;
+    }
+    const record = store.planned.find(one => one.id === proposal.recordId);
+    if (!record) continue;
+    const decided = decide(store, record, proposal.dueDate);
+    // Never over a person's decision, in either direction.
+    if (decided.matchProvenance === 'manual') continue;
+    decided.matchedTransactionId = proposal.transactionId;
+    decided.matchedAt = now;
+    decided.matchProvenance = 'automatic';
+    applied += 1;
+  }
+
+  if (applied > 0) ayqWriteStore(dataDir, store);
+  return { applied, proposals: waiting, plan: ayqPlan(dataDir, today) };
+}
+
+/**
+ * A person saying these two are the same payment.
+ *
+ * And AYQ learning from it: a record typed by hand has no counterparty key, so
+ * it can never match automatically. Taking the key from the transaction the
+ * person just pointed at means next month's does — which is 04 A6, review
+ * shrinking as decisions accumulate, applied to the forecast.
+ */
+export async function ayqApplyMatch(
+  dataDir: string,
+  recordId: string,
+  dueDate: string,
+  transactionId: string,
+  today: string,
+  now: string,
+): Promise<AyqMatches> {
+  const store = ayqReadStore(dataDir);
+  const record = occurrenceOf(store, recordId, dueDate);
+
+  const taken = store.occurrences.find(
+    one =>
+      one.matchedTransactionId === transactionId &&
+      !(one.recordId === recordId && one.dueDate === dueDate),
+  );
+  if (taken) {
+    throw new Error(
+      'that transaction is already matched to another expected payment',
+    );
+  }
+
+  const decided = decide(store, record, dueDate);
+  decided.matchedTransactionId = transactionId;
+  decided.matchedAt = now;
+  decided.matchProvenance = 'manual';
+  // A refusal and a match of the same pair contradict each other; the newer
+  // decision is the one that stands (00 §1).
+  decided.rejected = decided.rejected.filter(id => id !== transactionId);
+
+  if (record.counterpartyKey === null) {
+    const learned = (await candidates(dataDir, store)).find(
+      one => one.transactionId === transactionId,
+    );
+    if (learned?.counterpartyKey) {
+      record.counterpartyKey = learned.counterpartyKey;
+      record.updatedAt = now;
+    }
+    if (record.mandateId === null && learned?.mandateId) {
+      record.mandateId = learned.mandateId;
+      record.updatedAt = now;
+    }
+  }
+
+  ayqWriteStore(dataDir, store);
+  return { applied: 0, proposals: [], plan: ayqPlan(dataDir, today) };
+}
+
+/** A person saying they are not, remembered so it is not offered again. */
+export function ayqRejectMatch(
+  dataDir: string,
+  recordId: string,
+  dueDate: string,
+  transactionId: string,
+  today: string,
+): AyqMatches {
+  const store = ayqReadStore(dataDir);
+  const record = occurrenceOf(store, recordId, dueDate);
+  const decided = decide(store, record, dueDate);
+  if (!decided.rejected.includes(transactionId)) {
+    decided.rejected.push(transactionId);
+  }
+  if (decided.matchedTransactionId === transactionId) {
+    decided.matchedTransactionId = null;
+    decided.matchedAt = null;
+    decided.matchProvenance = null;
+  }
+  ayqWriteStore(dataDir, store);
+  return { applied: 0, proposals: [], plan: ayqPlan(dataDir, today) };
+}
+
+/** Undoing a match, whoever made it. The transaction is untouched. */
+export function ayqUnmatch(
+  dataDir: string,
+  recordId: string,
+  dueDate: string,
+  today: string,
+): AyqMatches {
+  const store = ayqReadStore(dataDir);
+  const record = occurrenceOf(store, recordId, dueDate);
+  const decided = decide(store, record, dueDate);
+  decided.matchedTransactionId = null;
+  decided.matchedAt = null;
+  decided.matchProvenance = null;
+  ayqWriteStore(dataDir, store);
+  return { applied: 0, proposals: [], plan: ayqPlan(dataDir, today) };
 }
 
 export async function ayqSuggest(

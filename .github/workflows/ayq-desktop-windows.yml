@@ -242,6 +242,20 @@ jobs:
           node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --plan "Rent|1200.00|monthly|2026-10-01"
           node start.mjs --smoke --require-host "electron utilityProcess" --expect-plan Rent --screenshot "${{ runner.temp }}\ayq-desktop-upcoming.png"
 
+      # An expected payment meeting the transaction that turned out to be it.
+      # AYQ will not make this match on its own — nothing yet identifies the
+      # counterparty, only the amount and the date agree — so it has to offer
+      # it, and accepting it has to take the payment out of what is expected.
+      # The offer going away is the assertion: it only does if the engine
+      # stored the decision.
+      - name: Matching what was expected to what happened
+        working-directory: ayq/ayq-desktop
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-match-budget
+        run: |
+          node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --plan "Energy|61.90|monthly|2026-06-30" --match --screenshot "${{ runner.temp }}\ayq-desktop-match.png"
+
       # Two AYQs over one budget would be two writers on one SQLite file. The
       # second launch has to stand aside while the first still holds it, and it
       # has to do so before it opens anything.
@@ -501,6 +515,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-import.png
             ${{ runner.temp }}\ayq-desktop-categories.png
             ${{ runner.temp }}\ayq-desktop-upcoming.png
+            ${{ runner.temp }}\ayq-desktop-match.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-report.json
             ${{ runner.temp }}\ayq-installed-restart-report.json

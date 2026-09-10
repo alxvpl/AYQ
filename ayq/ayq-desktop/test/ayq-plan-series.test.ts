@@ -146,6 +146,7 @@ test('the states of 03 §7.7 are derived, and in the order of consequence', () =
       matchedAt: '2026-04-11T00:00:00.000Z',
       matchProvenance: 'automatic',
       dismissed: false,
+      rejected: [],
     },
     {
       recordId: 'plan-1',
@@ -155,6 +156,7 @@ test('the states of 03 §7.7 are derived, and in the order of consequence', () =
       matchedAt: null,
       matchProvenance: null,
       dismissed: true,
+      rejected: [],
     },
     {
       recordId: 'plan-1',
@@ -164,6 +166,7 @@ test('the states of 03 §7.7 are derived, and in the order of consequence', () =
       matchedAt: null,
       matchProvenance: null,
       dismissed: false,
+      rejected: [],
     },
   ];
 
@@ -202,6 +205,7 @@ test('a rescheduled occurrence that is still in the past is overdue', () => {
         matchedAt: null,
         matchProvenance: null,
         dismissed: false,
+        rejected: [],
       },
     ],
     '2026-05-01',
@@ -245,6 +249,7 @@ test('occurrences come back soonest first, by the date they actually fall on', (
         matchedAt: null,
         matchProvenance: null,
         dismissed: false,
+        rejected: [],
       },
     ],
     '2026-07-01',

@@ -10,7 +10,7 @@ the canon file itself is not edited.
 
 ## Current stage
 
-S5 complete. S6 next.
+S6 complete. S7 next.
 
 ## Stages
 
@@ -22,7 +22,7 @@ S5 complete. S6 next.
 | S3 | Category monthly plan values | done |
 | S4 | Forecast engine | done |
 | S5 | Upcoming screen | done |
-| S6 | Matching expected ↔ actual | not started |
+| S6 | Matching expected ↔ actual | done |
 | S7 | Plan screen | not started |
 
 ## Decisions taken

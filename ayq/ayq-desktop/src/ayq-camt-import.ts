@@ -30,6 +30,7 @@ import type {
 
 import { ayqAliasMap } from './ayq-aliases.ts';
 import { ayqTransactionCount } from './ayq-ledger.ts';
+import { ayqRunMatching } from './ayq-plan.ts';
 import { ayqApplyRules } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import { ayqId, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
@@ -252,6 +253,16 @@ export async function ayqImportCamt(
 
   const { categorised } = await ayqApplyRules(dataDir);
 
+  // And the expected payments meet what actually arrived (03 §7.3). Only the
+  // clear ones are applied; the rest wait on the Upcoming screen. It runs here
+  // because this is the moment new evidence exists — a person should not have
+  // to remember to ask.
+  const matched = await ayqRunMatching(
+    dataDir,
+    new Date().toISOString().slice(0, 10),
+    new Date().toISOString(),
+  );
+
   const record: AyqImportRecord = {
     id: importId,
     at: new Date().toISOString(),
@@ -270,6 +281,8 @@ export async function ayqImportCamt(
     accountId,
     accountName,
     categorised,
+    matched: matched.applied,
+    matchesWaiting: matched.proposals.length,
   };
 
   const after = ayqReadStore(dataDir);
