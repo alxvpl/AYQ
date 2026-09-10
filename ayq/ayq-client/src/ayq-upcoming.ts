@@ -757,11 +757,18 @@ function recordForm(
       amountCents: cents,
       categoryName: categoryName === '' ? null : categoryName,
       startDate: start.value,
-      recurrence: { frequency, interval: 1 },
+      // The interval the record already has. The form offers no control for it
+      // — every rhythm AYQ creates is every-one-of-them — and sending 1 here
+      // would silently turn an every-other-month record into a monthly one on
+      // the first unrelated edit.
+      recurrence: { frequency, interval: record?.recurrence.interval ?? 1 },
       endDate: end.value === '' ? null : end.value,
     };
-    state.drafting = false;
-    void run(state, { kind: 'plan.save', record: draft }, redraw);
+    // The pane closes when the save lands, not before it: a refusal should
+    // leave what was typed on the screen to be corrected.
+    void run(state, { kind: 'plan.save', record: draft }, redraw, () => {
+      state.drafting = false;
+    });
   });
   form.append(save);
 
@@ -782,10 +789,12 @@ async function run(
   state: AyqUpcomingState,
   body: Parameters<typeof ayqAsk>[0],
   redraw: (reload: boolean) => void,
+  onDone?: () => void,
 ): Promise<void> {
   try {
     const answer = await ayqAsk(body);
     state.problem = answer.ok ? null : answer.message;
+    if (answer.ok) onDone?.();
   } catch (error) {
     state.problem = error instanceof Error ? error.message : String(error);
   }
