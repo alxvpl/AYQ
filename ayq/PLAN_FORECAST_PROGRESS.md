@@ -10,7 +10,7 @@ the canon file itself is not edited.
 
 ## Current stage
 
-S2 complete. S3 next.
+S3 complete. S4 next.
 
 ## Stages
 
@@ -19,7 +19,7 @@ S2 complete. S3 next.
 | S0 | Baseline, investigation, architecture | done |
 | S1 | Planned and recurring records | done |
 | S2 | Available funds flag | done |
-| S3 | Category monthly plan values | not started |
+| S3 | Category monthly plan values | done |
 | S4 | Forecast engine | not started |
 | S5 | Upcoming screen | not started |
 | S6 | Matching expected ↔ actual | not started |

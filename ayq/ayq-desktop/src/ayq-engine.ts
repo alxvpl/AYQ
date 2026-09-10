@@ -26,6 +26,12 @@ import {
   ayqRememberAlias,
 } from './ayq-aliases.ts';
 import { ayqUseSend } from './ayq-batch.ts';
+import {
+  ayqBudgetMonth,
+  ayqBudgetType,
+  ayqEnsureTrackingBudget,
+  ayqSetPlan,
+} from './ayq-budget.ts';
 import { ayqImportCamt, ayqImports } from './ayq-camt-import.ts';
 import {
   ayqCategories,
@@ -125,6 +131,17 @@ let opened: AyqOpenBudget | null = null;
 /** What `api.init` hands back: the same engine, one level lower. */
 let lib: Awaited<ReturnType<typeof api.init>> | null = null;
 
+/**
+ * The engine's own handlers, for the few things the public API does not carry.
+ *
+ * Two so far: creating a budget without reaching for a sync server AYQ does not
+ * have, and setting the budget's type. Both are settings Actual's own client
+ * sends through exactly this path; nothing in `packages/` is touched to reach
+ * them.
+ */
+const sendToEngine = (name: string, args?: unknown): Promise<unknown> =>
+  lib!.send(name as never, args as never) as Promise<unknown>;
+
 /** The budget's id, or null when it does not exist yet. */
 async function findBudgetId(): Promise<string | null> {
   const match = (await api.getBudgets()).find(
@@ -147,6 +164,10 @@ async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
   const existing = await findBudgetId();
   if (existing !== null) {
     await api.loadBudget(existing);
+    // Including a budget an earlier AYQ created as an envelope one. There is
+    // nothing to lose by moving it: AYQ has never set a budgeted amount, and
+    // envelope arithmetic is what 01 §4 and 04 A8 say AYQ does not do.
+    await ayqEnsureTrackingBudget(sendToEngine);
     opened = { budgetId: existing, created: false };
     return opened;
   }
@@ -169,6 +190,7 @@ async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
   if (created === null) throw new Error('the engine created no budget');
 
   await api.loadBudget(created);
+  await ayqEnsureTrackingBudget(sendToEngine);
   // Only ever on a budget just created, so nothing can be referencing the
   // placeholders it replaces.
   await ayqSeedCategories();
@@ -186,6 +208,7 @@ async function status(dataDir: string): Promise<AyqEngineStatus> {
     budgetName: BUDGET_NAME,
     dataDir,
     storeVersion: ayqReadStore(dataDir).version,
+    budgetType: await ayqBudgetType(sendToEngine),
     storeDamaged: ayqDamagedStore(dataDir),
     answeredAt: new Date().toISOString(),
   };
@@ -612,6 +635,26 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'plan.dismissOccurrence',
         result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+
+    case 'budget.month':
+      return {
+        id,
+        ok: true,
+        kind: 'budget.month',
+        result: await ayqBudgetMonth(request.month),
+      };
+
+    case 'budget.setPlan':
+      return {
+        id,
+        ok: true,
+        kind: 'budget.setPlan',
+        result: await ayqSetPlan(
+          request.month,
+          request.categoryId,
+          request.cents,
+        ),
       };
 
     case 'plan.suggest':

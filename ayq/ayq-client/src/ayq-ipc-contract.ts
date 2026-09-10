@@ -49,6 +49,15 @@ export type AyqEngineStatus = {
   /** The AYQ store's schema version, so an upgrade can be reasoned about. */
   storeVersion: number;
   /**
+   * Actual's budget type, as the open budget actually has it.
+   *
+   * `tracking`, always, and read back rather than assumed: it is what makes a
+   * category's monthly plan mean 03 §7.8 rather than envelope arithmetic, and
+   * a budget quietly left on the other one would be wrong in a way no figure
+   * on the screen would show.
+   */
+  budgetType: string;
+  /**
    * The name of a store AYQ could not read and had to set aside, if there is
    * one. Rules and provenance from before it are gone; the file is not.
    */
@@ -585,6 +594,42 @@ export type AyqPlan = {
   horizon: string;
 };
 
+/* ------------------------------------------------------------- monthly plan
+
+   The per-category monthly amount. Actual's, not AYQ's: in a tracking budget
+   its `budgeted` and `spent` for a month mean exactly what 03 §7.8 says, with
+   no carry-over into the next month, and 02 §5.1 says AYQ uses a capability the
+   engine already has rather than keeping a second table to disagree with it. */
+
+export type AyqBudgetCategory = {
+  categoryId: string;
+  categoryName: string;
+  groupName: string;
+  isIncome: boolean;
+  /** The plan for this month, positive cents. Zero is no plan. */
+  planCents: number;
+  /**
+   * What actually happened, in the direction the category means: spending for
+   * an expense category, money received for an income one. Negative only when a
+   * refund was bigger than the month's spending, which is true and stays true.
+   */
+  actualCents: number;
+  /** Plan minus actual, never below zero (03 §7.8). */
+  remainingCents: number;
+  /** Actual minus plan, never below zero. The overspend, said out loud. */
+  overspentCents: number;
+};
+
+export type AyqBudgetMonth = {
+  /** YYYY-MM. */
+  month: string;
+  categories: AyqBudgetCategory[];
+  /** Expense categories only; income is not a plan to spend against. */
+  totalPlanCents: number;
+  totalActualCents: number;
+  totalRemainingCents: number;
+};
+
 /** What turning the detected rhythms into offers came to. */
 export type AyqPlanSuggested = {
   plan: AyqPlan;
@@ -626,6 +671,8 @@ export type AyqResults = {
   'plan.reschedule': AyqPlan;
   'plan.dismissOccurrence': AyqPlan;
   'plan.suggest': AyqPlanSuggested;
+  'budget.month': AyqBudgetMonth;
+  'budget.setPlan': AyqBudgetMonth;
 };
 
 /**
@@ -739,7 +786,19 @@ export type AyqRequestBody =
       dismissed: boolean;
       today?: string;
     }
-  | { kind: 'plan.suggest'; today?: string };
+  | { kind: 'plan.suggest'; today?: string }
+  | {
+      /** The plan, the actual and what is left, for one month. YYYY-MM. */
+      kind: 'budget.month';
+      month: string;
+    }
+  | {
+      /** Sets one category's plan for one month. Zero clears it. */
+      kind: 'budget.setPlan';
+      month: string;
+      categoryId: string;
+      cents: number;
+    };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };

@@ -202,6 +202,11 @@ test('a fresh budget is created, and it is empty', async () => {
   assert.equal(status.budgetCreated, true, 'nothing existed in a fresh dir');
   assert.ok(status.budgetId.length > 0);
   assert.equal(status.storeVersion, 3, 'the AYQ store declares its version');
+  assert.equal(
+    status.budgetType,
+    'tracking',
+    'not an envelope budget: a plan is per month and does not carry (03 §7.8)',
+  );
 
   // Empty means empty: no demo account, no invented entries.
   assert.deepEqual(await ask(dataDir, { kind: 'accounts.list' }), []);
@@ -2304,4 +2309,124 @@ test('one account on its own has nobody to transfer to', async () => {
     52_500,
     'both payments count, because both left the money',
   );
+});
+
+/* ------------------------------------------------------------- monthly plan
+
+   Actual's capability, used rather than duplicated (02 §5.1) — and used only
+   because the tracking budget's per-month arithmetic is 03 §7.8 exactly. The
+   test that matters is the one that would catch it if that stopped being true:
+   an unused remainder must not appear in the next month.                     */
+
+test('a category plan is per month, and does not carry into the next', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(one => one.name === 'Groceries');
+  assert.ok(groceries);
+
+  const august = await ask(dataDir, {
+    kind: 'budget.setPlan',
+    month: '2026-08',
+    categoryId: groceries.id,
+    cents: 20_000,
+  });
+  const september = await ask(dataDir, {
+    kind: 'budget.setPlan',
+    month: '2026-09',
+    categoryId: groceries.id,
+    cents: 20_000,
+  });
+
+  const row = (answer: typeof august) =>
+    answer.categories.find(one => one.categoryId === groceries.id);
+
+  assert.equal(row(august)?.planCents, 20_000);
+  assert.equal(row(august)?.actualCents, 0, 'nothing was spent in August');
+  assert.equal(row(august)?.remainingCents, 20_000);
+  assert.equal(
+    row(september)?.remainingCents,
+    20_000,
+    'September is its own month: August s unused plan is not added to it (03 §7.8)',
+  );
+
+  // And the plan is Actual's, so it is there after a restart without AYQ
+  // keeping a second copy of it anywhere.
+  await restart(dataDir);
+  const again = await ask(dataDir, { kind: 'budget.month', month: '2026-08' });
+  assert.equal(
+    again.categories.find(one => one.categoryId === groceries.id)?.planCents,
+    20_000,
+  );
+});
+
+test('the plan is measured against what actually happened', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(one => one.name === 'Groceries');
+  assert.ok(groceries);
+
+  // File the fixture's supermarket, which is six transactions in June 2026.
+  const unfiled = await ask(dataDir, { kind: 'counterparties.unfiled' });
+  const shop = unfiled.find(one => one.transactions === 6);
+  assert.ok(shop, 'the fixture s supermarket');
+  await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: shop.key,
+    categoryId: groceries.id,
+  });
+
+  const under = await ask(dataDir, {
+    kind: 'budget.setPlan',
+    month: '2026-06',
+    categoryId: groceries.id,
+    cents: 20_000,
+  });
+  const row = under.categories.find(one => one.categoryId === groceries.id);
+  assert.equal(row?.planCents, 20_000);
+  assert.equal(
+    row?.actualCents,
+    shop.cents,
+    'the actual is the spending the ledger already knows about, stated positive',
+  );
+  assert.equal(row?.remainingCents, 20_000 - shop.cents);
+  assert.equal(row?.overspentCents, 0);
+
+  // And overspending is said out loud rather than folded into a negative
+  // remainder, which 03 §7.8 explicitly does not want.
+  const over = await ask(dataDir, {
+    kind: 'budget.setPlan',
+    month: '2026-06',
+    categoryId: groceries.id,
+    cents: 1_000,
+  });
+  const tight = over.categories.find(one => one.categoryId === groceries.id);
+  assert.equal(tight?.remainingCents, 0, 'never below zero');
+  assert.equal(tight?.overspentCents, shop.cents - 1_000);
+});
+
+test('a month or a plan that makes no sense is refused', async () => {
+  const dataDir = await budget();
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+
+  const wrongMonth = await send(
+    { id: 'budget-bad-month', kind: 'budget.month', month: '2026-6' },
+    dataDir,
+  );
+  assert.equal(wrongMonth.ok, false);
+  if (!wrongMonth.ok) assert.match(wrongMonth.message, /YYYY-MM/);
+
+  const negative = await send(
+    {
+      id: 'budget-negative',
+      kind: 'budget.setPlan',
+      month: '2026-06',
+      categoryId: categories[0].id,
+      cents: -100,
+    },
+    dataDir,
+  );
+  assert.equal(negative.ok, false);
+  if (!negative.ok) assert.match(negative.message, /not negative/);
 });
