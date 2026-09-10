@@ -445,6 +445,138 @@ export type AyqSpending = {
  */
 export type AyqPickedFile = { paths: string[] };
 
+/* ------------------------------------------------------- plan and forecast
+
+   What is expected to happen, as against what has happened. A planned or
+   recurring record is one canonical thing — Plan reads it as a monthly frame
+   and Upcoming reads it as a series of dates, and they are the same records
+   (04 A9). None of this is Actual's: its schedules carry no category and it
+   links imported transactions to them by itself, with no provenance, which is
+   the one thing AYQ's records exist to keep.                                */
+
+export type AyqPlanKind = 'expense' | 'income';
+
+export type AyqPlanFrequency =
+  | 'once'
+  | 'weekly'
+  | 'fortnightly'
+  | 'monthly'
+  | 'quarterly'
+  | 'half-yearly'
+  | 'yearly';
+
+export type AyqPlanRecurrence = {
+  frequency: AyqPlanFrequency;
+  /** Periods between occurrences. 1 unless a person asked for every other one. */
+  interval: number;
+};
+
+/**
+ * The record's own state (03 §7.7).
+ *
+ * `suggested` is what the recurring detection produces and nothing else: a
+ * rhythm AYQ noticed is an offer, never a decision. `confirmed` is a person's.
+ */
+export type AyqPlanState = 'suggested' | 'confirmed' | 'dismissed';
+
+/** Who put the record there. A person, or the detection. */
+export type AyqPlanProvenance = 'manual' | 'detected';
+
+/**
+ * One planned or recurring thing.
+ *
+ * The category is kept by **name**, not by id, for the reason a rule is
+ * (03 §4.2): a category id belongs to one budget and a plan outlives one.
+ * `amountCents` is positive and `kind` carries the sign, so a record cannot be
+ * an income of minus forty euro.
+ */
+export type AyqPlannedRecord = {
+  id: string;
+  name: string;
+  kind: AyqPlanKind;
+  amountCents: number;
+  categoryName: string | null;
+  /** The canonical counterparty key, when the record came from one. */
+  counterpartyKey: string | null;
+  accountId: string | null;
+  /** YYYY-MM-DD: the first occurrence, or the only one. */
+  startDate: string;
+  recurrence: AyqPlanRecurrence;
+  /** Inclusive last date the series may reach; null is open-ended. */
+  endDate: string | null;
+  state: AyqPlanState;
+  provenance: AyqPlanProvenance;
+  /** A SEPA mandate makes a series a standing arrangement rather than a habit. */
+  mandateId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A record as the screen submits it. Without an id it creates one. */
+export type AyqPlanDraft = {
+  id?: string;
+  name: string;
+  kind: AyqPlanKind;
+  amountCents: number;
+  categoryName: string | null;
+  counterpartyKey?: string | null;
+  accountId?: string | null;
+  startDate: string;
+  recurrence: AyqPlanRecurrence;
+  endDate?: string | null;
+  mandateId?: string | null;
+};
+
+/**
+ * What a record is on one date.
+ *
+ * Four of these are derived rather than stored, so they cannot disagree with
+ * the facts they come from: `matched` is a transaction id being present,
+ * `overdue` is a date having passed unmatched, `rescheduled` is a moved date,
+ * and `dismissed` is either the record's state or this occurrence's own.
+ */
+export type AyqPlanOccurrenceState =
+  | 'expected'
+  | 'matched'
+  | 'overdue'
+  | 'rescheduled'
+  | 'dismissed';
+
+export type AyqPlanOccurrence = {
+  recordId: string;
+  name: string;
+  kind: AyqPlanKind;
+  /** Positive cents; `kind` carries the sign. */
+  amountCents: number;
+  categoryName: string | null;
+  /** The date the recurrence generated. With the record id, this identifies it. */
+  dueDate: string;
+  /** Where it actually falls: the rescheduled date, or the due date. */
+  effectiveDate: string;
+  state: AyqPlanOccurrenceState;
+  /** True while the record itself is still only an offer. */
+  suggested: boolean;
+  matchedTransactionId: string | null;
+  matchProvenance: 'manual' | 'automatic' | null;
+};
+
+export type AyqPlan = {
+  records: AyqPlannedRecord[];
+  /** From the overdue window to the horizon, soonest first. */
+  occurrences: AyqPlanOccurrence[];
+  /** The date the engine treated as today, so a screen never has to guess. */
+  today: string;
+  /** The last date the occurrences reach. */
+  horizon: string;
+};
+
+/** What turning the detected rhythms into offers came to. */
+export type AyqPlanSuggested = {
+  plan: AyqPlan;
+  /** Records created by this call; rhythms already offered are not repeated. */
+  added: number;
+};
+
 /** What the engine answers to each request kind. */
 export type AyqResults = {
   'engine.status': AyqEngineStatus;
@@ -471,6 +603,13 @@ export type AyqResults = {
   'counterparties.unfiled': AyqUnfiled[];
   'import.pick': AyqPickedFile;
   'import.camt': AyqImportSummary;
+  'plan.list': AyqPlan;
+  'plan.save': AyqPlan;
+  'plan.setState': AyqPlan;
+  'plan.remove': AyqPlan;
+  'plan.reschedule': AyqPlan;
+  'plan.dismissOccurrence': AyqPlan;
+  'plan.suggest': AyqPlanSuggested;
 };
 
 /**
@@ -532,7 +671,48 @@ export type AyqRequestBody =
   | { kind: 'spending'; filter?: AyqSpendingFilter }
   | { kind: 'counterparties.unfiled'; filter?: AyqSpendingFilter }
   | { kind: 'import.pick' }
-  | { kind: 'import.camt'; paths: string[] };
+  | { kind: 'import.camt'; paths: string[] }
+  | {
+      /**
+       * Every planned and recurring record, with what they come to by date.
+       *
+       * `today` overrides the engine's own idea of the current date. It exists
+       * so the acceptance run can ask what a screen shows on a stated day
+       * rather than on whatever day the runner happens to be having.
+       */
+      kind: 'plan.list';
+      today?: string;
+    }
+  | { kind: 'plan.save'; record: AyqPlanDraft; today?: string }
+  | {
+      /** suggested → confirmed is accepting an offer; dismissed puts it away. */
+      kind: 'plan.setState';
+      recordId: string;
+      state: AyqPlanState;
+      today?: string;
+    }
+  | { kind: 'plan.remove'; recordId: string; today?: string }
+  | {
+      /**
+       * Moves one occurrence, and only that one.
+       *
+       * The series keeps its rhythm: a rent payment taken four days late this
+       * month is not a rent payment that has moved for ever.
+       */
+      kind: 'plan.reschedule';
+      recordId: string;
+      dueDate: string;
+      to: string;
+      today?: string;
+    }
+  | {
+      kind: 'plan.dismissOccurrence';
+      recordId: string;
+      dueDate: string;
+      dismissed: boolean;
+      today?: string;
+    }
+  | { kind: 'plan.suggest'; today?: string };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };

@@ -24,8 +24,43 @@ import type {
   AyqAliasRecord,
   AyqCategoryRule,
   AyqImportRecord,
+  AyqPlannedRecord,
   AyqProvenance,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
+
+/**
+ * What has been decided about one occurrence of a planned record.
+ *
+ * Occurrences are generated from the record's own rhythm and are not stored.
+ * This is the exception: the one a person moved, struck out, or that an actual
+ * transaction turned out to be. Storing every occurrence would mean storing a
+ * hundred rows that say nothing but "as expected", and a series that could then
+ * disagree with the record it came from.
+ */
+export type AyqPlanOccurrenceRecord = {
+  recordId: string;
+  /** The generated date. With the record id, the occurrence's identity. */
+  dueDate: string;
+  /** Where a person moved it to; null is where the rhythm put it. */
+  rescheduledTo: string | null;
+  matchedTransactionId: string | null;
+  matchedAt: string | null;
+  /** A person's match outranks an automatic one and is never overwritten. */
+  matchProvenance: 'manual' | 'automatic' | null;
+  dismissed: boolean;
+};
+
+/** What AYQ knows about an account that Actual has no field for. */
+export type AyqAccountFlags = {
+  /**
+   * Whether this account's balance forms available funds (03 §7.6).
+   *
+   * AYQ's own, not Actual's `offbudget`: that flag also decides what Actual
+   * counts in a budget month, which the Plan screen reads, so using it would
+   * make a statement about the forecast quietly change the plan.
+   */
+  countsTowardFunds: boolean;
+};
 
 /**
  * How a transaction came to have the category it has.
@@ -47,8 +82,11 @@ export type AyqCategoryDecision = {
  *   2  aliases: the explicit "this imported variant is that counterparty"
  *      table. Version 1 stores gain an empty one; nothing else moves, and
  *      nothing already written is rewritten.
+ *   3  Plan + Forecast: planned and recurring records, what has been decided
+ *      about individual occurrences of them, and the per-account "counts
+ *      toward available funds" flag. Older stores gain three empty ones.
  */
-export const AYQ_STORE_VERSION = 2;
+export const AYQ_STORE_VERSION = 3;
 
 export type AyqStore = {
   version: number;
@@ -65,6 +103,12 @@ export type AyqStore = {
    * because adding one re-points the old ones. See `ayq-aliases.ts`.
    */
   aliases: AyqAliasRecord[];
+  /** Planned and recurring records, since version 3. */
+  planned: AyqPlannedRecord[];
+  /** What has been decided about individual occurrences, since version 3. */
+  occurrences: AyqPlanOccurrenceRecord[];
+  /** Keyed by Actual's account id, since version 3. */
+  accountFlags: Record<string, AyqAccountFlags>;
 };
 
 /**
@@ -91,6 +135,9 @@ function empty(): AyqStore {
     provenance: {},
     decisions: {},
     aliases: [],
+    planned: [],
+    occurrences: [],
+    accountFlags: {},
   };
 }
 
@@ -133,6 +180,15 @@ function migrate(raw: unknown): AyqStore {
     // Version 1 had no alias table. An empty one is the whole of that upgrade:
     // a budget imported before aliases existed has made no alias decisions.
     aliases: Array.isArray(value.aliases) ? value.aliases : [],
+    // And versions 1 and 2 had no plan. Same rule: a budget that predates the
+    // forecast has made no plan decisions, so an empty set is the whole
+    // upgrade, and nothing already in the file is rewritten.
+    planned: Array.isArray(value.planned) ? value.planned : [],
+    occurrences: Array.isArray(value.occurrences) ? value.occurrences : [],
+    accountFlags:
+      typeof value.accountFlags === 'object' && value.accountFlags !== null
+        ? value.accountFlags
+        : {},
   };
 }
 

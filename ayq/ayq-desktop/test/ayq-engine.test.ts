@@ -196,7 +196,7 @@ test('a fresh budget is created, and it is empty', async () => {
   assert.equal(status.engineHost, 'node child_process fork');
   assert.equal(status.budgetCreated, true, 'nothing existed in a fresh dir');
   assert.ok(status.budgetId.length > 0);
-  assert.equal(status.storeVersion, 2, 'the AYQ store declares its version');
+  assert.equal(status.storeVersion, 3, 'the AYQ store declares its version');
 
   // Empty means empty: no demo account, no invented entries.
   assert.deepEqual(await ask(dataDir, { kind: 'accounts.list' }), []);
@@ -671,7 +671,7 @@ test('what AYQ keeps survives a restart', async () => {
     aliases: unknown[];
   };
 
-  assert.equal(store.version, 2);
+  assert.equal(store.version, 3);
   assert.equal(store.rules.length, 1);
   assert.deepEqual(store.aliases, [], 'nobody has aliased anything here');
   assert.equal(store.imports.length, 1);
@@ -1612,7 +1612,7 @@ test('an alias survives a restart, and the store carries it', async () => {
   const store = JSON.parse(
     await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
   ) as { version: number; aliases: Array<Record<string, string>> };
-  assert.equal(store.version, 2);
+  assert.equal(store.version, 3);
   assert.equal(store.aliases.length, 1);
   assert.equal(store.aliases[0].variantKey, 'TEST FUEL STATION');
   assert.equal(store.aliases[0].counterpartyKey, 'TESTFUEL');
@@ -1834,7 +1834,7 @@ test('a damaged store loses the aliases and nothing else', async () => {
     /^ayq-store\.damaged-.+\.json$/,
     'the unreadable store was kept rather than overwritten',
   );
-  assert.equal(status.storeVersion, 2, 'and a fresh store took its place');
+  assert.equal(status.storeVersion, 3, 'and a fresh store took its place');
 
   // The transactions are Actual's and none of this was theirs to lose. Without
   // the alias the resolver's own reading is what is left, which is the honest
@@ -1860,4 +1860,288 @@ test('a damaged store loses the aliases and nothing else', async () => {
   assert.equal(refused.ok, false);
   if (refused.ok) return;
   assert.match(refused.message, /version 99/);
+});
+
+/* ------------------------------------------------------------------ the plan
+
+   Records, states and occurrences across a real engine and a real restart. The
+   rhythm itself is proved in ayq-plan-series.test.ts, on invented data and in
+   milliseconds; what these add is that the decisions survive the process that
+   made them, which is the only part a pure test cannot show.                 */
+
+test('a planned payment survives the process that created it', async () => {
+  const dataDir = await budget();
+
+  const saved = await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-06-15',
+    record: {
+      name: 'Rent',
+      kind: 'expense',
+      amountCents: 120_000,
+      categoryName: 'Housing',
+      startDate: '2026-07-01',
+      recurrence: { frequency: 'monthly', interval: 1 },
+    },
+  });
+
+  assert.equal(saved.records.length, 1);
+  const record = saved.records[0];
+  assert.equal(record.name, 'Rent');
+  assert.equal(record.amountCents, 120_000);
+  assert.equal(
+    record.state,
+    'confirmed',
+    'a record a person typed is one they confirmed (03 §7.7)',
+  );
+  assert.equal(record.provenance, 'manual');
+  assert.equal(saved.today, '2026-06-15', 'the engine used the date it was given');
+  assert.equal(saved.horizon, '2027-06-15', 'twelve months (03 §7.9)');
+  assert.equal(saved.occurrences.length, 12);
+  assert.equal(saved.occurrences[0].dueDate, '2026-07-01');
+  assert.equal(saved.occurrences[0].state, 'expected');
+
+  // A restart, not a redraw: the engine is killed and the budget reopened by a
+  // new process over the same directory.
+  await restart(dataDir);
+  const after = await ask(dataDir, { kind: 'plan.list', today: '2026-06-15' });
+  assert.equal(after.records.length, 1);
+  assert.equal(after.records[0].id, record.id);
+  assert.equal(after.records[0].name, 'Rent');
+  assert.equal(after.occurrences.length, 12);
+});
+
+test('a record can be edited, dismissed, accepted back and removed', async () => {
+  const dataDir = await budget();
+  const created = await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-06-15',
+    record: {
+      name: 'Gym',
+      kind: 'expense',
+      amountCents: 2_500,
+      categoryName: null,
+      startDate: '2026-07-05',
+      recurrence: { frequency: 'monthly', interval: 1 },
+    },
+  });
+  const id = created.records[0].id;
+
+  const edited = await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-06-15',
+    record: {
+      id,
+      name: 'Gym membership',
+      kind: 'expense',
+      amountCents: 3_000,
+      categoryName: 'Health',
+      startDate: '2026-07-05',
+      recurrence: { frequency: 'monthly', interval: 1 },
+    },
+  });
+  assert.equal(edited.records.length, 1, 'edited, not duplicated');
+  assert.equal(edited.records[0].name, 'Gym membership');
+  assert.equal(edited.records[0].amountCents, 3_000);
+  assert.equal(edited.records[0].categoryName, 'Health');
+
+  const dismissed = await ask(dataDir, {
+    kind: 'plan.setState',
+    recordId: id,
+    state: 'dismissed',
+    today: '2026-06-15',
+  });
+  assert.equal(dismissed.records[0].state, 'dismissed');
+  assert.ok(
+    dismissed.occurrences.every(one => one.state === 'dismissed'),
+    'a dismissed record dismisses everything it would have produced',
+  );
+
+  const back = await ask(dataDir, {
+    kind: 'plan.setState',
+    recordId: id,
+    state: 'confirmed',
+    today: '2026-06-15',
+  });
+  assert.equal(back.records[0].state, 'confirmed');
+  assert.equal(back.occurrences[0].state, 'expected');
+
+  const gone = await ask(dataDir, {
+    kind: 'plan.remove',
+    recordId: id,
+    today: '2026-06-15',
+  });
+  assert.deepEqual(gone.records, []);
+  assert.deepEqual(gone.occurrences, []);
+});
+
+test('one occurrence moves without moving the series, and survives a restart', async () => {
+  const dataDir = await budget();
+  const created = await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-06-15',
+    record: {
+      name: 'Insurance',
+      kind: 'expense',
+      amountCents: 4_500,
+      categoryName: 'Insurance',
+      startDate: '2026-07-01',
+      recurrence: { frequency: 'monthly', interval: 1 },
+    },
+  });
+  const id = created.records[0].id;
+
+  const moved = await ask(dataDir, {
+    kind: 'plan.reschedule',
+    recordId: id,
+    dueDate: '2026-08-01',
+    to: '2026-08-06',
+    today: '2026-06-15',
+  });
+  const august = moved.occurrences.find(one => one.dueDate === '2026-08-01');
+  assert.equal(august?.effectiveDate, '2026-08-06');
+  assert.equal(august?.state, 'rescheduled');
+
+  const september = moved.occurrences.find(one => one.dueDate === '2026-09-01');
+  assert.equal(
+    september?.effectiveDate,
+    '2026-09-01',
+    'the rhythm is unchanged: one late payment is not a new arrangement',
+  );
+
+  await restart(dataDir);
+  const after = await ask(dataDir, { kind: 'plan.list', today: '2026-06-15' });
+  assert.equal(
+    after.occurrences.find(one => one.dueDate === '2026-08-01')?.effectiveDate,
+    '2026-08-06',
+  );
+
+  // A date the record does not fall on is refused rather than silently stored.
+  const wrong = await send(
+    {
+      id: 'plan-wrong-date',
+      kind: 'plan.reschedule',
+      recordId: id,
+      dueDate: '2026-08-02',
+      to: '2026-08-09',
+    },
+    dataDir,
+  );
+  assert.equal(wrong.ok, false);
+  if (wrong.ok) return;
+  assert.match(wrong.message, /does not fall on that date/);
+});
+
+test('a single occurrence can be struck out, and the rest stand', async () => {
+  const dataDir = await budget();
+  const created = await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-06-15',
+    record: {
+      name: 'Cleaner',
+      kind: 'expense',
+      amountCents: 6_000,
+      categoryName: null,
+      startDate: '2026-07-03',
+      recurrence: { frequency: 'weekly', interval: 1 },
+    },
+  });
+  const id = created.records[0].id;
+
+  const struck = await ask(dataDir, {
+    kind: 'plan.dismissOccurrence',
+    recordId: id,
+    dueDate: '2026-07-10',
+    dismissed: true,
+    today: '2026-06-15',
+  });
+  assert.equal(
+    struck.occurrences.find(one => one.dueDate === '2026-07-10')?.state,
+    'dismissed',
+  );
+  assert.equal(
+    struck.occurrences.find(one => one.dueDate === '2026-07-17')?.state,
+    'expected',
+  );
+  assert.equal(struck.records[0].state, 'confirmed', 'the record itself stands');
+});
+
+test('a record is refused rather than stored wrong', async () => {
+  const dataDir = await budget();
+  const refusals: Array<[Record<string, unknown>, RegExp]> = [
+    [{ name: '  ' }, /needs a name/],
+    [{ amountCents: 0 }, /above zero/],
+    [{ amountCents: -100 }, /above zero/],
+    [{ startDate: '5 July' }, /YYYY-MM-DD/],
+    [{ endDate: '2026-01-01' }, /before the start date/],
+  ];
+
+  let index = 0;
+  for (const [broken, says] of refusals) {
+    index += 1;
+    const answer = await send(
+      {
+        id: `plan-refuse-${index}`,
+        kind: 'plan.save',
+        record: {
+          name: 'Rent',
+          kind: 'expense',
+          amountCents: 1_000,
+          categoryName: null,
+          startDate: '2026-07-01',
+          recurrence: { frequency: 'monthly', interval: 1 },
+          ...broken,
+        } as never,
+      },
+      dataDir,
+    );
+    assert.equal(answer.ok, false, JSON.stringify(broken));
+    if (answer.ok) continue;
+    assert.match(answer.message, says);
+  }
+
+  const plan = await ask(dataDir, { kind: 'plan.list', today: '2026-06-15' });
+  assert.deepEqual(plan.records, [], 'nothing broken was stored');
+});
+
+test('the detection offers records, and offers them once', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const first = await ask(dataDir, { kind: 'plan.suggest', today: '2026-06-15' });
+  const rhythms = await ask(dataDir, { kind: 'recurring.list' });
+  const projectable = rhythms.filter(
+    one => one.cadence !== 'irregular' && one.nextExpectedDate !== null,
+  );
+  assert.equal(
+    first.added,
+    projectable.length,
+    'every rhythm with a next date becomes an offer',
+  );
+
+  for (const record of first.plan.records) {
+    assert.equal(record.state, 'suggested', 'an offer, not a decision');
+    assert.equal(record.provenance, 'detected');
+    assert.equal(record.kind, 'expense');
+    assert.ok(record.amountCents > 0);
+  }
+
+  // Running it again offers nothing new: a suggestion somebody has dealt with
+  // does not come back the next time an import happens.
+  const again = await ask(dataDir, { kind: 'plan.suggest', today: '2026-06-15' });
+  assert.equal(again.added, 0);
+  assert.equal(again.plan.records.length, first.plan.records.length);
+
+  if (first.plan.records.length === 0) return;
+  const accepted = await ask(dataDir, {
+    kind: 'plan.setState',
+    recordId: first.plan.records[0].id,
+    state: 'confirmed',
+    today: '2026-06-15',
+  });
+  assert.equal(
+    accepted.records.find(one => one.id === first.plan.records[0].id)?.provenance,
+    'manual',
+    'accepting an offer makes it a person s decision (03 §4.3)',
+  );
 });

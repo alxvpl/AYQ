@@ -45,6 +45,16 @@ import {
   ayqSummary,
   ayqUnfiled,
 } from './ayq-ledger.ts';
+import {
+  ayqDismissOccurrence,
+  ayqPlan,
+  ayqRemovePlan,
+  ayqReschedule,
+  ayqSavePlan,
+  ayqSetPlanState,
+  ayqSuggest,
+} from './ayq-plan.ts';
+import { ayqToday } from './ayq-plan-series.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import {
   ayqApplyRules,
@@ -519,6 +529,91 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'counterparties.unfiled',
         result: await ayqUnfiled(dataDir, request.filter ?? {}),
+      };
+
+    /* ------------------------------------------------------------ the plan
+
+       Every one of these answers with the whole plan rather than with what it
+       changed. Rescheduling one occurrence can move it past another and change
+       what is overdue, so a screen that patched its own copy would be drawing a
+       plan the engine does not have.                                        */
+
+    case 'plan.list':
+      return {
+        id,
+        ok: true,
+        kind: 'plan.list',
+        result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+
+    case 'plan.save': {
+      const now = new Date().toISOString();
+      ayqSavePlan(dataDir, request.record, now);
+      return {
+        id,
+        ok: true,
+        kind: 'plan.save',
+        result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+    }
+
+    case 'plan.setState': {
+      ayqSetPlanState(
+        dataDir,
+        request.recordId,
+        request.state,
+        new Date().toISOString(),
+      );
+      return {
+        id,
+        ok: true,
+        kind: 'plan.setState',
+        result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+    }
+
+    case 'plan.remove':
+      ayqRemovePlan(dataDir, request.recordId);
+      return {
+        id,
+        ok: true,
+        kind: 'plan.remove',
+        result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+
+    case 'plan.reschedule':
+      ayqReschedule(dataDir, request.recordId, request.dueDate, request.to);
+      return {
+        id,
+        ok: true,
+        kind: 'plan.reschedule',
+        result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+
+    case 'plan.dismissOccurrence':
+      ayqDismissOccurrence(
+        dataDir,
+        request.recordId,
+        request.dueDate,
+        request.dismissed,
+      );
+      return {
+        id,
+        ok: true,
+        kind: 'plan.dismissOccurrence',
+        result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+
+    case 'plan.suggest':
+      return {
+        id,
+        ok: true,
+        kind: 'plan.suggest',
+        result: await ayqSuggest(
+          dataDir,
+          ayqToday(request.today),
+          new Date().toISOString(),
+        ),
       };
 
     case 'import.camt':
