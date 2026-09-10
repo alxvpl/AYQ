@@ -37,6 +37,7 @@ import {
   ayqCounterparties,
   ayqCounterpartyDetail,
 } from './ayq-counterparties.ts';
+import { ayqSetAccountFlag } from './ayq-funds.ts';
 import {
   ayqAccounts,
   ayqDetail,
@@ -262,7 +263,16 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         id,
         ok: true,
         kind: 'accounts.list',
-        result: await ayqAccounts(),
+        result: await ayqAccounts(dataDir),
+      };
+
+    case 'accounts.setFlag':
+      ayqSetAccountFlag(dataDir, request.accountId, request.countsTowardFunds);
+      return {
+        id,
+        ok: true,
+        kind: 'accounts.setFlag',
+        result: await ayqAccounts(dataDir),
       };
 
     case 'transactions.list':
@@ -520,7 +530,7 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         id,
         ok: true,
         kind: 'spending',
-        result: await ayqSpending(request.filter ?? {}),
+        result: await ayqSpending(dataDir, request.filter ?? {}),
       };
 
     case 'counterparties.unfiled':

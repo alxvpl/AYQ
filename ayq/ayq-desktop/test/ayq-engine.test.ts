@@ -71,6 +71,11 @@ const fixture = join(
   'ayq-abn-month.xml',
 );
 
+/** The invented pair that is one person's money in two of their own accounts. */
+function ownAccountFixture(name: string): string {
+  return join(here, '..', '..', 'ayq-camt', 'test', 'fixtures', name);
+}
+
 let counter = 0;
 
 /**
@@ -2143,5 +2148,160 @@ test('the detection offers records, and offers them once', async () => {
     accepted.records.find(one => one.id === first.plan.records[0].id)?.provenance,
     'manual',
     'accepting an offer makes it a person s decision (03 §4.3)',
+  );
+});
+
+/* ------------------------------------------------------------ available funds
+
+   03 §7.6: only flagged accounts form available funds, the flag is the owner's
+   per account, and a transfer between a flagged and an unflagged account is a
+   movement of money — never income and never an expense.                     */
+
+test('an account counts toward available funds until somebody says otherwise', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const accounts = await ask(dataDir, { kind: 'accounts.list' });
+  assert.equal(accounts.length, 1);
+  assert.equal(
+    accounts[0].countsTowardFunds,
+    true,
+    'the default, because nothing AYQ has says which kind of account it is',
+  );
+
+  const summary = await ask(dataDir, { kind: 'summary' });
+  assert.equal(
+    summary.availableFundsCents,
+    summary.totalBalanceCents,
+    'with one counting account they are the same figure',
+  );
+});
+
+test('the flag is the owner’s, per account, and it survives a restart', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [ownAccountFixture('ayq-own-current.xml')],
+  });
+  await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [ownAccountFixture('ayq-own-savings.xml')],
+  });
+
+  const both = await ask(dataDir, { kind: 'accounts.list' });
+  assert.equal(both.length, 2, 'two accounts, from two statements');
+  const savings = both.find(one => one.balanceCents > 700_000);
+  const current = both.find(one => one !== savings);
+  assert.ok(savings && current);
+
+  // The bank's own arithmetic, from the statements' opening balances.
+  assert.equal(current.balanceCents, 147_500);
+  assert.equal(savings.balanceCents, 750_240);
+
+  const before = await ask(dataDir, { kind: 'summary' });
+  assert.equal(before.totalBalanceCents, 897_740);
+  assert.equal(before.availableFundsCents, 897_740, 'both count, by default');
+
+  const after = await ask(dataDir, {
+    kind: 'accounts.setFlag',
+    accountId: savings.id,
+    countsTowardFunds: false,
+  });
+  assert.equal(
+    after.find(one => one.id === savings.id)?.countsTowardFunds,
+    false,
+  );
+  assert.equal(
+    after.find(one => one.id === current.id)?.countsTowardFunds,
+    true,
+    'one account at a time; the others are not touched',
+  );
+
+  const narrowed = await ask(dataDir, { kind: 'summary' });
+  assert.equal(
+    narrowed.totalBalanceCents,
+    897_740,
+    'the money is all still there',
+  );
+  assert.equal(
+    narrowed.availableFundsCents,
+    147_500,
+    'but only the flagged account is available to spend (03 §7.6)',
+  );
+
+  await restart(dataDir);
+  const kept = await ask(dataDir, { kind: 'summary' });
+  assert.equal(kept.availableFundsCents, 147_500, 'the decision outlived the process');
+});
+
+test('money moved between two of the owner’s own accounts is neither income nor expense', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [ownAccountFixture('ayq-own-current.xml')],
+  });
+  await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [ownAccountFixture('ayq-own-savings.xml')],
+  });
+
+  // Four transactions: the 500 out, the 500 in, a 25.00 card payment and 2.40
+  // of interest. The opening balances are the account's starting point and are
+  // not transactions of the bank's.
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  assert.equal(ledger.total, 4, 'both sides of the transfer are still in the ledger');
+
+  const spending = await ask(dataDir, { kind: 'spending' });
+  assert.equal(
+    spending.transferCount,
+    2,
+    'both halves of the transfer were recognised and left out',
+  );
+  assert.equal(
+    spending.totalCents,
+    2_500,
+    'the 25.00 card payment, and not the 500.00 that only changed accounts',
+  );
+  assert.equal(
+    spending.incomeCents,
+    240,
+    'the interest is income; the 500.00 arriving is money that was already there',
+  );
+
+  const summary = await ask(dataDir, { kind: 'summary' });
+  assert.equal(summary.transactionCount, 4);
+  assert.equal(summary.month, '2026-08');
+  assert.equal(summary.monthIncomeCents, 240);
+  assert.equal(summary.monthExpenseCents, -2_500);
+  assert.equal(
+    summary.uncategorisedCount,
+    2,
+    'a transfer is not a thing waiting to be filed',
+  );
+
+  const backlog = await ask(dataDir, { kind: 'counterparties.unfiled' });
+  assert.ok(
+    backlog.every(one => !one.name.includes('TESTPERSOON')),
+    'and it is not offered a category either',
+  );
+  assert.equal(backlog.length, 1, 'only the shop is waiting');
+});
+
+test('one account on its own has nobody to transfer to', async () => {
+  // The rule needs two accounts to mean anything, and a budget with one must
+  // not start calling ordinary payments transfers because a counterparty IBAN
+  // happens to be there.
+  const dataDir = await budget();
+  await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [ownAccountFixture('ayq-own-current.xml')],
+  });
+
+  const spending = await ask(dataDir, { kind: 'spending' });
+  assert.equal(spending.transferCount, 0);
+  assert.equal(
+    spending.totalCents,
+    52_500,
+    'both payments count, because both left the money',
   );
 });

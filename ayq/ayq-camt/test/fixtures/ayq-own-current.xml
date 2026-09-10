@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  One half of an invented pair: a current account that moves money to a savings
+  account of the same person, and spends some money on something real.
+
+  Its partner is ayq-own-savings.xml, whose account IBAN is this statement's
+  counterparty IBAN and the other way round. Together they are what 03 §7.6
+  is about: money that leaves one account and arrives in another is a movement,
+  never an expense and never income, whichever of the two counts toward
+  available funds.
+
+  The IBANs, names and amounts belong to no one.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-202608-own-current</MsgId>
+      <CreDtTm>2026-09-01T03:04:05</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0011112222.2026-08</Id>
+      <LglSeqNb>170</LglSeqNb>
+      <CreDtTm>2026-09-01T03:04:05</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-08-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-08-31T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL00TEST0011112222</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">2000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-08-01</Dt></Dt>
+      </Bal>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">1475.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-08-31</Dt></Dt>
+      </Bal>
+
+      <!-- To the person's own savings account. Not an expense. -->
+      <Ntry>
+        <Amt Ccy="EUR">500.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-08-10</Dt></BookgDt><ValDt><Dt>2026-08-10</Dt></ValDt>
+        <AcctSvcrRef>2026081000000201</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>ICDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>EIGEN-SPAAR-202608</EndToEndId></Refs>
+            <RltdPties>
+              <Cdtr><Nm>J. TESTPERSOON</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>NL00TEST0033334444</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>Naar eigen spaarrekening</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+        <AddtlNtryInf>SEPA Overboeking eigen rekening</AddtlNtryInf>
+      </Ntry>
+
+      <!-- And one thing the money was actually spent on. -->
+      <Ntry>
+        <Amt Ccy="EUR">25.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-08-12</Dt></BookgDt><ValDt><Dt>2026-08-12</Dt></ValDt>
+        <AcctSvcrRef>2026081200000202</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 4321,PAS421 NR:00B201, 12.08.26/10:20   UTRECHT</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

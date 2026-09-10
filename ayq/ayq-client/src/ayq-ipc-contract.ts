@@ -25,6 +25,13 @@ export type AyqAccountSummary = {
   balanceCents: number;
   /** Transactions the budget holds for it. */
   transactionCount: number;
+  /**
+   * Whether this account's balance forms available funds (03 §7.6).
+   *
+   * AYQ's own flag, not Actual's on/off-budget distinction: that one also
+   * decides what Actual counts in a budget month, which the Plan reads.
+   */
+  countsTowardFunds: boolean;
 };
 
 /** Proof of life from the engine, computed from a real budget. */
@@ -385,6 +392,8 @@ export type AyqImportSummary = AyqImportRecord & {
 export type AyqSummary = {
   accounts: AyqAccountSummary[];
   totalBalanceCents: number;
+  /** The part of it that counts toward available funds (03 §7.6). */
+  availableFundsCents: number;
   /** The month the ledger's newest transaction falls in, YYYY-MM. */
   month: string | null;
   monthIncomeCents: number;
@@ -429,6 +438,12 @@ export type AyqSpending = {
   totalCents: number;
   uncategorisedCents: number;
   incomeCents: number;
+  /**
+   * Transactions left out because they moved money between two accounts AYQ
+   * holds (03 §7.6). Reported rather than silently dropped: a total that is
+   * quietly smaller than the ledger is a total nobody can check.
+   */
+  transferCount: number;
   /** Every month the budget holds a transaction in, newest first. */
   months: string[];
   /** Every year the budget holds a transaction in, newest first. */
@@ -581,6 +596,7 @@ export type AyqPlanSuggested = {
 export type AyqResults = {
   'engine.status': AyqEngineStatus;
   'accounts.list': AyqAccountSummary[];
+  'accounts.setFlag': AyqAccountSummary[];
   'transactions.list': AyqLedger;
   'transaction.detail': AyqTransactionDetail;
   'transaction.categorise': AyqCategorised;
@@ -621,6 +637,17 @@ export type AyqResults = {
 export type AyqRequestBody =
   | { kind: 'engine.status' }
   | { kind: 'accounts.list' }
+  | {
+      /**
+       * Says whether one account's balance counts toward available funds.
+       *
+       * The one thing 03 §7.6 actually guarantees a person: the default is
+       * AYQ's, and the decision is theirs, per account.
+       */
+      kind: 'accounts.setFlag';
+      accountId: string;
+      countsTowardFunds: boolean;
+    }
   | { kind: 'transactions.list'; filter?: AyqLedgerFilter }
   | { kind: 'transaction.detail'; transactionId: string }
   | {

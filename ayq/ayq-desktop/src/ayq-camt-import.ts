@@ -43,12 +43,15 @@ import { ayqId, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
  * rest never leaves the record. The masking is deterministic, which is what
  * makes a second import land in the same account rather than a new one.
  */
+export function ayqMaskIban(iban: string | null): string | null {
+  if (iban === null || iban.length < 6) return null;
+  return `AYQ ${iban.slice(0, 2)}…${iban.slice(-4)}`;
+}
+
 export function ayqMaskAccount(entries: AyqBankEntry[]): string {
   for (const entry of entries) {
-    const iban = entry.statement.accountIban;
-    if (iban !== null && iban.length >= 6) {
-      return `AYQ ${iban.slice(0, 2)}…${iban.slice(-4)}`;
-    }
+    const masked = ayqMaskIban(entry.statement.accountIban);
+    if (masked !== null) return masked;
   }
   return 'AYQ imported account';
 }

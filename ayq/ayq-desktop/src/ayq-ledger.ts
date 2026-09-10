@@ -25,7 +25,13 @@ import type {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
-import { ayqReadStore, ayqRowKey } from './ayq-store.ts';
+import {
+  ayqAvailableFunds,
+  ayqCountsTowardFunds,
+  ayqIsInternalTransfer,
+  ayqOwnAccountNames,
+} from './ayq-funds.ts';
+import { ayqReadStore, ayqRowKey, type AyqStore } from './ayq-store.ts';
 
 /** How many rows the screen is given when it does not ask for a number. */
 export const AYQ_LEDGER_LIMIT = 500;
@@ -130,17 +136,28 @@ function toRow(row: AyqQueriedRow, source: AyqCategorySource): AyqLedgerRow {
  * it would be a total that lies about the size of the year.
  */
 export async function ayqSpending(
+  dataDir: string,
   filter: AyqSpendingFilter = {},
 ): Promise<AyqSpending> {
   const rows = await queried(filter);
+  const store = ayqReadStore(dataDir);
+  const isTransfer = await internalTransfers(dataDir, store);
 
   const byCategory = new Map<
     string,
     { name: string; cents: number; count: number }
   >();
   let income = 0;
+  let transfers = 0;
 
   for (const row of rows) {
+    // Money that moved between two accounts AYQ holds did not leave and did not
+    // arrive (03 §7.6). Counting it would make a person who keeps a savings
+    // account look like someone who spends twice what they earn.
+    if (isTransfer(row)) {
+      transfers += 1;
+      continue;
+    }
     const cents = Number(row.amount ?? 0);
     if (cents > 0) {
       income += cents;
@@ -195,6 +212,7 @@ export async function ayqSpending(
     totalCents: total,
     uncategorisedCents: byCategory.get('')?.cents ?? 0,
     incomeCents: income,
+    transferCount: transfers,
     months: [...new Set(dates.map(date => date.slice(0, 7)))],
     years: [...new Set(dates.map(date => date.slice(0, 4)))],
   };
@@ -218,11 +236,15 @@ export async function ayqUnfiled(
 ): Promise<AyqUnfiled[]> {
   const store = ayqReadStore(dataDir);
   const rows = await queried(filter);
+  const isTransfer = await internalTransfers(dataDir, store);
 
   const byKey = new Map<string, AyqUnfiled>();
 
   for (const row of rows) {
     if (row.categoryId) continue;
+    // Moving money to one's own savings account is not a shop waiting to be
+    // filed, and offering a category for it would be offering a wrong answer.
+    if (isTransfer(row)) continue;
     const cents = Number(row.amount ?? 0);
     if (cents >= 0) continue;
 
@@ -324,8 +346,28 @@ export async function ayqDetail(
   };
 }
 
+/**
+ * A test for "this money did not actually leave", ready to apply to rows.
+ *
+ * Built once per question rather than per row: it needs the accounts, which is
+ * a query, and the store, which is a file.
+ */
+async function internalTransfers(
+  dataDir: string,
+  store: AyqStore,
+): Promise<(row: AyqQueriedRow) => boolean> {
+  const ownNames = ayqOwnAccountNames(await ayqAccounts(dataDir));
+  // One account is nobody's transfer partner. Answering without touching the
+  // provenance at all is both faster and clearer about why.
+  if (ownNames.size < 2) return () => false;
+  return row =>
+    ayqIsInternalTransfer(ownNames, store.provenance[ayqRowKey(row)]);
+}
+
 /** Every account, with the balance the engine's spreadsheet computed. */
-export async function ayqAccounts(): Promise<AyqAccountSummary[]> {
+export async function ayqAccounts(
+  dataDir: string,
+): Promise<AyqAccountSummary[]> {
   const counts = (await api.aqlQuery(
     api
       .q('transactions')
@@ -338,6 +380,7 @@ export async function ayqAccounts(): Promise<AyqAccountSummary[]> {
     (counts.data ?? []).map(row => [String(row.accountId), Number(row.count)]),
   );
 
+  const store = ayqReadStore(dataDir);
   const accounts: AyqAccountSummary[] = [];
   for (const account of await api.getAccounts()) {
     accounts.push({
@@ -345,6 +388,7 @@ export async function ayqAccounts(): Promise<AyqAccountSummary[]> {
       name: account.name,
       balanceCents: (await api.getAccountBalance(account.id)) ?? 0,
       transactionCount: byAccount.get(account.id) ?? 0,
+      countsTowardFunds: ayqCountsTowardFunds(store, account.id),
     });
   }
   return accounts;
@@ -372,9 +416,10 @@ export async function ayqTransactionCount(): Promise<number> {
  */
 export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
   const store = ayqReadStore(dataDir);
-  const accounts = await ayqAccounts();
+  const accounts = await ayqAccounts(dataDir);
   const all = await queried({});
   all.sort(compareRows);
+  const isTransfer = await internalTransfers(dataDir, store);
 
   const month = all[0]?.date?.slice(0, 7) ?? null;
   let income = 0;
@@ -383,14 +428,17 @@ export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
   const counterparties = new Set<string>();
 
   for (const row of all) {
-    if (!row.categoryId) uncategorised += 1;
+    const transfer = isTransfer(row);
+    // A transfer is still a transaction and still has a counterparty — it is
+    // just not one that needs filing, and not money in or out (03 §7.6).
+    if (!row.categoryId && !transfer) uncategorised += 1;
     const key = ayqCanonicalKey(
       store,
       store.provenance[ayqRowKey(row)]?.counterpartyKey,
     );
     counterparties.add(key ?? row.payee ?? row.id);
 
-    if (month !== null && row.date.startsWith(month)) {
+    if (!transfer && month !== null && row.date.startsWith(month)) {
       const amount = Number(row.amount ?? 0);
       if (amount >= 0) income += amount;
       else expense += amount;
@@ -405,6 +453,10 @@ export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
       (total, account) => total + account.balanceCents,
       0,
     ),
+    // Only the accounts flagged as counting (03 §7.6). With one current account
+    // this equals the balance; with a savings account beside it, it is the part
+    // of the money that is actually there to be spent.
+    availableFundsCents: ayqAvailableFunds(accounts),
     month,
     monthIncomeCents: income,
     monthExpenseCents: expense,
