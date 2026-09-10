@@ -379,6 +379,42 @@ jobs:
             }
           }
 
+          # Let the file finish being a file before running it.
+          #
+          # Run 50 crashed in NSIS's integrity pass — 0xC0000005 two seconds in
+          # — and then installed the same file cleanly with /NCRC, which skips
+          # only that check. That pass reads all 117 MB in one go, and so does
+          # the one other thing reading this file: Defender, which began
+          # scanning it the instant electron-builder finished writing it, about
+          # a second before this step started.
+          #
+          # Nobody runs an installer one second after a build machine wrote it.
+          # That gap is an artefact of CI, not a condition the product is used
+          # in, so closing it is not weakening the gate — it is pointing the
+          # gate at the real case. Both waits are measured and printed, so if
+          # it crashes anyway the log rules this explanation out rather than
+          # leaving it as a maybe.
+          $since = Get-Date
+          $exclusive = $false
+          for ($try = 0; $try -lt 30; $try += 1) {
+            try {
+              $handle = [System.IO.File]::Open(
+                $setup.FullName, 'Open', 'Read', 'None')
+              $handle.Close()
+              $exclusive = $true
+              break
+            } catch {
+              Start-Sleep -Seconds 2
+            }
+          }
+          Write-Host ("nothing else holds it after {0:N0}s : {1}" -f `
+            ((Get-Date) - $since).TotalSeconds, $exclusive)
+
+          # And a flat pause on top, because a handle released is not a scan
+          # finished: Defender closes the file and keeps working on it.
+          Start-Sleep -Seconds 15
+          Write-Host 'waited a further 15s before starting it'
+
           $target = Join-Path $env:RUNNER_TEMP 'ayq-install'
           $install = Start-Process -FilePath $setup.FullName `
             -ArgumentList '/S', "/D=$target" -PassThru -Wait
