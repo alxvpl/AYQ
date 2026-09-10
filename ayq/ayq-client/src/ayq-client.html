@@ -192,6 +192,35 @@
   .categorise select { min-width:240px; }
   .categorise .check { margin-top:8px; }
 
+  /* The desktop pattern of 04 A4: the table is the screen and the pane beside
+     it is where the selected record is read and changed. Not a modal — a modal
+     hides the list you are working through, which is the one thing you need to
+     keep seeing. */
+  .workbench { display:flex; gap:16px; align-items:flex-start; margin-top:2px; }
+  .workbench-main { flex:1 1 auto; min-width:0; }
+  .workbench-pane {
+    flex:0 0 320px; max-width:340px; padding:14px 16px;
+    background:var(--panel); border:1px solid var(--line); border-radius:3px;
+  }
+  .workbench-pane h2 { margin:0 0 10px; font-size:14px; font-weight:600; }
+  .pane-heading { margin:16px 0 8px; font-size:10.5px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--muted); }
+  .pane-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    margin-top:12px; }
+  .pane-note { flex:1 0 100%; margin:0; font-size:12px; color:var(--muted); }
+  .pane-form { display:flex; flex-direction:column; gap:8px; }
+  .pane-field { display:flex; flex-direction:column; gap:3px; }
+  .pane-field-label { font-size:10.5px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--muted); }
+  .pane-field input, .pane-field select { width:100%; }
+  .tag {
+    margin-left:6px; padding:1px 6px; border-radius:9px; font-size:10.5px;
+    color:var(--muted); background:var(--sunk); border:1px solid var(--line);
+  }
+  .tag.warn { color:var(--warn); border-color:var(--warn); }
+  .grid tbody tr.current { background:var(--sunk); }
+  .grid tbody tr.muted-row td { color:var(--muted); }
+
   .empty { padding:26px 2px; }
   .empty-title { margin:22px 0 6px; font-size:15px; font-weight:550; }
   /* The one place a width cap earns itself: prose is unreadable across a
@@ -212,6 +241,10 @@
       padding:10px 14px; border-right:0; border-bottom:1px solid var(--line);
     }
     .brand { padding:0 12px 0 2px; }
+    /* The pane goes under the table rather than beside it: 320 pixels of pane
+       beside a table in a 700-pixel window is neither a table nor a pane. */
+    .workbench { display:block; }
+    .workbench-pane { max-width:none; margin-top:16px; }
     #ayq-sections, #ayq-accounts { flex-direction:row; flex-wrap:wrap; align-items:center; }
     .nav-heading { margin:0 6px 0 10px; }
     .nav-item, .nav-account { width:auto; }

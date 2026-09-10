@@ -67,6 +67,13 @@ if (hold) env.AYQ_SMOKE_HOLD_MS = hold;
 if (has('spending')) env.AYQ_SMOKE_SPENDING = '1';
 // `--show-more` presses the ledger's own "Show more" and requires more rows.
 if (has('show-more')) env.AYQ_SMOKE_SHOW_MORE = '1';
+// `--plan "name|amount|frequency|date"` opens Upcoming and adds that planned
+// payment through the form, then requires the table to list it.
+// `--expect-plan "name"` demands, on a later launch, that it is still listed.
+const plan = flag('plan');
+if (plan) env.AYQ_SMOKE_PLAN = plan;
+const expectPlan = flag('expect-plan');
+if (expectPlan) env.AYQ_SMOKE_EXPECT_PLAN = expectPlan;
 
 const build = spawnSync(process.execPath, [join(here, 'build.mjs')], {
   stdio: 'inherit',

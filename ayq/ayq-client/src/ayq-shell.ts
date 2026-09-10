@@ -15,6 +15,7 @@ import type { AyqAccountSummary } from './ayq-ipc-contract.ts';
 
 export type AyqView =
   | 'transactions'
+  | 'upcoming'
   | 'spending'
   | 'counterparties'
   | 'recurring'
@@ -36,6 +37,11 @@ export const AYQ_VIEWS: ReadonlyArray<{
     id: 'transactions',
     label: 'Transactions',
     blurb: 'Every booking, newest first.',
+  },
+  {
+    id: 'upcoming',
+    label: 'Upcoming',
+    blurb: 'What is coming, and where it leaves the money.',
   },
   {
     id: 'spending',

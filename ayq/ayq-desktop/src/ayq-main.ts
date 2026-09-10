@@ -432,6 +432,97 @@ async function spendingShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Opens Upcoming and, if asked, adds a planned payment through the form.
+ *
+ * Through the screen a person uses: the tab, the button, the fields, the save.
+ * What is read back afterwards is the *table*, which the renderer rebuilds from
+ * the engine's answer — never the controls the harness typed into, which would
+ * only ever confirm the harness's own input. That defect has been paid for once
+ * already and is not repeated here.
+ *
+ * The spec is `name|amount|frequency|startDate`, and every part of it is
+ * invented: this runs on a fixture, not on anybody's statement.
+ */
+async function upcomingShown(
+  window: BrowserWindow,
+  addSpec: string,
+): Promise<string> {
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-tab="upcoming"]\').click(); true',
+  );
+
+  const ready = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-forecast]')",
+    )) === true;
+
+  let deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await ready())) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!(await ready())) return '';
+
+  if (addSpec !== '') {
+    const [name, amount, frequency, startDate] = addSpec.split('|');
+    const filled = String(
+      await window.webContents.executeJavaScript(`(() => {
+        const add = document.getElementById('ayq-plan-new');
+        if (!add) return 'no button';
+        add.click();
+        const field = which =>
+          document.querySelector('[data-ayq-plan-field="' + which + '"]');
+        const set = (which, value) => {
+          const control = field(which);
+          if (!control) return false;
+          control.value = value;
+          control.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        };
+        if (!set('name', ${JSON.stringify(name)})) return 'no name field';
+        if (!set('amount', ${JSON.stringify(amount)})) return 'no amount field';
+        if (!set('frequency', ${JSON.stringify(frequency)})) return 'no frequency field';
+        if (!set('startDate', ${JSON.stringify(startDate)})) return 'no date field';
+        const save = document.getElementById('ayq-plan-save');
+        if (!save) return 'no save button';
+        save.click();
+        return 'saved';
+      })()`),
+    );
+    if (filled !== 'saved') return `could not add the payment: ${filled}`;
+
+    // Waited for in the table, which is drawn from what the engine answered.
+    deadline = Date.now() + 60_000;
+    let listed = false;
+    while (Date.now() < deadline && !listed) {
+      listed =
+        (await window.webContents.executeJavaScript(`(() => {
+          const rows = [...document.querySelectorAll('.grid tbody tr[data-ayq-record]')];
+          return rows.some(row => row.innerText.includes(${JSON.stringify(name)}));
+        })()`)) === true;
+      if (!listed) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    if (!listed) {
+      const said = await problemShown(window);
+      return `the payment was not listed after saving${said === '' ? '' : ` — the screen said: ${said}`}`;
+    }
+  }
+
+  return String(
+    await window.webContents.executeJavaScript(`(() => {
+      const figures = [...document.querySelectorAll('.figures .figure')].map(one => {
+        const label = one.querySelector('.figure-label');
+        const value = one.querySelector('.figure-value');
+        return (label ? label.textContent : '') + ' ' + (value ? value.textContent : '');
+      });
+      const rows = [...document.querySelectorAll('.grid tbody tr')].slice(0, 12).map(row =>
+        [...row.querySelectorAll('td')].map(cell => cell.innerText.trim()).join(' | '),
+      );
+      return figures.join('   ') + '\\n' + rows.join('\\n');
+    })()`),
+  );
+}
+
+/**
  * Presses "Show more" and reports how many rows the ledger holds afterwards.
  *
  * Counted from the rendered table, before and after, because the defect worth
@@ -630,6 +721,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   // Asked before the ledger is read back, because it leaves another view open;
   // the run returns to the transactions afterwards so the dump is of those.
   let spending = '';
+  let upcoming = '';
   if (process.env.AYQ_SMOKE_SPENDING === '1') {
     spending = await spendingShown(window);
     process.stdout.write(
@@ -641,6 +733,33 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 1_000));
   }
   const spendingOk = process.env.AYQ_SMOKE_SPENDING !== '1' || spending !== '';
+
+  // Upcoming: the forecast, and a planned payment added through the form the
+  // way a person adds one. `--expect-plan` on a later launch is the other half
+  // — a record that outlived the process that created it.
+  const planSpec = process.env.AYQ_SMOKE_PLAN ?? '';
+  const expectPlan = process.env.AYQ_SMOKE_EXPECT_PLAN ?? '';
+  let upcomingOk = true;
+  if (planSpec !== '' || expectPlan !== '') {
+    upcoming = await upcomingShown(window, planSpec);
+    process.stdout.write(
+      `[ayq-smoke] upcoming:\n${upcoming || '(the view showed nothing)'}\n`,
+    );
+    upcomingOk = upcoming !== '' && !upcoming.startsWith('could not') &&
+      !upcoming.startsWith('the payment was not listed');
+    if (expectPlan !== '') {
+      const kept = upcoming.includes(expectPlan);
+      upcomingOk = upcomingOk && kept;
+      process.stdout.write(
+        `[ayq-smoke] after restart the plan lists ${expectPlan} -> ` +
+          `${kept ? 'KEPT' : 'LOST'}\n`,
+      );
+    }
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
+    );
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+  }
 
   // Reading further back than the first page, through the control that offers
   // it. The ledger draws the newest few hundred of a budget that may hold
@@ -691,6 +810,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     importOk &&
     categoryOk &&
     spendingOk &&
+    upcomingOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -714,6 +834,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           categoryOk,
           categoryShown,
           spendingOk,
+          upcomingOk,
+          upcoming,
           pagedOk,
           imports: importRounds,
           dataDir,

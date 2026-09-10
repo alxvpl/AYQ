@@ -44,6 +44,11 @@ import {
   type AyqSpendingState,
 } from './ayq-spending.ts';
 import {
+  ayqEmptyUpcomingState,
+  ayqRenderUpcoming,
+  type AyqUpcomingState,
+} from './ayq-upcoming.ts';
+import {
   ayqEmptyTransactionsState,
   ayqRenderTransactions,
   ayqSelectAccount,
@@ -57,6 +62,7 @@ type AyqState = {
   status: AyqEngineStatus | null;
   summary: AyqSummary | null;
   transactions: AyqTransactionsState;
+  upcoming: AyqUpcomingState;
   spending: AyqSpendingState;
   counterparties: AyqCounterpartiesState;
   recurring: AyqRecurring[];
@@ -70,6 +76,7 @@ const state: AyqState = {
   status: null,
   summary: null,
   transactions: ayqEmptyTransactionsState(),
+  upcoming: ayqEmptyUpcomingState(),
   spending: ayqEmptySpendingState(),
   counterparties: ayqEmptyCounterpartiesState(),
   recurring: [],
@@ -229,6 +236,19 @@ async function loadView(): Promise<void> {
           filter: state.transactions.filter,
         })
       ).result;
+      return;
+    }
+    case 'upcoming': {
+      if (state.transactions.categories.length === 0) {
+        state.transactions.categories = (
+          await need({ kind: 'categories.list' })
+        ).result;
+      }
+      // Two questions, because they answer different halves of the screen: the
+      // forecast is what the position does, and the plan is what the records
+      // are. The pane reads a record; the table reads the projection.
+      state.upcoming.forecast = (await need({ kind: 'forecast' })).result;
+      state.upcoming.plan = (await need({ kind: 'plan.list' })).result;
       return;
     }
     case 'spending': {
@@ -479,6 +499,14 @@ function drawView(): void {
     case 'transactions':
       ayqRenderTransactions(
         state.transactions,
+        target,
+        reload => void refresh(reload),
+      );
+      return;
+    case 'upcoming':
+      ayqRenderUpcoming(
+        state.upcoming,
+        state.transactions.categories,
         target,
         reload => void refresh(reload),
       );

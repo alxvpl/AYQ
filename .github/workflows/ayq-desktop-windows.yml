@@ -226,6 +226,22 @@ jobs:
           node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --categorise Utilities
           node start.mjs --smoke --require-host "electron utilityProcess" --expect-category Utilities --spending --screenshot "${{ runner.temp }}\ayq-desktop-categories.png"
 
+      # The forecast, through the screen a person uses: the Upcoming tab, the
+      # "New planned payment" button, the fields, the save. Then a second launch
+      # over the same directory has to still list it — a restart, not a redraw.
+      #
+      # What is read back is the table, which the renderer draws from what the
+      # engine answered. Never the controls the harness typed into: that defect
+      # has been paid for once already.
+      - name: Upcoming, and a plan that outlives the process
+        working-directory: ayq/ayq-desktop
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-plan-budget
+        run: |
+          node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --plan "Rent|1200.00|monthly|2026-10-01"
+          node start.mjs --smoke --require-host "electron utilityProcess" --expect-plan Rent --screenshot "${{ runner.temp }}\ayq-desktop-upcoming.png"
+
       # Two AYQs over one budget would be two writers on one SQLite file. The
       # second launch has to stand aside while the first still holds it, and it
       # has to do so before it opens anything.
@@ -451,12 +467,18 @@ jobs:
 
           $env:AYQ_SMOKE_IMPORT = "$env:GITHUB_WORKSPACE\ayq\ayq-camt\test\fixtures\ayq-abn-month.xml"
           $env:AYQ_SMOKE_CATEGORISE = 'Utilities'
+          # And a planned payment, added through the installed application's own
+          # form. The forecast is the newest thing AYQ does and the one with the
+          # least habit behind it, so it is proved on the build a person gets.
+          $env:AYQ_SMOKE_PLAN = 'Rent|1200.00|monthly|2026-10-01'
           $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-report.json"
           Invoke-Installed 'import and file  :'
 
           Remove-Item Env:AYQ_SMOKE_IMPORT
           Remove-Item Env:AYQ_SMOKE_CATEGORISE
+          Remove-Item Env:AYQ_SMOKE_PLAN
           $env:AYQ_SMOKE_EXPECT_CATEGORY = 'Utilities'
+          $env:AYQ_SMOKE_EXPECT_PLAN = 'Rent'
           $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-restart-report.json"
           $env:AYQ_SMOKE_SCREENSHOT = "$env:RUNNER_TEMP\ayq-desktop-installed.png"
           Invoke-Installed 'after a restart  :'
@@ -478,6 +500,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-windows.png
             ${{ runner.temp }}\ayq-desktop-import.png
             ${{ runner.temp }}\ayq-desktop-categories.png
+            ${{ runner.temp }}\ayq-desktop-upcoming.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-report.json
             ${{ runner.temp }}\ayq-installed-restart-report.json
