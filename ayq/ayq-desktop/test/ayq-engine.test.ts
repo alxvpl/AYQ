@@ -2820,3 +2820,112 @@ test('one transaction cannot be two expected payments', async () => {
   if (refused.ok) return;
   assert.match(refused.message, /already matched to another expected payment/);
 });
+
+/* ------------------------------------------------------------- the worksheet
+
+   Categories down, one month across. The plan and the actual are Actual's; what
+   is still expected is the forecast's own figure for that month, read rather
+   than recomputed, so this screen and Upcoming cannot disagree (04 A9).      */
+
+test('the sheet shows the plan, the actual, what is left and what is still expected', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(one => one.name === 'Groceries');
+  assert.ok(groceries);
+
+  // File the fixture's supermarket into Groceries, in June 2026.
+  const unfiled = await ask(dataDir, { kind: 'counterparties.unfiled' });
+  const shop = unfiled.find(one => one.transactions === 6);
+  assert.ok(shop);
+  await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: shop.key,
+    categoryId: groceries.id,
+  });
+  await ask(dataDir, {
+    kind: 'budget.setPlan',
+    month: '2026-06',
+    categoryId: groceries.id,
+    cents: 20_000,
+  });
+
+  const sheet = await ask(dataDir, {
+    kind: 'plan.month',
+    month: '2026-06',
+    today: '2026-06-15',
+  });
+  assert.equal(sheet.month, '2026-06');
+  assert.equal(sheet.editable, true);
+  assert.ok(sheet.months.includes('2026-06'));
+
+  const row = sheet.rows.find(one => one.categoryId === groceries.id);
+  assert.equal(row?.planCents, 20_000);
+  assert.equal(row?.actualCents, shop.cents);
+  assert.equal(row?.remainingCents, 20_000 - shop.cents);
+  assert.equal(
+    row?.expectedCents,
+    20_000 - shop.cents,
+    'what is left of the plan is what is still expected from it',
+  );
+
+  // And the sheet agrees with the forecast about the month, because it is the
+  // same figure: one set of records, read two ways (04 A9).
+  const forecast = await ask(dataDir, { kind: 'forecast', today: '2026-06-15' });
+  assert.equal(
+    forecast.months.find(one => one.month === '2026-06')?.expectedExpenseCents,
+    sheet.totalExpectedCents,
+  );
+});
+
+test('a plan and a record in one category are not counted twice on the sheet', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const housing = categories.find(one => one.name === 'Housing');
+  assert.ok(housing);
+
+  await ask(dataDir, {
+    kind: 'budget.setPlan',
+    month: '2026-10',
+    categoryId: housing.id,
+    cents: 150_000,
+  });
+  await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-09-15',
+    record: {
+      name: 'Rent',
+      kind: 'expense',
+      amountCents: 120_000,
+      categoryName: 'Housing',
+      startDate: '2026-10-01',
+      recurrence: { frequency: 'once', interval: 1 },
+    },
+  });
+
+  const sheet = await ask(dataDir, {
+    kind: 'plan.month',
+    month: '2026-10',
+    today: '2026-09-15',
+  });
+  const row = sheet.rows.find(one => one.categoryId === housing.id);
+  assert.equal(row?.planCents, 150_000);
+  assert.equal(
+    row?.expectedCents,
+    150_000,
+    'the larger of the plan and the record, not their sum (03 §7.8)',
+  );
+});
+
+test('a month with no budget can be read and not planned in', async () => {
+  const dataDir = await budget();
+  const far = await ask(dataDir, {
+    kind: 'plan.month',
+    month: '2099-01',
+    today: '2026-09-15',
+  });
+  assert.equal(far.editable, false);
+  assert.equal(far.totalPlanCents, 0);
+  assert.ok(far.rows.length > 0);
+});

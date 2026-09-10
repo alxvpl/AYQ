@@ -24,13 +24,15 @@ import type {
   AyqPlan,
   AyqPlanDraft,
   AyqPlanFrequency,
+  AyqPlanSheet,
+  AyqPlanSheetRow,
   AyqPlanState,
   AyqPlanSuggested,
   AyqPlannedRecord,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
-import { ayqBudgetMonth } from './ayq-budget.ts';
+import { ayqBudgetMonth, ayqBudgetMonths } from './ayq-budget.ts';
 import { ayqMonthOf, ayqMonthsBetween } from './ayq-dates.ts';
 import { ayqComputeForecast } from './ayq-forecast.ts';
 import { ayqAvailableFunds } from './ayq-funds.ts';
@@ -116,6 +118,55 @@ export async function ayqForecast(
     ),
     plan,
   });
+}
+
+/**
+ * The worksheet for one month.
+ *
+ * Actual answers the plan and the actual; the forecast answers what is still
+ * expected. Both are read here rather than recomputed, so the sheet and the
+ * Upcoming screen cannot come to disagree about the same month — which is what
+ * 04 A9 is about: Plan and Upcoming read one set of records.
+ */
+export async function ayqPlanSheet(
+  dataDir: string,
+  today: string,
+  month?: string,
+): Promise<AyqPlanSheet> {
+  const chosen = month ?? ayqMonthOf(today);
+  const budget = await ayqBudgetMonth(chosen);
+
+  const expected = new Map<string, number>();
+  for (const event of (await ayqForecast(dataDir, today)).events) {
+    if (event.kind !== 'expense') continue;
+    if (ayqMonthOf(event.date) !== chosen) continue;
+    // A record with no category has nothing to sit in on this sheet. It is in
+    // the month's own total, and it is on the Upcoming screen where it belongs.
+    if (event.categoryName === null) continue;
+    expected.set(
+      event.categoryName,
+      (expected.get(event.categoryName) ?? 0) + event.amountCents,
+    );
+  }
+
+  const rows: AyqPlanSheetRow[] = budget.categories.map(category => ({
+    ...category,
+    expectedCents: category.isIncome
+      ? 0
+      : (expected.get(category.categoryName) ?? 0),
+  }));
+
+  return {
+    month: chosen,
+    editable: budget.editable,
+    today,
+    months: await ayqBudgetMonths(),
+    rows,
+    totalPlanCents: budget.totalPlanCents,
+    totalActualCents: budget.totalActualCents,
+    totalRemainingCents: budget.totalRemainingCents,
+    totalExpectedCents: rows.reduce((sum, row) => sum + row.expectedCents, 0),
+  };
 }
 
 function validate(draft: AyqPlanDraft): void {

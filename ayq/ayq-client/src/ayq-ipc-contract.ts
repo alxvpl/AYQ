@@ -753,6 +753,37 @@ export type AyqForecast = {
   closingCents: number;
 };
 
+/* --------------------------------------------------------------- the sheet
+
+   Categories down, one month across: what was planned, what happened, what is
+   left of it, and what AYQ still expects before the month ends. A worksheet —
+   not envelope budgeting (04 A8), and not a dashboard of cards (04 A3).     */
+
+export type AyqPlanSheetRow = AyqBudgetCategory & {
+  /**
+   * What this category is still expected to take before the month is out.
+   *
+   * The forecast's own figure for the month, so the sheet and Upcoming cannot
+   * disagree: the larger of what is left of the plan and the expected records
+   * in the category, never their sum.
+   */
+  expectedCents: number;
+};
+
+export type AyqPlanSheet = {
+  month: string;
+  /** Whether a plan can be set in this month; see AyqBudgetMonth. */
+  editable: boolean;
+  today: string;
+  /** Every month the budget can be asked about, oldest first. */
+  months: string[];
+  rows: AyqPlanSheetRow[];
+  totalPlanCents: number;
+  totalActualCents: number;
+  totalRemainingCents: number;
+  totalExpectedCents: number;
+};
+
 /** What turning the detected rhythms into offers came to. */
 export type AyqPlanSuggested = {
   plan: AyqPlan;
@@ -797,6 +828,7 @@ export type AyqResults = {
   'budget.month': AyqBudgetMonth;
   'budget.setPlan': AyqBudgetMonth;
   forecast: AyqForecast;
+  'plan.month': AyqPlanSheet;
   'match.propose': AyqMatches;
   'match.apply': AyqMatches;
   'match.reject': AyqMatches;
@@ -926,6 +958,14 @@ export type AyqRequestBody =
       month: string;
       categoryId: string;
       cents: number;
+    }
+  | {
+      /**
+       * The worksheet for one month. Without a month, the one today is in.
+       */
+      kind: 'plan.month';
+      month?: string;
+      today?: string;
     }
   | { kind: 'forecast'; today?: string }
   | {

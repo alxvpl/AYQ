@@ -95,7 +95,7 @@ const MONTH = /^\d{4}-\d{2}$/;
  *
  * Read rather than assumed, because the range moves with the calendar.
  */
-async function budgetMonths(): Promise<string[]> {
+export async function ayqBudgetMonths(): Promise<string[]> {
   return (await api.getBudgetMonths()) as unknown as string[];
 }
 
@@ -140,7 +140,7 @@ export async function ayqBudgetMonth(month: string): Promise<AyqBudgetMonth> {
   // A month Actual keeps no budget for holds no plan, which is the truth about
   // it rather than an error. Saying so lets the forecast reach its full twelve
   // months without the last of them having to be a refusal.
-  if (!(await budgetMonths()).includes(month)) return emptyMonth(month);
+  if (!(await ayqBudgetMonths()).includes(month)) return emptyMonth(month);
 
   const answer = (await api.getBudgetMonth(month)) as unknown as ActualBudgetMonth;
 
@@ -188,7 +188,7 @@ export async function ayqSetPlan(
   if (!Number.isInteger(cents) || cents < 0) {
     throw new Error('a plan is a whole number of cents, and not negative');
   }
-  if (!(await budgetMonths()).includes(month)) {
+  if (!(await ayqBudgetMonths()).includes(month)) {
     throw new Error(
       `this budget has no month ${month} to plan in: Actual keeps budget ` +
         'months from three before the earliest transaction to twelve after ' +

@@ -558,6 +558,101 @@ async function upcomingShown(
 }
 
 /**
+ * Opens Plan and, if asked, sets one category's monthly plan through the sheet.
+ *
+ * The spec is `Category:amount`. What is read back is the row's *Left* cell,
+ * which the engine computed from what it stored — never the input the harness
+ * typed into, which would only ever agree with itself.
+ */
+async function planShown(
+  window: BrowserWindow,
+  spec: string,
+): Promise<string> {
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-tab="plan"]\').click(); true',
+  );
+
+  const ready = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-plan-sheet]')",
+    )) === true;
+
+  let deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await ready())) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!(await ready())) return '';
+
+  if (spec !== '') {
+    const [category, amount] = spec.split(':');
+    const typed = String(
+      await window.webContents.executeJavaScript(`(() => {
+        const row = [...document.querySelectorAll('.grid tbody tr')].find(one => {
+          const cell = one.querySelector('.col-payee');
+          return cell && cell.innerText.trim() === ${JSON.stringify(category)};
+        });
+        if (!row) return 'no such category on the sheet';
+        const field = row.querySelector('input.plan-input');
+        if (!field) return 'that row has no plan to set';
+        if (field.disabled) return 'this month cannot be planned in';
+        field.value = ${JSON.stringify(amount)};
+        field.dispatchEvent(new Event('blur'));
+        return 'typed';
+      })()`),
+    );
+    if (typed !== 'typed') return `could not set the plan: ${typed}`;
+
+    // Read from the Left column, which is the engine's arithmetic over what it
+    // stored. A plan that did not store leaves it at zero.
+    const want = `€ ${Number(amount).toLocaleString('nl-NL', {
+      minimumFractionDigits: 2,
+    })}`;
+    deadline = Date.now() + 60_000;
+    let shown = '';
+    while (Date.now() < deadline) {
+      shown = String(
+        await window.webContents.executeJavaScript(`(() => {
+          const row = [...document.querySelectorAll('.grid tbody tr')].find(one => {
+            const cell = one.querySelector('.col-payee');
+            return cell && cell.innerText.trim() === ${JSON.stringify(category)};
+          });
+          if (!row) return '';
+          const cells = row.querySelectorAll('.col-amount');
+          return cells.length >= 3 ? cells[2].innerText.trim() : '';
+        })()`),
+      );
+      if (shown.replace(/\u00a0/g, ' ') === want) break;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    if (shown.replace(/\u00a0/g, ' ') !== want) {
+      const said = await problemShown(window);
+      return `the plan read back as ${shown || '(nothing)'} rather than ${want}${
+        said === '' ? '' : ` — the screen said: ${said}`
+      }`;
+    }
+  }
+
+  return String(
+    await window.webContents.executeJavaScript(`(() => {
+      const month = document.querySelector('[data-ayq-plan-month]');
+      const figures = [...document.querySelectorAll('.figures .figure')].map(one => {
+        const label = one.querySelector('.figure-label');
+        const value = one.querySelector('.figure-value');
+        return (label ? label.textContent : '') + ' ' + (value ? value.textContent : '');
+      });
+      const rows = [...document.querySelectorAll('.grid tbody tr')].slice(0, 12).map(row =>
+        [...row.querySelectorAll('td')].map(cell => {
+          const field = cell.querySelector('input');
+          return field ? field.value : cell.innerText.trim();
+        }).join(' | '),
+      );
+      return (month ? month.dataset.ayqPlanMonth : '') + '\\n' +
+        figures.join('   ') + '\\n' + rows.join('\\n');
+    })()`),
+  );
+}
+
+/**
  * Presses "Show more" and reports how many rows the ledger holds afterwards.
  *
  * Counted from the rendered table, before and after, because the defect worth
@@ -757,6 +852,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   // the run returns to the transactions afterwards so the dump is of those.
   let spending = '';
   let upcoming = '';
+  let planSheet = '';
   if (process.env.AYQ_SMOKE_SPENDING === '1') {
     spending = await spendingShown(window);
     process.stdout.write(
@@ -768,6 +864,24 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 1_000));
   }
   const spendingOk = process.env.AYQ_SMOKE_SPENDING !== '1' || spending !== '';
+
+  // Plan: the worksheet, and one category's monthly plan set through it.
+  const sheetSpec = process.env.AYQ_SMOKE_PLAN_SHEET ?? '';
+  let planOk = true;
+  if (sheetSpec !== '') {
+    planSheet = await planShown(window, sheetSpec);
+    process.stdout.write(
+      `[ayq-smoke] plan:\n${planSheet || '(the view showed nothing)'}\n`,
+    );
+    planOk =
+      planSheet !== '' &&
+      !planSheet.startsWith('could not') &&
+      !planSheet.startsWith('the plan read back');
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
+    );
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+  }
 
   // Upcoming: the forecast, and a planned payment added through the form the
   // way a person adds one. `--expect-plan` on a later launch is the other half
@@ -852,6 +966,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     categoryOk &&
     spendingOk &&
     upcomingOk &&
+    planOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -877,6 +992,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           spendingOk,
           upcomingOk,
           upcoming,
+          planOk,
+          planSheet,
           pagedOk,
           imports: importRounds,
           dataDir,

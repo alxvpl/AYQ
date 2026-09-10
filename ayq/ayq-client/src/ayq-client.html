@@ -219,6 +219,18 @@
   }
   .tag.warn { color:var(--warn); border-color:var(--warn); }
   .grid tbody tr.current { background:var(--sunk); }
+  /* The one editable cell on the plan sheet. Right-aligned and the width of a
+     four-figure amount, because it is a number in a column of numbers. */
+  .plan-input {
+    width:100px; padding:3px 6px; text-align:right;
+    font:inherit; font-variant-numeric:tabular-nums;
+    color:var(--ink); background:transparent;
+    border:1px solid transparent; border-radius:3px;
+  }
+  .plan-input:hover:not(:disabled), .plan-input:focus {
+    background:var(--panel); border-color:var(--line);
+  }
+  .plan-input:disabled { color:var(--muted); }
   .grid tbody tr.muted-row td { color:var(--muted); }
 
   .empty { padding:26px 2px; }

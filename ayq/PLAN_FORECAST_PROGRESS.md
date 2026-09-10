@@ -10,7 +10,7 @@ the canon file itself is not edited.
 
 ## Current stage
 
-S6 complete. S7 next.
+S7 complete. All stages done; the deliverables remain.
 
 ## Stages
 
@@ -23,7 +23,7 @@ S6 complete. S7 next.
 | S4 | Forecast engine | done |
 | S5 | Upcoming screen | done |
 | S6 | Matching expected ↔ actual | done |
-| S7 | Plan screen | not started |
+| S7 | Plan screen | done |
 
 ## Decisions taken
 

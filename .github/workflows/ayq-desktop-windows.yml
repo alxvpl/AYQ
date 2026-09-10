@@ -242,6 +242,17 @@ jobs:
           node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --plan "Rent|1200.00|monthly|2026-10-01"
           node start.mjs --smoke --require-host "electron utilityProcess" --expect-plan Rent --screenshot "${{ runner.temp }}\ayq-desktop-upcoming.png"
 
+      # The worksheet: categories down, one month across. A plan set through the
+      # sheet has to come back in the row's own Left column, which the engine
+      # computes — not in the box the plan was typed into.
+      - name: The Plan worksheet
+        working-directory: ayq/ayq-desktop
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-sheet-budget
+        run: |
+          node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --plan-sheet "Groceries:200.00" --screenshot "${{ runner.temp }}\ayq-desktop-plan.png"
+
       # An expected payment meeting the transaction that turned out to be it.
       # AYQ will not make this match on its own — nothing yet identifies the
       # counterparty, only the amount and the date agree — so it has to offer
@@ -516,6 +527,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-categories.png
             ${{ runner.temp }}\ayq-desktop-upcoming.png
             ${{ runner.temp }}\ayq-desktop-match.png
+            ${{ runner.temp }}\ayq-desktop-plan.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-report.json
             ${{ runner.temp }}\ayq-installed-restart-report.json

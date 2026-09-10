@@ -44,6 +44,11 @@ import {
   type AyqSpendingState,
 } from './ayq-spending.ts';
 import {
+  ayqEmptyPlanViewState,
+  ayqRenderPlan,
+  type AyqPlanViewState,
+} from './ayq-plan-view.ts';
+import {
   ayqEmptyUpcomingState,
   ayqRenderUpcoming,
   type AyqUpcomingState,
@@ -62,6 +67,7 @@ type AyqState = {
   status: AyqEngineStatus | null;
   summary: AyqSummary | null;
   transactions: AyqTransactionsState;
+  plan: AyqPlanViewState;
   upcoming: AyqUpcomingState;
   spending: AyqSpendingState;
   counterparties: AyqCounterpartiesState;
@@ -76,6 +82,7 @@ const state: AyqState = {
   status: null,
   summary: null,
   transactions: ayqEmptyTransactionsState(),
+  plan: ayqEmptyPlanViewState(),
   upcoming: ayqEmptyUpcomingState(),
   spending: ayqEmptySpendingState(),
   counterparties: ayqEmptyCounterpartiesState(),
@@ -234,6 +241,15 @@ async function loadView(): Promise<void> {
         await need({
           kind: 'transactions.list',
           filter: state.transactions.filter,
+        })
+      ).result;
+      return;
+    }
+    case 'plan': {
+      state.plan.sheet = (
+        await need({
+          kind: 'plan.month',
+          ...(state.plan.month === null ? {} : { month: state.plan.month }),
         })
       ).result;
       return;
@@ -508,6 +524,9 @@ function drawView(): void {
         target,
         reload => void refresh(reload),
       );
+      return;
+    case 'plan':
+      ayqRenderPlan(state.plan, target, reload => void refresh(reload));
       return;
     case 'upcoming':
       ayqRenderUpcoming(

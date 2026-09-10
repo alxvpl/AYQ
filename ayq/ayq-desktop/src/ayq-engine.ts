@@ -60,6 +60,7 @@ import {
   ayqRejectMatch,
   ayqRemovePlan,
   ayqReschedule,
+  ayqPlanSheet,
   ayqRunMatching,
   ayqSavePlan,
   ayqSetPlanState,
@@ -605,6 +606,18 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'plan.list',
         result: ayqPlan(dataDir, ayqToday(request.today)),
+      };
+
+    case 'plan.month':
+      return {
+        id,
+        ok: true,
+        kind: 'plan.month',
+        result: await ayqPlanSheet(
+          dataDir,
+          ayqToday(request.today),
+          request.month,
+        ),
       };
 
     case 'plan.save': {
