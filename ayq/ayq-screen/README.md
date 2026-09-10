@@ -18,7 +18,7 @@ npm run typecheck
 node src/ayq-demo.ts
 
 # your own export, locally — a directory, an XML file, or the ZIP as downloaded
-node src/ayq-demo.ts ~/Downloads/96293691_080926003116.zip
+node src/ayq-demo.ts ~/Downloads/00000000_010126000000.zip
 ```
 
 The demo parses CAMT, resolves the counterparty, imports into a fresh Actual

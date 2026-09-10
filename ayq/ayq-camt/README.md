@@ -46,13 +46,13 @@ extracted.
 
 ```powershell
 # Windows / PowerShell
-node src\ayq-cli.ts verify "$HOME\Downloads\96293691_080926003116.zip" `
+node src\ayq-cli.ts verify "$HOME\Downloads\00000000_010126000000.zip" `
   --out "$HOME\ayq-camt-report.txt" --json "$HOME\ayq-camt-report.json"
 ```
 
 ```bash
 # Linux / macOS
-node src/ayq-cli.ts verify ~/Downloads/96293691_080926003116.zip \
+node src/ayq-cli.ts verify ~/Downloads/00000000_010126000000.zip \
   --out ~/ayq-camt-report.txt --json ~/ayq-camt-report.json
 ```
 
