@@ -371,17 +371,27 @@ jobs:
 
             # NSIS verifies the whole 118 MB archive before it unpacks anything,
             # and that is what the crash is early enough to be. /NCRC skips only
-            # that check, so a second attempt that succeeds says where the fault
-            # is, and one that crashes too says it is somewhere else. Either way
-            # the answer is printed rather than inferred.
-            Write-Host 'trying again without the integrity check (/NCRC)'
+            # that check, so a second attempt says where the fault is: one that
+            # succeeds puts it in the integrity pass, one that crashes puts it
+            # somewhere else. It is run for that answer alone, and the answer is
+            # printed rather than inferred.
+            Write-Host 'trying again without the integrity check (/NCRC), to say where the fault is'
             $again = Start-Process -FilePath $setup.FullName `
               -ArgumentList '/S', '/NCRC', "/D=$target" -PassThru -Wait
             Write-Host "second attempt exit code : $($again.ExitCode)"
-            if ($again.ExitCode -ne 0) {
-              throw 'the installer crashed with and without the integrity check'
+            if ($again.ExitCode -eq 0) {
+              Write-Host 'the fault is in the integrity pass: /NCRC installs the same file cleanly'
+            } else {
+              Write-Host 'the fault is not the integrity pass: it crashes without it too'
             }
-            Write-Host 'NOTE: the installer only ran with /NCRC; this is not fixed.'
+
+            # And then the step fails either way. What a person downloads is an
+            # installer they double-click, which is the run that just crashed;
+            # a switch that only CI knows to pass is not a product. Recovering
+            # here let four green runs mean "it installed" and "it crashed and
+            # we worked around it" indistinguishably, which is the one thing a
+            # release gate must never do.
+            throw 'the installer crashed with an access violation (0xC0000005)'
           }
 
           # The installer's own verdict, which this step used to discard. An
@@ -389,9 +399,9 @@ jobs:
           # without reading it, a refusal was indistinguishable from a slow
           # install and cost three minutes of waiting before a message that
           # could only say what was missing, never why.
-          # A refusal that is not the crash handled below. The crash branch runs
-          # after this one and can recover, so this must not speak for it.
-          if ($install.ExitCode -ne 0 -and $install.ExitCode -ne -1073741819) {
+          # The crash above no longer returns, so anything still non-zero here
+          # is a refusal, and it can be reported as one without qualification.
+          if ($install.ExitCode -ne 0) {
             throw "the installer refused with exit code $($install.ExitCode)"
           }
 
