@@ -23,6 +23,8 @@ import type {
   AyqBudgetMonth,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqCategories } from './ayq-categories.ts';
+
 /** What the budget's type must be for 03 §7.8 to hold. PROVISIONAL. */
 export const AYQ_BUDGET_TYPE = 'tracking';
 
@@ -80,6 +82,47 @@ export async function ayqBudgetType(send: Send): Promise<string> {
   return prefs?.budgetType ?? 'envelope';
 }
 
+const MONTH = /^\d{4}-\d{2}$/;
+
+/**
+ * The months Actual actually keeps a budget for.
+ *
+ * It builds them for a fixed range — three months before the earliest
+ * transaction to twelve months after the current one — and its own API refuses
+ * any month outside that, *exclusive* of the last: `validateMonth` tests
+ * `range(start, end)`, which does not include `end`. So the twelfth month ahead
+ * is readable as a forecast horizon and is not one a plan can be set in.
+ *
+ * Read rather than assumed, because the range moves with the calendar.
+ */
+async function budgetMonths(): Promise<string[]> {
+  return (await api.getBudgetMonths()) as unknown as string[];
+}
+
+/** Every category with nothing planned: what a month outside the range holds. */
+async function emptyMonth(month: string): Promise<AyqBudgetMonth> {
+  const categories = (await ayqCategories()).map(
+    (category): AyqBudgetCategory => ({
+      categoryId: category.id,
+      categoryName: category.name,
+      groupName: category.groupName,
+      isIncome: category.isIncome,
+      planCents: 0,
+      actualCents: 0,
+      remainingCents: 0,
+      overspentCents: 0,
+    }),
+  );
+  return {
+    month,
+    editable: false,
+    categories,
+    totalPlanCents: 0,
+    totalActualCents: 0,
+    totalRemainingCents: 0,
+  };
+}
+
 /**
  * The plan, the actual and what is left, for one month.
  *
@@ -93,9 +136,11 @@ export async function ayqBudgetType(send: Send): Promise<string> {
  * as `overspentCents`, rather than hidden inside a clamp.
  */
 export async function ayqBudgetMonth(month: string): Promise<AyqBudgetMonth> {
-  if (!/^\d{4}-\d{2}$/.test(month)) {
-    throw new Error('a budget month is YYYY-MM');
-  }
+  if (!MONTH.test(month)) throw new Error('a budget month is YYYY-MM');
+  // A month Actual keeps no budget for holds no plan, which is the truth about
+  // it rather than an error. Saying so lets the forecast reach its full twelve
+  // months without the last of them having to be a refusal.
+  if (!(await budgetMonths()).includes(month)) return emptyMonth(month);
 
   const answer = (await api.getBudgetMonth(month)) as unknown as ActualBudgetMonth;
 
@@ -122,6 +167,7 @@ export async function ayqBudgetMonth(month: string): Promise<AyqBudgetMonth> {
   const expenses = categories.filter(category => !category.isIncome);
   return {
     month,
+    editable: true,
     categories,
     totalPlanCents: expenses.reduce((sum, one) => sum + one.planCents, 0),
     totalActualCents: expenses.reduce((sum, one) => sum + one.actualCents, 0),
@@ -138,11 +184,16 @@ export async function ayqSetPlan(
   categoryId: string,
   cents: number,
 ): Promise<AyqBudgetMonth> {
-  if (!/^\d{4}-\d{2}$/.test(month)) {
-    throw new Error('a budget month is YYYY-MM');
-  }
+  if (!MONTH.test(month)) throw new Error('a budget month is YYYY-MM');
   if (!Number.isInteger(cents) || cents < 0) {
     throw new Error('a plan is a whole number of cents, and not negative');
+  }
+  if (!(await budgetMonths()).includes(month)) {
+    throw new Error(
+      `this budget has no month ${month} to plan in: Actual keeps budget ` +
+        'months from three before the earliest transaction to twelve after ' +
+        'the current one',
+    );
   }
   await api.setBudgetAmount(month, categoryId, cents);
   return ayqBudgetMonth(month);

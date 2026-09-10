@@ -623,11 +623,80 @@ export type AyqBudgetCategory = {
 export type AyqBudgetMonth = {
   /** YYYY-MM. */
   month: string;
+  /**
+   * Whether a plan can be set in this month.
+   *
+   * Actual keeps budget months for a range around today and refuses the rest,
+   * so the far end of the forecast horizon is readable and not plannable. The
+   * screen is told rather than left to discover it by being refused.
+   */
+  editable: boolean;
   categories: AyqBudgetCategory[];
   /** Expense categories only; income is not a plan to spend against. */
   totalPlanCents: number;
   totalActualCents: number;
   totalRemainingCents: number;
+};
+
+/* ----------------------------------------------------------------- forecast
+
+   Available funds, and how that position develops forward over twelve months
+   (03 §7.9). Computed, never stored: a stored forecast is one that can be stale
+   while still looking authoritative.                                        */
+
+/** What one category is planned to take in one month, as the forecast reads it. */
+export type AyqForecastPlanRow = {
+  month: string;
+  categoryName: string;
+  planCents: number;
+  /** Plan minus what has already been spent, never below zero (03 §7.8). */
+  remainingCents: number;
+};
+
+/** One thing the forecast expects to happen, and where it leaves the position. */
+export type AyqForecastEvent = {
+  date: string;
+  kind: AyqPlanKind;
+  label: string;
+  /** Positive cents; `kind` carries the sign. */
+  amountCents: number;
+  /**
+   * `record` is a planned or recurring payment. `plan` is the part of a
+   * category's monthly plan that no record accounts for — the two are never
+   * counted twice, and which of them is larger decides.
+   */
+  source: 'record' | 'plan';
+  recordId: string | null;
+  /** The occurrence this came from, for a `record`; null for a `plan` row. */
+  dueDate: string | null;
+  categoryName: string | null;
+  /** The record behind it is still only an offer (03 §7.7). */
+  suggested: boolean;
+  /** Past its date and unmatched: it still counts, and it needs attention. */
+  flagged: boolean;
+  /** The projected position immediately after this. */
+  balanceCents: number;
+};
+
+export type AyqForecastMonth = {
+  month: string;
+  expectedIncomeCents: number;
+  expectedExpenseCents: number;
+  /** Where the position stands at the end of this month. */
+  closingCents: number;
+};
+
+export type AyqForecast = {
+  today: string;
+  horizon: string;
+  /** Where it starts: the flagged accounts' balances, today (03 §7.6). */
+  availableFundsCents: number;
+  events: AyqForecastEvent[];
+  months: AyqForecastMonth[];
+  /** The worst it gets, and when — the question a forecast is really for. */
+  lowest: { date: string; balanceCents: number };
+  /** Where the twelve months end. */
+  closingCents: number;
 };
 
 /** What turning the detected rhythms into offers came to. */
@@ -673,6 +742,7 @@ export type AyqResults = {
   'plan.suggest': AyqPlanSuggested;
   'budget.month': AyqBudgetMonth;
   'budget.setPlan': AyqBudgetMonth;
+  forecast: AyqForecast;
 };
 
 /**
@@ -798,7 +868,8 @@ export type AyqRequestBody =
       month: string;
       categoryId: string;
       cents: number;
-    };
+    }
+  | { kind: 'forecast'; today?: string };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };

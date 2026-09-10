@@ -10,7 +10,7 @@ the canon file itself is not edited.
 
 ## Current stage
 
-S3 complete. S4 next.
+S4 complete. S5 next.
 
 ## Stages
 
@@ -20,7 +20,7 @@ S3 complete. S4 next.
 | S1 | Planned and recurring records | done |
 | S2 | Available funds flag | done |
 | S3 | Category monthly plan values | done |
-| S4 | Forecast engine | not started |
+| S4 | Forecast engine | done |
 | S5 | Upcoming screen | not started |
 | S6 | Matching expected ↔ actual | not started |
 | S7 | Plan screen | not started |
@@ -62,6 +62,8 @@ confirm or overrule.
 | P4 | Every account defaults to "counts toward available funds" = yes, because neither Actual nor the CAMT record carries an account type. |
 | P5 | The budget's type is set to `tracking`, on creation and on opening an older budget. |
 | P6 | A match is applied automatically only when the counterparty or mandate agrees, the amount is exact, and the date is within seven days. Anything less is offered and waits. |
+| P7 | An unmatched occurrence keeps counting for 90 days and no longer. "For ever" would put six years of a stopped direct debit into today's forecast; the record itself stays visible either way. |
+| P8 | The part of a category's monthly plan that no record accounts for is placed at the start of its month, and at today for the month already under way — the earliest the money could go, because 03 §7.5 forbids erring the other way. |
 
 ## What remains
 

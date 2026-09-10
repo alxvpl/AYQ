@@ -54,6 +54,7 @@ import {
 } from './ayq-ledger.ts';
 import {
   ayqDismissOccurrence,
+  ayqForecast,
   ayqPlan,
   ayqRemovePlan,
   ayqReschedule,
@@ -255,6 +256,29 @@ function explain(message: string): string {
     'sidesteps it by forking the engine on the system Node, but that is a ' +
     'development shortcut, not the shipped path.'
   );
+}
+
+/**
+ * Whatever was thrown, as words.
+ *
+ * Not everything that reaches here is an `Error`. Actual's own handlers reject
+ * with plain objects — `{ type: 'APIError', message: … }` among them — and
+ * `String(value)` renders one of those as `[object Object]`, which names
+ * nothing and cost a debugging session to work out. So an object is asked for
+ * its message and, failing that, printed.
+ */
+function said(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message !== '') return message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }
 
 const dataDir = process.env.AYQ_DATA_DIR ?? '';
@@ -637,6 +661,14 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         result: ayqPlan(dataDir, ayqToday(request.today)),
       };
 
+    case 'forecast':
+      return {
+        id,
+        ok: true,
+        kind: 'forecast',
+        result: await ayqForecast(dataDir, ayqToday(request.today)),
+      };
+
     case 'budget.month':
       return {
         id,
@@ -701,9 +733,7 @@ channel.onMessage(message => {
         id: request?.id ?? 'unknown',
         ok: false,
         kind: 'error',
-        message: explain(
-          error instanceof Error ? error.message : String(error),
-        ),
+        message: explain(said(error)),
       };
     }
     channel.send(response);

@@ -2430,3 +2430,116 @@ test('a month or a plan that makes no sense is refused', async () => {
   assert.equal(negative.ok, false);
   if (!negative.ok) assert.match(negative.message, /not negative/);
 });
+
+/* --------------------------------------------------------------- the forecast
+
+   The arithmetic is proved on invented data in ayq-forecast.test.ts. What this
+   adds is that the engine gathers the right things to hand it: the flagged
+   accounts' balances, the records, and Actual's own per-month plan.          */
+
+test('the forecast starts from available funds and takes the plan and the records', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [ownAccountFixture('ayq-own-current.xml')],
+  });
+  await ask(dataDir, {
+    kind: 'import.camt',
+    paths: [ownAccountFixture('ayq-own-savings.xml')],
+  });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(one => one.name === 'Groceries');
+  assert.ok(groceries);
+  await ask(dataDir, {
+    kind: 'budget.setPlan',
+    month: '2026-10',
+    categoryId: groceries.id,
+    cents: 40_000,
+  });
+  await ask(dataDir, {
+    kind: 'plan.save',
+    record: {
+      name: 'Rent',
+      kind: 'expense',
+      amountCents: 120_000,
+      categoryName: 'Housing',
+      startDate: '2026-10-01',
+      recurrence: { frequency: 'monthly', interval: 1 },
+      endDate: '2026-10-01',
+    },
+  });
+
+  const started = Date.now();
+  const answer = await ask(dataDir, { kind: 'forecast', today: '2026-09-15' });
+  process.stdout.write(
+    `[ayq-test] forecast over 13 months: ${Date.now() - started} ms\n`,
+  );
+
+  assert.equal(answer.today, '2026-09-15');
+  assert.equal(answer.horizon, '2027-09-15');
+  assert.equal(
+    answer.availableFundsCents,
+    897_740,
+    'both accounts count, so far',
+  );
+  assert.equal(answer.months.length, 13);
+
+  const october = answer.months.find(one => one.month === '2026-10');
+  assert.equal(
+    october?.expectedExpenseCents,
+    160_000,
+    'the 40 000 plan and the 120 000 rent, which is in another category',
+  );
+  assert.equal(answer.closingCents, 897_740 - 160_000);
+
+  // And the flag reaches it: turning the savings account off has to move the
+  // position it starts from, or the flag is decoration.
+  const accounts = await ask(dataDir, { kind: 'accounts.list' });
+  const savings = accounts.find(one => one.balanceCents > 700_000);
+  assert.ok(savings);
+  await ask(dataDir, {
+    kind: 'accounts.setFlag',
+    accountId: savings.id,
+    countsTowardFunds: false,
+  });
+
+  const narrowed = await ask(dataDir, { kind: 'forecast', today: '2026-09-15' });
+  assert.equal(narrowed.availableFundsCents, 147_500);
+  assert.equal(narrowed.closingCents, 147_500 - 160_000);
+  assert.equal(
+    narrowed.lowest.balanceCents,
+    147_500 - 160_000,
+    'and the forecast says so: this goes negative in October',
+  );
+});
+
+test('a month Actual keeps no budget for holds no plan, and says it cannot take one', async () => {
+  // Actual builds budget months for a fixed range and its own API refuses the
+  // rest — exclusive of the last month, so the twelfth month ahead is readable
+  // and not plannable. AYQ answers with the truth about it rather than an
+  // error, and refuses a plan there with a reason.
+  const dataDir = await budget();
+  const months = await ask(dataDir, { kind: 'budget.month', month: '2026-09' });
+  assert.equal(months.editable, true);
+
+  const far = await ask(dataDir, { kind: 'budget.month', month: '2099-01' });
+  assert.equal(far.editable, false);
+  assert.equal(far.totalPlanCents, 0);
+  assert.ok(far.categories.length > 0, 'the categories are still listed');
+  assert.ok(far.categories.every(one => one.planCents === 0));
+
+  const refused = await send(
+    {
+      id: 'budget-out-of-range',
+      kind: 'budget.setPlan',
+      month: '2099-01',
+      categoryId: far.categories[0].categoryId,
+      cents: 1_000,
+    },
+    dataDir,
+  );
+  assert.equal(refused.ok, false);
+  if (refused.ok) return;
+  assert.match(refused.message, /no month 2099-01 to plan in/);
+});

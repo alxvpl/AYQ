@@ -14,6 +14,8 @@
 // `ayq-plan-series.ts`, which touches neither a store nor the API.
 
 import type {
+  AyqForecast,
+  AyqForecastPlanRow,
   AyqPlan,
   AyqPlanDraft,
   AyqPlanFrequency,
@@ -22,6 +24,11 @@ import type {
   AyqPlannedRecord,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqBudgetMonth } from './ayq-budget.ts';
+import { ayqMonthOf, ayqMonthsBetween } from './ayq-dates.ts';
+import { ayqComputeForecast } from './ayq-forecast.ts';
+import { ayqAvailableFunds } from './ayq-funds.ts';
+import { ayqAccounts } from './ayq-ledger.ts';
 import {
   AYQ_DATE,
   ayqIsOccurrenceOf,
@@ -54,6 +61,53 @@ export function ayqPlan(dataDir: string, today: string): AyqPlan {
     today,
     horizon: to,
   };
+}
+
+/**
+ * Gathers what the forecast needs, and hands it to the calculation.
+ *
+ * Everything the forecast reads is decided somewhere else and read back here:
+ * the flags say which balances count, the records say what is coming, and
+ * Actual's tracking budget says what each category is planned to take. This
+ * function does no arithmetic of its own on purpose — the arithmetic is in
+ * `ayq-forecast.ts`, which touches no store and no API and can therefore be
+ * proved rather than demonstrated.
+ */
+export async function ayqForecast(
+  dataDir: string,
+  today: string,
+): Promise<AyqForecast> {
+  const store = ayqReadStore(dataDir);
+  const { from, to } = ayqPlanWindow(today);
+
+  const plan: AyqForecastPlanRow[] = [];
+  for (const month of ayqMonthsBetween(ayqMonthOf(today), ayqMonthOf(to))) {
+    for (const category of (await ayqBudgetMonth(month)).categories) {
+      // Income categories are not a plan to spend against, and a category with
+      // no plan contributes nothing but a row.
+      if (category.isIncome || category.planCents <= 0) continue;
+      plan.push({
+        month,
+        categoryName: category.categoryName,
+        planCents: category.planCents,
+        remainingCents: category.remainingCents,
+      });
+    }
+  }
+
+  return ayqComputeForecast({
+    today,
+    horizon: to,
+    availableFundsCents: ayqAvailableFunds(await ayqAccounts(dataDir)),
+    occurrences: ayqOccurrencesBetween(
+      store.planned,
+      store.occurrences,
+      from,
+      to,
+      today,
+    ),
+    plan,
+  });
 }
 
 function validate(draft: AyqPlanDraft): void {
