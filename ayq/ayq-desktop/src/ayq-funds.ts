@@ -17,7 +17,7 @@ import type {
   AyqProvenance,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
-import { ayqMaskIban } from './ayq-camt-import.ts';
+import { ayqMaskIban } from './ayq-mask.ts';
 import { ayqReadStore, ayqWriteStore, type AyqStore } from './ayq-store.ts';
 
 /**

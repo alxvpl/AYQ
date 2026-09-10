@@ -29,26 +29,14 @@ import type {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqAliasMap } from './ayq-aliases.ts';
+import { ayqMaskIban } from './ayq-mask.ts';
 import { ayqTransactionCount } from './ayq-ledger.ts';
 import { ayqRunMatching } from './ayq-plan.ts';
 import { ayqApplyRules } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import { ayqId, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
 
-/**
- * The name the imported account gets, masked.
- *
- * An IBAN identifies a person's account, and this name travels into the
- * interface, into screenshots and into CI logs. A country code and the last
- * four are enough to tell two accounts apart and to recognise your own; the
- * rest never leaves the record. The masking is deterministic, which is what
- * makes a second import land in the same account rather than a new one.
- */
-export function ayqMaskIban(iban: string | null): string | null {
-  if (iban === null || iban.length < 6) return null;
-  return `AYQ ${iban.slice(0, 2)}…${iban.slice(-4)}`;
-}
-
+/** The name the imported account gets: the statement's own IBAN, masked. */
 export function ayqMaskAccount(entries: AyqBankEntry[]): string {
   for (const entry of entries) {
     const masked = ayqMaskIban(entry.statement.accountIban);
