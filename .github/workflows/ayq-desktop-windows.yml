@@ -304,12 +304,18 @@ jobs:
         run: |
           node make-conformance-fixture.mjs `
             "${{ runner.temp }}\ayq-r004-store.json" "${{ runner.temp }}\ayq-r004.xml"
-          node start.mjs --smoke --require-host "electron utilityProcess" `
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
             --seed-store "${{ runner.temp }}\ayq-r004-store.json" `
             --import "${{ runner.temp }}\ayq-r004.xml" `
             --conformance `
-            --screenshot "${{ runner.temp }}\ayq-desktop-r004.png"
+            --screenshot "${{ runner.temp }}\ayq-desktop-r004.png" 2>&1 | Out-String
+          Write-Host $said
           if ($LASTEXITCODE -ne 0) { throw '03 r004 does not hold on the screen' }
+          # Exiting zero is not the assertion. A run that never checked exits
+          # zero too, so the step requires the words the check itself prints.
+          if ($said -notmatch '03 r004 conformance: held') {
+            throw 'the run did not check 03 r004 at all'
+          }
 
       # Two AYQs over one budget would be two writers on one SQLite file. The
       # second launch has to stand aside while the first still holds it, and it
@@ -590,6 +596,13 @@ jobs:
           $env:AYQ_SMOKE_CONFORMANCE = '1'
           $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-r004-report.json"
           Invoke-Installed '03 r004         :'
+          # Same again, and it matters more here: an installed application
+          # writes nothing to the console, so without this the step would pass
+          # just as happily on a run that was never asked to check.
+          $said = Get-Content $env:AYQ_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if ($said.conformance -ne 'held') {
+            throw "the installed application did not prove 03 r004: $($said.conformance)"
+          }
           Remove-Item Env:AYQ_SMOKE_CONFORMANCE
           $env:AYQ_DATA_DIR = $budgets
 
@@ -633,6 +646,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-r004.png
             ${{ runner.temp }}\ayq-desktop-plan.png
             ${{ runner.temp }}\ayq-desktop-installed.png
+            ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json
             ${{ runner.temp }}\ayq-installed-restart-report.json
             ${{ runner.temp }}\ayq-lock-first.json

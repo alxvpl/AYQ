@@ -963,8 +963,15 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   const acceptMatch = process.env.AYQ_SMOKE_MATCH === '1';
   let upcomingOk = true;
 
-  if (process.env.AYQ_SMOKE_CONFORMANCE === '1') {
+  // Asked for, or not asked for, and the report says which. A run that was
+  // never asked must not be able to pass as one that held: an installed
+  // application writes nothing to the console, so "the step exited zero" is the
+  // only other evidence there would be, and it says nothing about this at all.
+  const conformanceAsked = process.env.AYQ_SMOKE_CONFORMANCE === '1';
+  let conformance = 'not asked';
+  if (conformanceAsked) {
     const wrong = await conformanceShown(window);
+    conformance = wrong === '' ? 'held' : wrong;
     if (wrong !== '') {
       process.stdout.write(`[ayq-smoke] 03 r004 conformance FAILED: ${wrong}\n`);
       upcomingOk = false;
@@ -1075,6 +1082,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           spendingOk,
           upcomingOk,
           upcoming,
+          conformance,
           planOk,
           planSheet,
           pagedOk,
