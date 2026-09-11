@@ -10,7 +10,8 @@ the canon file itself is not edited.
 
 ## Current stage
 
-S7 complete. All stages done; the deliverables remain.
+All eight stages complete, each with a green Windows run. The Plan +
+Forecast work is done.
 
 ## Stages
 
@@ -64,6 +65,28 @@ confirm or overrule.
 | P6 | A match is applied automatically only when the counterparty or mandate agrees, the amount is exact, and the date is within seven days. Anything less is offered and waits. |
 | P7 | An unmatched occurrence keeps counting for 90 days and no longer. "For ever" would put six years of a stopped direct debit into today's forecast; the record itself stays visible either way. |
 | P8 | The part of a category's monthly plan that no record accounts for is placed at the start of its month, and at today for the month already under way — the earliest the money could go, because 03 §7.5 forbids erring the other way. |
+
+## Known open defect, not this work's
+
+**The Windows installer crashes intermittently in NSIS's integrity pass.**
+Exit code `-1073741819` (`0xC0000005`), about two seconds in, on a silent
+`/S` install. It predates this work and is not caused by it.
+
+It was closed earlier in the project on nine consecutive clean installs, and
+run 50 reopened it. Run 50 also diagnosed it: the same file installed cleanly
+with `/NCRC` immediately afterwards, which skips the integrity pass and
+nothing else. Run 29 said the same and run 34 contradicted it, so two of the
+three diagnosed cases now agree.
+
+Standing hypothesis: that pass reads all 117 MB in one go, and so does
+Defender, which starts scanning the file the moment electron-builder finishes
+writing it — about a second before the install step begins. The step now
+waits for nothing else to hold the file and then fifteen seconds more, and
+prints both numbers, so the next crash rules this out rather than leaving it
+a maybe.
+
+The gate is strict and stays strict: a crash is a red run. A green run means
+the installer installed, not that it was worked around.
 
 ## What remains
 
