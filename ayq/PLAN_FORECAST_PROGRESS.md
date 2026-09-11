@@ -26,6 +26,29 @@ Forecast work is done.
 | S6 | Matching expected ↔ actual | done |
 | S7 | Plan screen | done |
 
+## The S0 checkpoint
+
+S0 was the architecture checkpoint and contained no implementation of Plan +
+Forecast. Its commit, `604311ddd`, changed this file and two README examples
+and nothing else; every line of the feature was written in S1 onwards.
+
+What it produced: the investigation of Actual 26.9.0 in Actual's own source and
+by experiment, the map of what belongs to Actual and what must be AYQ's, the
+rejected options with their reasons, the data model and the IPC members, and the
+stage plan. All of it is in `AYQ_plan_forecast_architecture-r001.md`; the
+technical answer to 02 §7.1 is in `AYQ_02_ARCHITECTURE_r003_PROPOSAL.md` as a
+proposal, and the canon file was not edited.
+
+The plan kept the stage order S1–S7 as given. The investigation gave no reason
+to change it: S1 is the record every later stage reads, S2 and S3 are
+independent of each other and both feed S4, and S5–S7 are the screens over the
+top. Nothing in the plan differs from the stages as set, so there is no
+divergence to record.
+
+The questions that genuinely need the owner rather than an engineer are the
+PROVISIONAL list below and the open items at the end. Everything else the
+investigation raised was decided in code, against Canon.
+
 ## Decisions taken
 
 Measured against Actual 26.9.0 at the pinned baseline, in its own source and by
