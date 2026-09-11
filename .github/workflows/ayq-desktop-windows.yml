@@ -385,6 +385,31 @@ jobs:
         # the one explanation that fitted the crash — is ruled out.
         run: npm run package
 
+      # The delivery number, taken from the installer's own file name rather
+      # than from a second place that could disagree with it. It is a label on
+      # what was handed over and nothing more: 06_RELEASE is still INCOMPLETE,
+      # so there is no tag, no release and no change to the app's version.
+      - name: Name the delivery
+        id: delivery
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem 'release' -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'electron-builder produced no installer' }
+          if ($setup.Name -match 'build-(\d{3})') {
+            $number = $Matches[1]
+          } else {
+            throw "the installer is not named for a delivery: $($setup.Name)"
+          }
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          Write-Host "AYQ build $number"
+          Write-Host "file   : $($setup.Name)"
+          Write-Host "size   : $($setup.Length) bytes"
+          Write-Host "sha256 : $hash"
+          "number=$number" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha256=$hash"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "size=$($setup.Length)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Install it and run what was installed
         shell: pwsh
         timeout-minutes: 15
@@ -628,7 +653,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ayq-windows-installer
+          name: ayq-build-${{ steps.delivery.outputs.number }}-windows-installer
           path: ayq/ayq-desktop/release/*-setup.exe
           if-no-files-found: warn
 

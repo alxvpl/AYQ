@@ -119,6 +119,24 @@ payments in one week, or one payment that could settle either of two months, are
 offered and wait. Transactions already matched, and pairs a person has refused,
 are not candidates and so make nothing ambiguous.
 
+## Delivery numbers
+
+A delivery number is a label on an installer that was handed to the owner, and
+nothing more. It is not a version, not a tag and not a release: 06_RELEASE is
+INCOMPLETE, and this does not settle any part of it. The application's own
+version is untouched.
+
+| Build | Commit | Run | What it carries |
+|---|---|---|---|
+| 001 | `f02b15392` | 54 | Plan + Forecast, stages S0–S7 |
+| 002 | see below | see below | the same, brought into line with 03_DATA r004 |
+
+The number lives in one place, the installer's file name
+(`AYQ-build-002-windows-x64-setup.exe`, set by `artifactName` in
+`ayq-desktop/package.json`). CI reads it back off the file it just produced and
+names the artifact from that, so the two cannot drift, and a build whose
+installer is not named for a delivery fails rather than shipping unlabelled.
+
 ## Known open defect, not this work's
 
 **The Windows installer crashes intermittently in NSIS's integrity pass.**
