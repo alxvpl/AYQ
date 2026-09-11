@@ -169,7 +169,7 @@ test('expected income counts only when it is confirmed (03 §7.7)', () => {
 });
 
 test('a detected expense counts, because counting it shows less money', () => {
-  // PROVISIONAL. 03 §7.7 decides the income half outright and is silent here;
+  // 03 §7.12. §7.7 decides the income half and this is the expense half;
   // §7.5 is not.
   const answer = forecast([
     occurrence({
@@ -186,7 +186,7 @@ test('a detected expense counts, because counting it shows less money', () => {
 
 test('an expected income that never arrived stops counting, and an expense does not', () => {
   // 03 §7.7 for the income: flagged, and it stops counting until it is matched
-  // or rescheduled. PROVISIONAL for the expense: it keeps counting, as due
+  // or rescheduled. The expense does the opposite (§7.13): it keeps counting, as due
   // today, because that is the reading that shows less money available.
   const answer = forecast([
     occurrence({
@@ -210,7 +210,7 @@ test('an expected income that never arrived stops counting, and an expense does 
 });
 
 test('plan and record in one category are never counted twice', () => {
-  // PROVISIONAL: the larger of the two, not their sum. Somebody with a 400 plan
+  // 03 §7.10: the larger of the two, not their sum. Somebody with a 400 plan
   // for groceries and a 120 standing order in the same category has not planned
   // 520.
   const withBoth = forecast(

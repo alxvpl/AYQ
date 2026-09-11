@@ -50,8 +50,10 @@ function record(
     // Decided when it starts, unless a test says otherwise. That is the neutral
     // case: 03 §7.14 only bites when a record was decided *after* its start
     // date, and the tests that are about §7.14 say so explicitly.
-    confirmedAt: over.confirmedAt ?? over.startDate,
-    suggestedAt: over.suggestedAt ?? over.startDate,
+    // `in` rather than `??`, so a test can say a date is *absent* — which is a
+    // different thing from not mentioning it, and is the case §7.14 turns on.
+    confirmedAt: 'confirmedAt' in over ? (over.confirmedAt ?? null) : over.startDate,
+    suggestedAt: 'suggestedAt' in over ? (over.suggestedAt ?? null) : over.startDate,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
@@ -386,6 +388,26 @@ test('a record expects nothing before it was decided (03 §7.14)', () => {
     'nothing before the day it was confirmed',
   );
   assert.equal(fromConfirmation[0].dueDate, '2026-07-01');
+});
+
+test('a dismissed suggestion keeps the date it was suggested on', () => {
+  // Struck out rather than accepted: it never had a confirmation date, and
+  // losing the suggestion date would reach back to a start date two years old
+  // and generate two years of dismissed occurrences for a record nobody wants.
+  const struck = record({
+    startDate: '2024-06-01',
+    frequency: 'monthly',
+    state: 'dismissed',
+    provenance: 'detected',
+    confirmedAt: null,
+    suggestedAt: '2026-06-15',
+  });
+  assert.equal(ayqExpectedFrom(struck), '2026-06-15');
+  assert.equal(
+    ayqPlanWindow('2026-06-15', [struck]).from,
+    '2026-06-15',
+    'and it does not drag the window back with it',
+  );
 });
 
 test('a record decided before it starts expects from its start date', () => {

@@ -30,19 +30,20 @@ export type AyqForecastInput = {
   horizon: string;
   /** Only the accounts flagged as counting (03 §7.6). */
   availableFundsCents: number;
-  /** Everything the records fall on, including the overdue tail. */
+  /** Everything the records fall on, arrears included (03 §7.13). */
   occurrences: AyqPlanOccurrence[];
   /** What each category is planned to take, month by month. */
   plan: AyqForecastPlanRow[];
 };
 
 /**
- * Whether an occurrence still counts as expected. PROVISIONAL (P2).
+ * Whether an occurrence still counts as expected. 03 §7.7 and §7.12.
  *
- * 03 §7.7 decides the income half outright: only confirmed income counts, and
- * income detected from history is a suggestion that does not count until it is
- * accepted. It is silent on a detected *expense*, and §7.5 is not: counting one
- * shows less money available, so a detected expense counts.
+ * §7.7 decides the income half: only confirmed income counts, and income
+ * detected from history is a suggestion that does not count until it is
+ * accepted. §7.12 decides the expense half the other way — a detected expense
+ * counts before it is accepted, because counting it shows less money available
+ * and §7.5 says that is the direction to err in.
  *
  * A matched occurrence has happened and is in the balance already. A dismissed
  * one is a person saying it will not happen.
@@ -64,12 +65,13 @@ export function ayqCountsAsExpected(occurrence: AyqPlanOccurrence): boolean {
 }
 
 /**
- * When the forecast puts an occurrence. PROVISIONAL (P3).
+ * When the forecast puts an occurrence. 03 §7.13.
  *
  * An expected expense past its date without a match keeps counting, as due
- * today, until it is matched, rescheduled or dismissed. Today rather than its
- * original date because the position is being projected forward from today, and
- * an amount dated in the past would never be subtracted from anything.
+ * today, until it is matched, rescheduled or dismissed — and never stops
+ * through the passage of time alone. Today rather than its original date
+ * because the position is being projected forward from today, and an amount
+ * dated in the past would never be subtracted from anything.
  */
 export function ayqEffectiveDate(
   occurrence: AyqPlanOccurrence,
@@ -79,7 +81,7 @@ export function ayqEffectiveDate(
 }
 
 /**
- * What a category is expected to take in one month. PROVISIONAL (P1).
+ * What a category is expected to take in one month. 03 §7.10.
  *
  * The larger of the two, never their sum. A person who has planned 400 for
  * groceries and also has a standing order for 120 in the same category has not
@@ -97,7 +99,7 @@ export function ayqExpectedExpenseForCategory(
 }
 
 /**
- * Where the part of the plan that no record accounts for is placed. PROVISIONAL.
+ * Where the part of the plan that no record accounts for is placed. 03 §7.11.
  *
  * At the start of its month, and today for the month already under way — the
  * earliest the money could go. 03 §7.5 again: putting it at the end of the

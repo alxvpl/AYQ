@@ -21,14 +21,14 @@ import { ayqMaskIban } from './ayq-mask.ts';
 import { ayqReadStore, ayqWriteStore, type AyqStore } from './ayq-store.ts';
 
 /**
- * What an account counts as until somebody says otherwise. PROVISIONAL.
+ * What an account counts as until somebody says otherwise. 03 §7.15.
  *
- * 03 §7.6 states the default per account type — current accounts yes, savings
+ * §7.6 states the default per account type — current accounts yes, savings
  * accounts no — and neither Actual's account model nor the CAMT record carries
- * an account type, so there is nothing to read it from. Every account AYQ has
- * today came from a CAMT.053 export of a current account, so yes is the answer
- * that is right for the accounts that exist; a savings account is one switch
- * away, per account, and the switch is what 03 §7.6 actually guarantees.
+ * an account type, so there is nothing to read it from. §7.15 settles that
+ * case: where the type is not known, the flag defaults to yes. A savings
+ * account is one switch away, per account, and the switch is what §7.6
+ * guarantees.
  */
 export const AYQ_DEFAULT_COUNTS_TOWARD_FUNDS = true;
 

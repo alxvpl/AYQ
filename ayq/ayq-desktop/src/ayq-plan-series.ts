@@ -41,8 +41,14 @@ export const AYQ_PLAN_HORIZON_MONTHS = 12;
 export function ayqExpectedFrom(
   record: Pick<AyqPlannedRecord, 'state' | 'startDate' | 'confirmedAt' | 'suggestedAt'>,
 ): string {
+  // A dismissed record keeps whichever date it had. Without the fallback a
+  // suggestion somebody struck out would lose its date and reach all the way
+  // back to its start — generating two years of dismissed occurrences, and
+  // dragging the whole plan window back with it, for a record nobody wants.
   const decided =
-    record.state === 'suggested' ? record.suggestedAt : record.confirmedAt;
+    record.state === 'suggested'
+      ? record.suggestedAt
+      : (record.confirmedAt ?? record.suggestedAt);
   if (decided === null) return record.startDate;
   return decided > record.startDate ? decided : record.startDate;
 }
