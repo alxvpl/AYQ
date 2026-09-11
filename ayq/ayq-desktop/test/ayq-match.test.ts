@@ -1,10 +1,10 @@
 // What counts as the same payment, on invented data.
 //
-// The rule for applying a match without asking is narrow on purpose (03 §7.5):
-// the counterparty or the mandate has to agree, the amount has to be exact and
-// the date has to be close. These tests are where that narrowness is held to,
-// because a matcher that quietly marks the wrong bill paid is worse than one
-// that asks.
+// The rule for applying a match without asking is narrow on purpose (03 §7.16):
+// the counterparty or the mandate has to agree, the amount has to be exact, the
+// date has to be close, and exactly one occurrence and one transaction have to
+// qualify. These tests are where that narrowness is held to, because a matcher
+// that quietly marks the wrong bill paid is worse than one that asks.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -213,4 +213,98 @@ test('a rescheduled occurrence is matched against where it now falls', () => {
   assert.equal(found[0].daysApart, 0);
   assert.equal(found[0].confident, true);
   assert.equal(found[0].dueDate, '2026-06-30', 'and it is still that occurrence');
+});
+
+/* --------------------------------------------------- 03 §7.16, uniqueness  */
+
+const KEYED = new Map([
+  ['plan-1', { key: 'testenergie', mandateId: null }],
+  ['plan-2', { key: 'testenergie', mandateId: null }],
+]);
+
+test('two transactions qualify for one occurrence: offered, not applied', () => {
+  const one = expected({ recordId: 'plan-1' });
+  // Both are the counterparty, both exact, both inside the week. Which of them
+  // paid the bill is a judgement, and §7.16 says a person makes it.
+  const first = actual({ transactionId: 'txn-1', date: '2026-06-29', counterpartyKey: 'testenergie' });
+  const second = actual({ transactionId: 'txn-2', date: '2026-07-01', counterpartyKey: 'testenergie' });
+
+  const proposals = propose([one], [first, second], { recordKeys: KEYED });
+  assert.equal(proposals.length, 1, 'one occurrence, one proposal');
+  assert.equal(proposals[0].confident, false, 'offered, and waits');
+
+  // And with the second one gone, the same pairing is applied without asking:
+  // the only thing that changed is that there is nothing else it could be.
+  const alone = propose([one], [first], { recordKeys: KEYED });
+  assert.equal(alone[0].confident, true, 'unambiguous again, so applied');
+});
+
+test('one transaction qualifies for two occurrences: offered, not applied', () => {
+  // Two months of the same rent, and a payment that could settle either.
+  const june = expected({ recordId: 'plan-1', dueDate: '2026-06-30', effectiveDate: '2026-06-30' });
+  const july = expected({ recordId: 'plan-2', dueDate: '2026-07-02', effectiveDate: '2026-07-02' });
+  const payment = actual({ transactionId: 'txn-1', date: '2026-07-01', counterpartyKey: 'testenergie' });
+
+  const proposals = propose([june, july], [payment], { recordKeys: KEYED });
+  assert.equal(proposals.length, 1, 'a transaction is only one payment');
+  assert.equal(proposals[0].confident, false, 'which of the two is not AYQ s to decide');
+});
+
+test('a transaction a person has refused makes nothing ambiguous', () => {
+  const one = expected({ recordId: 'plan-1' });
+  const first = actual({ transactionId: 'txn-1', date: '2026-06-29', counterpartyKey: 'testenergie' });
+  const second = actual({ transactionId: 'txn-2', date: '2026-07-01', counterpartyKey: 'testenergie' });
+
+  // The person has already said txn-2 is not this payment. That is a decision,
+  // so txn-2 is not a candidate — and the remaining pair is unambiguous.
+  const proposals = propose([one], [first, second], {
+    recordKeys: KEYED,
+    refused: new Map([['plan-1 2026-06-30', new Set(['txn-2'])]]),
+  });
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].transactionId, 'txn-1');
+  assert.equal(proposals[0].confident, true, 'a refusal settles it, it does not muddy it');
+});
+
+test('automation never puts a refused pairing back (03 §7.16, §4.4)', () => {
+  const one = expected({ recordId: 'plan-1' });
+  const only = actual({ transactionId: 'txn-1', counterpartyKey: 'testenergie' });
+
+  const proposals = propose([one], [only], {
+    recordKeys: KEYED,
+    refused: new Map([['plan-1 2026-06-30', new Set(['txn-1'])]]),
+  });
+  assert.deepEqual(proposals, [], 'a refusal outlives the pass that prompted it');
+});
+
+test('a transaction already matched makes nothing ambiguous either', () => {
+  const one = expected({ recordId: 'plan-1' });
+  const spoken = actual({ transactionId: 'txn-1', date: '2026-06-29', counterpartyKey: 'testenergie' });
+  const free = actual({ transactionId: 'txn-2', date: '2026-07-01', counterpartyKey: 'testenergie' });
+
+  const proposals = propose([one], [spoken, free], {
+    recordKeys: KEYED,
+    taken: new Set(['txn-1']),
+  });
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].transactionId, 'txn-2');
+  assert.equal(proposals[0].confident, true);
+});
+
+test('a near miss does not make an exact pair ambiguous', () => {
+  const one = expected({ recordId: 'plan-1' });
+  const exact = actual({ transactionId: 'txn-1', counterpartyKey: 'testenergie' });
+  // Same counterparty, a few cents out: worth offering, but it does not qualify
+  // for an automatic match, so it cannot make the exact one uncertain.
+  const near = actual({
+    transactionId: 'txn-2',
+    date: '2026-07-01',
+    amountCents: -6_150,
+    counterpartyKey: 'testenergie',
+  });
+
+  const proposals = propose([one], [exact, near], { recordKeys: KEYED });
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].transactionId, 'txn-1');
+  assert.equal(proposals[0].confident, true, 'only qualifying pairs count toward §7.16');
 });

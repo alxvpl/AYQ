@@ -201,7 +201,7 @@ test('a fresh budget is created, and it is empty', async () => {
   assert.equal(status.engineHost, 'node child_process fork');
   assert.equal(status.budgetCreated, true, 'nothing existed in a fresh dir');
   assert.ok(status.budgetId.length > 0);
-  assert.equal(status.storeVersion, 3, 'the AYQ store declares its version');
+  assert.equal(status.storeVersion, 4, 'the AYQ store declares its version');
   assert.equal(
     status.budgetType,
     'tracking',
@@ -681,7 +681,7 @@ test('what AYQ keeps survives a restart', async () => {
     aliases: unknown[];
   };
 
-  assert.equal(store.version, 3);
+  assert.equal(store.version, 4);
   assert.equal(store.rules.length, 1);
   assert.deepEqual(store.aliases, [], 'nobody has aliased anything here');
   assert.equal(store.imports.length, 1);
@@ -693,6 +693,218 @@ test('what AYQ keeps survives a restart', async () => {
     reopened.rows.filter(row => row.categoryId === category.id).length,
     2,
     'both coffees, still filed where they were put',
+  );
+});
+
+test('a version 3 store is carried forward whole, with §7.14 s dates filled in', async () => {
+  const dataDir = await budget();
+
+  // A store exactly as version 3 wrote one: two records, neither carrying the
+  // dates 03 §7.14 turns on, because version 3 had no such fields. Both start
+  // well before they were written, which is the case the migration has to get
+  // right — and every value here is invented.
+  const v3 = {
+    version: 3,
+    imports: [],
+    rules: [],
+    provenance: {},
+    decisions: {},
+    aliases: [],
+    accountFlags: {},
+    occurrences: [],
+    planned: [
+      {
+        id: 'plan-old-confirmed',
+        name: 'Rent',
+        kind: 'expense',
+        amountCents: 120_000,
+        categoryName: 'Housing',
+        counterpartyKey: null,
+        accountId: null,
+        startDate: '2025-01-01',
+        recurrence: { frequency: 'monthly', interval: 1 },
+        endDate: null,
+        state: 'confirmed',
+        provenance: 'manual',
+        mandateId: null,
+        createdAt: '2026-05-20T09:15:00.000Z',
+        updatedAt: '2026-05-20T09:15:00.000Z',
+      },
+      {
+        id: 'plan-old-suggested',
+        name: 'Testenergie',
+        kind: 'expense',
+        amountCents: 6_190,
+        categoryName: null,
+        counterpartyKey: 'testenergie',
+        accountId: null,
+        startDate: '2025-02-11',
+        recurrence: { frequency: 'monthly', interval: 1 },
+        endDate: null,
+        state: 'suggested',
+        provenance: 'detected',
+        mandateId: null,
+        createdAt: '2026-05-20T09:15:00.000Z',
+        updatedAt: '2026-05-20T09:15:00.000Z',
+      },
+    ],
+  };
+  await writeFile(
+    join(dataDir, 'ayq-store.json'),
+    JSON.stringify(v3, null, 2),
+    'utf8',
+  );
+  await restart(dataDir);
+
+  const plan = await ask(dataDir, { kind: 'plan.list', today: '2026-06-15' });
+  assert.equal(plan.records.length, 2, 'neither record was dropped');
+
+  const confirmed = plan.records.find(one => one.id === 'plan-old-confirmed');
+  const suggested = plan.records.find(one => one.id === 'plan-old-suggested');
+  assert.ok(confirmed && suggested);
+  assert.equal(
+    confirmed.confirmedAt,
+    '2026-05-20',
+    'the day it was created is the day it was confirmed, and it is a day',
+  );
+  assert.equal(confirmed.suggestedAt, null, 'nobody suggested it');
+  assert.equal(suggested.suggestedAt, '2026-05-20');
+  assert.equal(suggested.confirmedAt, null, 'nobody has accepted it yet');
+
+  // The future each record already had is the future it still has: monthly
+  // from the migration date to the horizon, for both of them.
+  const rent = plan.occurrences.filter(one => one.recordId === 'plan-old-confirmed');
+  assert.equal(rent[0].dueDate, '2026-06-01');
+  assert.equal(rent.at(-1)?.dueDate, '2027-06-01');
+  assert.equal(rent.length, 13);
+  assert.equal(
+    plan.occurrences.filter(one => one.dueDate < '2026-05-20').length,
+    0,
+    'and seventeen months of history did not arrive as arrears (03 §7.14)',
+  );
+
+  // Reading does not rewrite the file — a read that quietly rewrites somebody's
+  // store is how a downgrade eats data. The upgrade lands when something next
+  // writes, and accepting the suggestion is such a write. It is also what
+  // 03 §7.14 dates a confirmation from, so both are checked at once.
+  const onRead = JSON.parse(
+    await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
+  ) as { version: number };
+  assert.equal(onRead.version, 3, 'reading it left the file exactly as it was');
+
+  const accepted = await ask(dataDir, {
+    kind: 'plan.setState',
+    recordId: 'plan-old-suggested',
+    state: 'confirmed',
+    today: '2026-06-15',
+  });
+  const now = accepted.records.find(one => one.id === 'plan-old-suggested');
+  assert.equal(now?.state, 'confirmed');
+  assert.equal(now?.confirmedAt, '2026-06-15', 'accepted today, so expected from today');
+  assert.equal(
+    now?.suggestedAt,
+    '2026-05-20',
+    'and when it was suggested is not rewritten by accepting it',
+  );
+  assert.equal(
+    accepted.occurrences.filter(
+      one => one.recordId === 'plan-old-suggested' && one.dueDate < '2026-06-15',
+    ).length,
+    0,
+    'confirming it does not conjure up the months before the confirmation',
+  );
+
+  const store = JSON.parse(
+    await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
+  ) as { version: number; planned: unknown[] };
+  assert.equal(store.version, 4, 'and now the file says so');
+  assert.equal(store.planned.length, 2, 'with both records still in it');
+});
+
+test('the three rules 03 r004 changed, on the state they are about', async () => {
+  // The same two invented files the Windows acceptance step uses, generated by
+  // the same script, so what CI proves on the installed application and what
+  // this proves against the engine are the same scenario and cannot drift.
+  const dataDir = await budget();
+  const CONF_TODAY = '2026-06-15';
+  const seed = join(dataDir, 'ayq-store.json');
+  const statement = join(dataDir, 'conformance.xml');
+  await new Promise<void>((resolve, reject) => {
+    const child = fork(
+      join(here, '..', 'make-conformance-fixture.mjs'),
+      [seed, statement, CONF_TODAY],
+      { stdio: 'ignore' },
+    );
+    child.on('error', reject);
+    child.on('exit', code =>
+      code === 0 ? resolve() : reject(new Error(`fixture exited ${code}`)),
+    );
+  });
+  await restart(dataDir);
+
+  const summary = await ask(dataDir, { kind: 'import.camt', paths: [statement] });
+  assert.equal(summary.imported, 4, 'the invented statement went in');
+
+  // 03 §7.16. Both subscription payments carry the mandate the record carries,
+  // both are exact, both are inside the week. Neither is applied.
+  assert.equal(
+    summary.matched,
+    0,
+    'two candidates, so AYQ does not choose — it asks (03 §7.16)',
+  );
+  assert.ok(
+    summary.matchesWaiting >= 1,
+    'and it does ask: the match is offered and waits',
+  );
+
+  const plan = await ask(dataDir, { kind: 'plan.list', today: CONF_TODAY });
+  assert.equal(plan.records.length, 3, 'the version 3 store came through whole');
+
+  const of = (id: string) => plan.occurrences.filter(one => one.recordId === id);
+
+  // 03 §7.13. Six months unpaid, and every one of them still counts. Under the
+  // rule this replaces, everything past ninety days would have disappeared.
+  const overdue = of('plan-conf-overdue').filter(one => one.state === 'overdue');
+  assert.ok(
+    overdue.length >= 6,
+    `six months of arrears are all still there, not just a quarter (${overdue.length})`,
+  );
+  assert.ok(
+    overdue.some(one => one.dueDate < '2026-03-17'),
+    'including ones older than the ninety days that used to be the cut-off',
+  );
+
+  // 03 §7.14. Suggested today out of two years of statements, and owed nothing.
+  const detected = of('plan-conf-detected');
+  assert.equal(
+    detected.filter(one => one.state === 'overdue').length,
+    0,
+    'two years of history arrived as history, not as arrears (03 §7.14)',
+  );
+  assert.ok(detected.length > 0, 'but it does expect things from now on');
+  assert.ok(
+    detected.every(one => one.suggested),
+    'and every one of them says it is only a suggestion (03 §7.12)',
+  );
+
+  // And the forecast counts the arrears it is supposed to count.
+  const forecast = await ask(dataDir, { kind: 'forecast', today: CONF_TODAY });
+  const arrears = forecast.events.filter(
+    one => one.recordId === 'plan-conf-overdue',
+  );
+  assert.equal(arrears.length, of('plan-conf-overdue').length);
+  assert.ok(
+    arrears.filter(one => one.flagged).length >= 6,
+    'the old ones are in the position, flagged, and dated today (03 §7.13)',
+  );
+  assert.ok(
+    arrears.filter(one => one.flagged).every(one => one.date === CONF_TODAY),
+    'as due today, because a date in the past is never subtracted from anything',
+  );
+  assert.equal(
+    forecast.events.filter(one => one.recordId === 'plan-conf-detected' && one.flagged)
+      .length,
+    0,
   );
 });
 
@@ -1622,7 +1834,7 @@ test('an alias survives a restart, and the store carries it', async () => {
   const store = JSON.parse(
     await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
   ) as { version: number; aliases: Array<Record<string, string>> };
-  assert.equal(store.version, 3);
+  assert.equal(store.version, 4);
   assert.equal(store.aliases.length, 1);
   assert.equal(store.aliases[0].variantKey, 'TEST FUEL STATION');
   assert.equal(store.aliases[0].counterpartyKey, 'TESTFUEL');
@@ -1844,7 +2056,7 @@ test('a damaged store loses the aliases and nothing else', async () => {
     /^ayq-store\.damaged-.+\.json$/,
     'the unreadable store was kept rather than overwritten',
   );
-  assert.equal(status.storeVersion, 3, 'and a fresh store took its place');
+  assert.equal(status.storeVersion, 4, 'and a fresh store took its place');
 
   // The transactions are Actual's and none of this was theirs to lose. Without
   // the alias the resolver's own reading is what is left, which is the honest
@@ -2738,19 +2950,7 @@ test('a refused pairing is not offered again', async () => {
 
 test('an import looks for matches by itself, and says what it found', async () => {
   const dataDir = await budget();
-  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
-  const plan = await ask(dataDir, {
-    kind: 'plan.save',
-    record: {
-      name: 'Energy',
-      kind: 'expense',
-      amountCents: ENERGY_CENTS,
-      categoryName: 'Utilities',
-      startDate: ENERGY_DATE,
-      recurrence: { frequency: 'monthly', interval: 1 },
-    },
-  });
-  const recordId = plan.records[0].id;
+  const recordId = await budgetWithEnergyPlan(dataDir);
   const proposal = (
     await ask(dataDir, { kind: 'match.propose', today: ENERGY_DATE })
   ).proposals[0];

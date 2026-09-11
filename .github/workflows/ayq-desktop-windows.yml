@@ -259,13 +259,57 @@ jobs:
       # it, and accepting it has to take the payment out of what is expected.
       # The offer going away is the assertion: it only does if the engine
       # stored the decision.
+      #
+      # Dated on the day rather than fixed, because 03 §7.14 dates a record's
+      # expectations from the day it was confirmed. A record typed now expects
+      # nothing last June, so a committed statement from last June can no longer
+      # stand in for one that just arrived — and pretending otherwise would be
+      # a test that passes without the product doing the thing.
       - name: Matching what was expected to what happened
         working-directory: ayq/ayq-desktop
+        shell: pwsh
         timeout-minutes: 10
         env:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-match-budget
         run: |
-          node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --plan "Energy|61.90|monthly|2026-06-30" --match --screenshot "${{ runner.temp }}\ayq-desktop-match.png"
+          $today = (Get-Date).ToString('yyyy-MM-dd')
+          node make-conformance-fixture.mjs `
+            "${{ runner.temp }}\ayq-conf-store.json" "${{ runner.temp }}\ayq-conf.xml"
+          node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import "${{ runner.temp }}\ayq-conf.xml" `
+            --plan "Energy|61.90|monthly|$today" --match `
+            --screenshot "${{ runner.temp }}\ayq-desktop-match.png"
+          if ($LASTEXITCODE -ne 0) { throw 'the offered match was not made' }
+
+      # The three rules 03 r004 changed, on the state they are about: a store
+      # from months ago, and a statement from this week.
+      #
+      #   §7.13  six months of arrears, every one of them still counted. The
+      #          ninety-day cut-off this replaces would have dropped all but one.
+      #   §7.14  a rhythm detected today in two years of statements owes nothing:
+      #          those payments happened, and history is not arrears.
+      #   §7.16  two payments of the same subscription, on the same mandate, in
+      #          one week. Either could be the one expected, so neither is
+      #          applied and a person is asked.
+      #
+      # The store is seeded as version 3, so the upgrade to version 4 is part of
+      # what has to work rather than something only the engine tests see. Every
+      # value in both files is invented and both are generated on the day.
+      - name: What 03 r004 changed, proved on the screen
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-r004-budget
+        run: |
+          node make-conformance-fixture.mjs `
+            "${{ runner.temp }}\ayq-r004-store.json" "${{ runner.temp }}\ayq-r004.xml"
+          node start.mjs --smoke --require-host "electron utilityProcess" `
+            --seed-store "${{ runner.temp }}\ayq-r004-store.json" `
+            --import "${{ runner.temp }}\ayq-r004.xml" `
+            --conformance `
+            --screenshot "${{ runner.temp }}\ayq-desktop-r004.png"
+          if ($LASTEXITCODE -ne 0) { throw '03 r004 does not hold on the screen' }
 
       # Two AYQs over one budget would be two writers on one SQLite file. The
       # second launch has to stand aside while the first still holds it, and it
@@ -526,6 +570,29 @@ jobs:
             }
           }
 
+          # Before anything else, the same three rules on the build a person
+          # downloads: arrears that do not expire, a suggestion that brings none
+          # with it, and a match that waits because two candidates qualify. The
+          # store is seeded into the installed application's own data directory,
+          # as version 3, so it upgrades on the way in.
+          node "$env:GITHUB_WORKSPACE\ayq\ayq-desktop\make-conformance-fixture.mjs" `
+            "$env:RUNNER_TEMP\ayq-installed-store.json" "$env:RUNNER_TEMP\ayq-installed-conf.xml"
+          #
+          # In its own data directory: six months of arrears all fall due today,
+          # and they would crowd the rows the later runs read back out of the
+          # top of the table. Two questions, two budgets.
+          $budgets = $env:AYQ_DATA_DIR
+          $env:AYQ_DATA_DIR = "$env:RUNNER_TEMP\ayq-installed-r004"
+          New-Item -ItemType Directory -Force -Path $env:AYQ_DATA_DIR | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\ayq-installed-store.json" `
+            (Join-Path $env:AYQ_DATA_DIR 'ayq-store.json') -Force
+          $env:AYQ_SMOKE_IMPORT = "$env:RUNNER_TEMP\ayq-installed-conf.xml"
+          $env:AYQ_SMOKE_CONFORMANCE = '1'
+          $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-r004-report.json"
+          Invoke-Installed '03 r004         :'
+          Remove-Item Env:AYQ_SMOKE_CONFORMANCE
+          $env:AYQ_DATA_DIR = $budgets
+
           $env:AYQ_SMOKE_IMPORT = "$env:GITHUB_WORKSPACE\ayq\ayq-camt\test\fixtures\ayq-abn-month.xml"
           $env:AYQ_SMOKE_CATEGORISE = 'Utilities'
           # And a planned payment, added through the installed application's own
@@ -563,6 +630,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-categories.png
             ${{ runner.temp }}\ayq-desktop-upcoming.png
             ${{ runner.temp }}\ayq-desktop-match.png
+            ${{ runner.temp }}\ayq-desktop-r004.png
             ${{ runner.temp }}\ayq-desktop-plan.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-report.json

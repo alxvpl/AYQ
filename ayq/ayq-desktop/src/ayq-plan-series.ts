@@ -17,23 +17,35 @@ import type {
 import { ayqAddDays, ayqAddMonths } from './ayq-dates.ts';
 import type { AyqPlanOccurrenceRecord } from './ayq-store.ts';
 
+/** What the rhythm needs to know about a record, and nothing else. */
+export type AyqSeries = Pick<
+  AyqPlannedRecord,
+  'state' | 'startDate' | 'recurrence' | 'endDate' | 'confirmedAt' | 'suggestedAt'
+>;
+
 /** Twelve months from today, so a yearly payment is always in view (03 §7.9). */
 export const AYQ_PLAN_HORIZON_MONTHS = 12;
 
 /**
- * How far back an unmatched occurrence keeps counting. PROVISIONAL.
+ * The first date a record can be expected on (03 §7.14).
  *
- * 03 §7.7 says an expected payment past its date without a match is flagged,
- * and the caution principle (§7.5) says an unmatched expense keeps counting.
- * Neither says for how long, and "for ever" is not an answer: a monthly record
- * that stopped being collected six years ago would put seventy-two overdue
- * items into today's forecast and make it useless.
+ * Not its start date: the date it was decided. A rhythm AYQ detects in two
+ * years of statements has a start date two years back, and those payments
+ * already happened — they are history, and history is not overdue. The same
+ * holds for a record confirmed today with a start date last January.
  *
- * A quarter is the window. Something unmatched for longer is not a forecast
- * input — it is a record that needs a person to look at it, and the record
- * itself is still there to be looked at.
+ * This is what makes 03 §7.13 affordable. An overdue expense now counts for as
+ * long as it takes, with no cut-off anywhere, because the only occurrences that
+ * exist at all are the ones since somebody decided the record was real.
  */
-export const AYQ_OVERDUE_WINDOW_DAYS = 90;
+export function ayqExpectedFrom(
+  record: Pick<AyqPlannedRecord, 'state' | 'startDate' | 'confirmedAt' | 'suggestedAt'>,
+): string {
+  const decided =
+    record.state === 'suggested' ? record.suggestedAt : record.confirmedAt;
+  if (decided === null) return record.startDate;
+  return decided > record.startDate ? decided : record.startDate;
+}
 
 /**
  * Nothing generates more occurrences than this.
@@ -70,7 +82,7 @@ function stepMonths(frequency: AyqPlanFrequency): number | null {
  * the 31st permanently at the first February.
  */
 export function ayqOccurrenceDates(
-  record: Pick<AyqPlannedRecord, 'startDate' | 'recurrence' | 'endDate'>,
+  record: AyqSeries,
   from: string,
   to: string,
 ): string[] {
@@ -78,8 +90,13 @@ export function ayqOccurrenceDates(
     record.endDate !== null && record.endDate < to ? record.endDate : to;
   if (last < record.startDate) return [];
 
+  // The floor is applied here rather than at each call site, so no caller can
+  // forget it and generate an expectation that predates the decision (§7.14).
+  const earliest = ayqExpectedFrom(record);
+  const first = from > earliest ? from : earliest;
+
   if (record.recurrence.frequency === 'once') {
-    return record.startDate >= from && record.startDate <= last
+    return record.startDate >= first && record.startDate <= last
       ? [record.startDate]
       : [];
   }
@@ -96,16 +113,13 @@ export function ayqOccurrenceDates(
         ? ayqAddDays(record.startDate, index * interval * days)
         : ayqAddMonths(record.startDate, index * interval * (months as number));
     if (date > last) break;
-    if (date >= from) dates.push(date);
+    if (date >= first) dates.push(date);
   }
   return dates;
 }
 
 /** Whether a date is one this record actually falls on. */
-export function ayqIsOccurrenceOf(
-  record: Pick<AyqPlannedRecord, 'startDate' | 'recurrence' | 'endDate'>,
-  dueDate: string,
-): boolean {
+export function ayqIsOccurrenceOf(record: AyqSeries, dueDate: string): boolean {
   return ayqOccurrenceDates(record, dueDate, dueDate).length === 1;
 }
 
@@ -189,10 +203,24 @@ export function ayqToday(stated?: string): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** The window the plan is read over: the overdue tail plus the horizon. */
-export function ayqPlanWindow(today: string): { from: string; to: string } {
-  return {
-    from: ayqAddDays(today, -AYQ_OVERDUE_WINDOW_DAYS),
-    to: ayqAddMonths(today, AYQ_PLAN_HORIZON_MONTHS),
-  };
+/**
+ * The window the plan is read over.
+ *
+ * Forward it is the horizon (§7.9). Backward there is no cut-off at all
+ * (§7.13): an expected expense keeps counting until it is matched, rescheduled
+ * or dismissed, however long that takes. What bounds the window instead is the
+ * records themselves — the earliest date any of them can be expected on, which
+ * §7.14 fixes at the day it was decided. So the window is exactly wide enough
+ * to hold every occurrence that exists, and no wider.
+ */
+export function ayqPlanWindow(
+  today: string,
+  records: AyqSeries[],
+): { from: string; to: string } {
+  let from = today;
+  for (const record of records) {
+    const earliest = ayqExpectedFrom(record);
+    if (earliest < from) from = earliest;
+  }
+  return { from, to: ayqAddMonths(today, AYQ_PLAN_HORIZON_MONTHS) };
 }

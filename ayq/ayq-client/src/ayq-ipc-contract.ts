@@ -536,6 +536,21 @@ export type AyqPlannedRecord = {
   provenance: AyqPlanProvenance;
   /** A SEPA mandate makes a series a standing arrangement rather than a habit. */
   mandateId: string | null;
+  /**
+   * The day the owner confirmed this record, and the day AYQ suggested it.
+   *
+   * 03 §7.14: a record produces expected occurrences only from the date it was
+   * confirmed, and a suggestion only from the date it was suggested. Anything
+   * the rhythm falls on before that is history, not an expectation — which is
+   * what stops a rhythm detected from two years of statements arriving as two
+   * years of overdue bills.
+   *
+   * A record a person types is both at once, so both carry its creation date.
+   * Null is a record that has not reached that state. Both are YYYY-MM-DD: the
+   * day, not the instant, because they are compared against occurrence dates.
+   */
+  confirmedAt: string | null;
+  suggestedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

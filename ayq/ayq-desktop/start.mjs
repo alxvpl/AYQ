@@ -22,6 +22,7 @@
 // second launch can be made to overlap the first.
 
 import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +78,28 @@ if (expectPlan) env.AYQ_SMOKE_EXPECT_PLAN = expectPlan;
 // `--match` requires Upcoming to be offering a match, accepts the first one,
 // and requires the offer to go away — which it only does if the engine stored it.
 if (has('match')) env.AYQ_SMOKE_MATCH = '1';
+// `--seed-store <file>` copies an invented AYQ store into the data directory
+// before the application launches, so a smoke run can start from the state a
+// person would be in after months of use rather than from an empty budget.
+// 03 §7.14 makes that necessary: a record typed today expects nothing
+// yesterday, so arrears cannot be produced by typing.
+const seedStore = flag('seed-store');
+if (seedStore) {
+  const target = env.AYQ_DATA_DIR;
+  if (!target) {
+    process.stderr.write('--seed-store needs AYQ_DATA_DIR to be set\n');
+    process.exit(2);
+  }
+  mkdirSync(target, { recursive: true });
+  copyFileSync(seedStore, join(target, 'ayq-store.json'));
+  process.stdout.write(`[ayq-start] seeded ${join(target, 'ayq-store.json')}\n`);
+}
+
+// `--conformance` requires the Upcoming screen to show what 03 r004 says it
+// must: arrears that do not expire, a suggestion that brings none with it, and
+// an ambiguous match that waits for a person.
+if (has('conformance')) env.AYQ_SMOKE_CONFORMANCE = '1';
+
 // `--plan-sheet "Category:amount"` opens Plan, sets that category's monthly
 // plan through the sheet, and requires the row's own Left column — which the
 // engine computed — to come back showing it.

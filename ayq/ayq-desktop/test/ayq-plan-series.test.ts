@@ -19,7 +19,7 @@ import {
   ayqMonthsBetween,
 } from '../src/ayq-dates.ts';
 import {
-  AYQ_OVERDUE_WINDOW_DAYS,
+  ayqExpectedFrom,
   ayqIsOccurrenceOf,
   ayqOccurrenceDates,
   ayqOccurrencesBetween,
@@ -47,6 +47,11 @@ function record(
     state: over.state ?? 'confirmed',
     provenance: over.provenance ?? 'manual',
     mandateId: over.mandateId ?? null,
+    // Decided when it starts, unless a test says otherwise. That is the neutral
+    // case: 03 §7.14 only bites when a record was decided *after* its start
+    // date, and the tests that are about §7.14 say so explicitly.
+    confirmedAt: over.confirmedAt ?? over.startDate,
+    suggestedAt: over.suggestedAt ?? over.startDate,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
@@ -263,10 +268,137 @@ test('occurrences come back soonest first, by the date they actually fall on', (
   );
 });
 
-test('the window is the overdue tail plus twelve months', () => {
-  const { from, to } = ayqPlanWindow('2026-06-15');
-  assert.equal(from, '2026-03-17', `${AYQ_OVERDUE_WINDOW_DAYS} days back`);
-  assert.equal(to, '2027-06-15', 'twelve months ahead (03 §7.9)');
+test('the window reaches back to the oldest record and no further (03 §7.13)', () => {
+  const empty = ayqPlanWindow('2026-06-15', []);
+  assert.equal(empty.from, '2026-06-15', 'with no records there is no past');
+  assert.equal(empty.to, '2027-06-15', 'twelve months ahead (03 §7.9)');
+
+  // Four hundred days is well past the quarter that used to be the cut-off.
+  const old = record({ startDate: '2025-05-11', frequency: 'monthly' });
+  const recent = record({ startDate: '2026-06-01', frequency: 'monthly' });
+  const { from, to } = ayqPlanWindow('2026-06-15', [old, recent]);
+  assert.equal(from, '2025-05-11', 'as far back as the oldest record reaches');
+  assert.equal(to, '2027-06-15', 'and still twelve months ahead');
+});
+
+test('an expense overdue by 91, 365 and 400 days still counts (03 §7.13)', () => {
+  const today = '2026-06-15';
+  // Each was confirmed on the day its series starts, so every occurrence since
+  // is a real expectation rather than history.
+  for (const [days, startDate] of [
+    [91, '2026-03-16'],
+    [365, '2025-06-15'],
+    [400, '2025-05-11'],
+  ] as const) {
+    const one = record({
+      id: `plan-${days}`,
+      startDate,
+      frequency: 'once',
+      amountCents: 4_000,
+    });
+    const { from, to } = ayqPlanWindow(today, [one]);
+    const found = ayqOccurrencesBetween([one], [], from, to, today);
+    assert.equal(found.length, 1, `${days} days overdue is still an occurrence`);
+    assert.equal(found[0].state, 'overdue', `${days} days overdue is flagged`);
+  }
+});
+
+test('matching, rescheduling or dismissing is what stops it counting', () => {
+  const today = '2026-06-15';
+  const one = record({ startDate: '2025-05-11', frequency: 'once' });
+  const { from, to } = ayqPlanWindow(today, [one]);
+
+  const decided = (over: Partial<AyqPlanOccurrenceRecord>) => [
+    {
+      recordId: 'plan-1',
+      dueDate: '2025-05-11',
+      rescheduledTo: null,
+      matchedTransactionId: null,
+      matchedAt: null,
+      matchProvenance: null,
+      dismissed: false,
+      rejected: [],
+      ...over,
+    },
+  ];
+
+  const state = (over: Partial<AyqPlanOccurrenceRecord>) =>
+    ayqOccurrencesBetween([one], decided(over), from, to, today)[0].state;
+
+  assert.equal(state({}), 'overdue', 'left alone, it keeps counting');
+  assert.equal(state({ matchedTransactionId: 't-1' }), 'matched');
+  assert.equal(state({ dismissed: true }), 'dismissed');
+  assert.equal(
+    state({ rescheduledTo: '2026-07-01' }),
+    'rescheduled',
+    'moved into the future, it is no longer overdue',
+  );
+});
+
+test('a record expects nothing before it was decided (03 §7.14)', () => {
+  const today = '2026-06-15';
+
+  // Detected from two years of statements and suggested today.
+  const detected = record({
+    id: 'plan-detected',
+    startDate: '2024-06-01',
+    frequency: 'monthly',
+    state: 'suggested',
+    provenance: 'detected',
+    suggestedAt: today,
+    confirmedAt: null,
+  });
+  assert.equal(ayqExpectedFrom(detected), today);
+  const seen = ayqPlanWindow(today, [detected]);
+  const fromDetection = ayqOccurrencesBetween(
+    [detected],
+    [],
+    seen.from,
+    seen.to,
+    today,
+  );
+  assert.equal(
+    fromDetection.filter(one => one.state === 'overdue').length,
+    0,
+    'two years of history are history, not arrears',
+  );
+  assert.equal(fromDetection[0].dueDate, '2026-07-01', 'the next one is next');
+
+  // Typed today, with a start date a year back.
+  const typed = record({
+    id: 'plan-typed',
+    startDate: '2025-06-01',
+    frequency: 'monthly',
+    confirmedAt: today,
+  });
+  assert.equal(ayqExpectedFrom(typed), today);
+  const window = ayqPlanWindow(today, [typed]);
+  const fromConfirmation = ayqOccurrencesBetween(
+    [typed],
+    [],
+    window.from,
+    window.to,
+    today,
+  );
+  assert.equal(
+    fromConfirmation.filter(one => one.dueDate < today).length,
+    0,
+    'nothing before the day it was confirmed',
+  );
+  assert.equal(fromConfirmation[0].dueDate, '2026-07-01');
+});
+
+test('a record decided before it starts expects from its start date', () => {
+  const ahead = record({
+    startDate: '2026-09-01',
+    frequency: 'monthly',
+    confirmedAt: '2026-06-15',
+  });
+  assert.equal(
+    ayqExpectedFrom(ahead),
+    '2026-09-01',
+    'the later of the two, so planning ahead still plans ahead',
+  );
 });
 
 test('month arithmetic knows the ends of months', () => {

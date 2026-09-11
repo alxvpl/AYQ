@@ -94,7 +94,7 @@ export type AyqCategoryDecision = {
  *      transaction and the pairings a person has refused — and the per-account
  *      "counts toward available funds" flag. Older stores gain three empty ones.
  */
-export const AYQ_STORE_VERSION = 3;
+export const AYQ_STORE_VERSION = 4;
 
 export type AyqStore = {
   version: number;
@@ -160,6 +160,30 @@ function empty(): AyqStore {
  * somebody's aliases and rules to a downgrade is not an acceptable failure, and
  * a version this code has never seen cannot be read safely by guessing.
  */
+/**
+ * A version 3 record, given the two dates 03 §7.14 turns on.
+ *
+ * Version 3 held the records but not those dates. A record written then was
+ * decided when it was created — that is the only date the file holds and it is
+ * the true one, because version 3 confirmed or suggested a record in the same
+ * act that created it. So `createdAt` fills whichever of the two the record's
+ * state calls for, and every record survives the upgrade with the future it
+ * already had.
+ *
+ * The day, not the instant: these are compared against occurrence dates, and
+ * `2026-09-11T06:40:00Z` sorts after `2026-09-11`, which would drop the
+ * occurrence falling on the very day the record was decided.
+ */
+function decided(one: AyqPlannedRecord): AyqPlannedRecord {
+  const day = typeof one?.createdAt === 'string' ? one.createdAt.slice(0, 10) : null;
+  const suggested = one?.state === 'suggested';
+  return {
+    ...one,
+    confirmedAt: one?.confirmedAt ?? (suggested ? null : day),
+    suggestedAt: one?.suggestedAt ?? (suggested ? day : null),
+  };
+}
+
 function migrate(raw: unknown): AyqStore {
   if (typeof raw !== 'object' || raw === null) return empty();
   const value = raw as Partial<AyqStore>;
@@ -191,7 +215,14 @@ function migrate(raw: unknown): AyqStore {
     // And versions 1 and 2 had no plan. Same rule: a budget that predates the
     // forecast has made no plan decisions, so an empty set is the whole
     // upgrade, and nothing already in the file is rewritten.
-    planned: Array.isArray(value.planned) ? value.planned : [],
+    //
+    // Version 3 had the records but not the two dates 03 §7.14 turns on. A
+    // record written then was decided when it was created — that is the only
+    // date the file holds and it is the true one, because version 3 created a
+    // record and confirmed or suggested it in the same act. So `createdAt`
+    // fills whichever of the two the record's state calls for, and every
+    // record survives the upgrade with the future it already had.
+    planned: Array.isArray(value.planned) ? value.planned.map(decided) : [],
     // Each occurrence is normalised rather than trusted: a field added while
     // version 3 was being built would otherwise arrive as `undefined` in code
     // that has every right to expect an array.

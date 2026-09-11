@@ -10,8 +10,8 @@ the canon file itself is not edited.
 
 ## Current stage
 
-All eight stages complete, each with a green Windows run. The Plan +
-Forecast work is done.
+All eight stages complete, each with a green Windows run, and the result
+brought into line with 03_DATA r004.
 
 ## Stages
 
@@ -73,21 +73,51 @@ running it. The full evidence is in the architecture document; the decisions are
    screen reads; one flag with two meanings is how a figure comes to be wrong in
    a way nobody can trace.
 
-## PROVISIONAL
+## The provisional rules, now decided
 
-Each is isolated in one named function or constant, and each is for the owner to
-confirm or overrule.
+The owner decided P1–P8 on 2026-09-11 and they are Canon: 03_DATA r004,
+§7.10–§7.16. Nothing below is provisional any longer.
 
-| # | Decision |
+| Was | Now |
 |---|---|
-| P1 | Expected expense for a category is the larger of the plan remainder and the sum of its expected records, never their sum. Records with no category count in full. |
-| P2 | A detected expense that has not been accepted counts as expected expense; detected income does not count until accepted. |
-| P3 | An expected expense past its date without a match keeps counting, as due today, and is flagged. |
-| P4 | Every account defaults to "counts toward available funds" = yes, because neither Actual nor the CAMT record carries an account type. |
-| P5 | The budget's type is set to `tracking`, on creation and on opening an older budget. |
-| P6 | A match is applied automatically only when the counterparty or mandate agrees, the amount is exact, and the date is within seven days. Anything less is offered and waits. |
-| P7 | An unmatched occurrence keeps counting for 90 days and no longer. "For ever" would put six years of a stopped direct debit into today's forecast; the record itself stays visible either way. |
-| P8 | The part of a category's monthly plan that no record accounts for is placed at the start of its month, and at today for the month already under way — the earliest the money could go, because 03 §7.5 forbids erring the other way. |
+| P1 larger of plan and records, never the sum | §7.10, accepted as built |
+| P2 detected expense counts, detected income does not | §7.12, accepted as built |
+| P3 an overdue expense keeps counting, as due today, flagged | §7.13, accepted as built |
+| P4 an account of unknown type counts toward funds | §7.15, accepted as built |
+| P5 the budget's type is `tracking` | belongs to 02, not 03; untouched |
+| P6 counterparty, exact amount, within seven days | §7.16, **and exactly one occurrence and one transaction qualify** |
+| P7 an unmatched occurrence stops counting after 90 days | **rejected.** §7.13: nothing stops counting through time alone |
+| P8 unaccounted plan at the start of its month, today for this one | §7.11, accepted as built |
+
+### What changed in the code
+
+**The 90-day cut-off is gone** (§7.13). `AYQ_OVERDUE_WINDOW_DAYS` and the tail
+it cut are removed. An arrear counts until it is matched, rescheduled or
+dismissed, whether that is ninety days or four hundred.
+
+**Occurrences start where the decision was made** (§7.14). A record now carries
+`confirmedAt` and `suggestedAt`, and produces occurrences from the later of its
+start date and whichever of those its state calls for. This is what makes the
+cut-off unnecessary rather than merely absent: a rhythm detected in two years of
+statements used to arrive as two years of arrears, and the ninety days were
+there to hide them. Now they are never generated, because they already happened.
+
+Both dates are days, not instants, and both come from the day the engine was
+asked about rather than from the wall clock — so a stated `today` states all of
+it and the rule holds wherever it is exercised.
+
+**Store version 4.** A version 3 record is given `confirmedAt` or `suggestedAt`
+from its `createdAt`, whichever its state calls for, because version 3 confirmed
+or suggested a record in the same act that created it. Reading does not rewrite
+the file; the upgrade lands on the next write. A store from a newer AYQ is still
+refused.
+
+**An ambiguous match is never applied** (§7.16). Alongside the counterparty, the
+exact amount and the seven days, a pair now has to be the only one of its kind:
+exactly one occurrence and exactly one transaction qualifying. Two subscription
+payments in one week, or one payment that could settle either of two months, are
+offered and wait. Transactions already matched, and pairs a person has refused,
+are not candidates and so make nothing ambiguous.
 
 ## Known open defect, not this work's
 
@@ -113,6 +143,6 @@ the installer installed, not that it was worked around.
 
 ## What remains
 
-- S1 through S7, each ending on a green Windows acceptance run.
 - Nothing in 02 §7.2, 01 §6, 03 §3.2 or 06 is settled by this work, and the
   design keeps all of them open.
+- The installer defect above.

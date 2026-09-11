@@ -56,7 +56,7 @@ import {
 
 export function ayqPlan(dataDir: string, today: string): AyqPlan {
   const store = ayqReadStore(dataDir);
-  const { from, to } = ayqPlanWindow(today);
+  const { from, to } = ayqPlanWindow(today, store.planned);
   return {
     records: [...store.planned].sort((left, right) =>
       left.name.toLowerCase() < right.name.toLowerCase() ? -1 : 1,
@@ -88,7 +88,7 @@ export async function ayqForecast(
   today: string,
 ): Promise<AyqForecast> {
   const store = ayqReadStore(dataDir);
-  const { from, to } = ayqPlanWindow(today);
+  const { from, to } = ayqPlanWindow(today, store.planned);
 
   const plan: AyqForecastPlanRow[] = [];
   for (const month of ayqMonthsBetween(ayqMonthOf(today), ayqMonthOf(to))) {
@@ -205,6 +205,7 @@ export function ayqSavePlan(
   dataDir: string,
   draft: AyqPlanDraft,
   now: string,
+  today: string,
 ): AyqPlannedRecord {
   validate(draft);
   const store = ayqReadStore(dataDir);
@@ -239,6 +240,11 @@ export function ayqSavePlan(
     ...fields,
     state: 'confirmed',
     provenance: 'manual',
+    // Typed and confirmed in one act, so both dates are the day it was typed
+    // (03 §7.14). It expects nothing before that, however far back its start
+    // date reaches.
+    confirmedAt: today,
+    suggestedAt: today,
     createdAt: now,
   };
   store.planned.push(record);
@@ -251,6 +257,7 @@ export function ayqSetPlanState(
   recordId: string,
   state: AyqPlanState,
   now: string,
+  today: string,
 ): void {
   const store = ayqReadStore(dataDir);
   const record = store.planned.find(one => one.id === recordId);
@@ -260,7 +267,14 @@ export function ayqSetPlanState(
   // Accepting an offer makes it a person's decision, and the record has to say
   // so — otherwise a later detection pass could not tell what AYQ suggested
   // from what somebody agreed to (03 §4.3).
-  if (state === 'confirmed') record.provenance = 'manual';
+  if (state === 'confirmed') {
+    record.provenance = 'manual';
+    // The day it was accepted is the day it starts expecting things (§7.14).
+    // Only the first confirmation counts: dismissing a record and confirming it
+    // again is not a decision to forget the months in between, and moving the
+    // date forward would silently drop occurrences already matched against it.
+    record.confirmedAt ??= today;
+  }
   ayqWriteStore(dataDir, store);
 }
 
@@ -368,6 +382,7 @@ const CADENCE: Record<string, AyqPlanFrequency> = {
 export async function ayqSuggestFromRecurring(
   dataDir: string,
   now: string,
+  today: string,
 ): Promise<number> {
   const rhythms = await ayqRecurring(dataDir);
   const store = ayqReadStore(dataDir);
@@ -402,6 +417,11 @@ export async function ayqSuggestFromRecurring(
       state: 'suggested',
       provenance: 'detected',
       mandateId: rhythm.mandateId,
+      // A rhythm found in years of statements is suggested today, and expects
+      // nothing before today (03 §7.14). The payments it was detected from
+      // already happened; they are history, not arrears.
+      confirmedAt: null,
+      suggestedAt: today,
       createdAt: now,
       updatedAt: now,
     });
@@ -456,7 +476,7 @@ async function candidates(
 }
 
 function matchInput(store: AyqStore, today: string) {
-  const { from, to } = ayqPlanWindow(today);
+  const { from, to } = ayqPlanWindow(today, store.planned);
   const occurrences = ayqOccurrencesBetween(
     store.planned,
     store.occurrences,
@@ -631,6 +651,6 @@ export async function ayqSuggest(
   today: string,
   now: string,
 ): Promise<AyqPlanSuggested> {
-  const added = await ayqSuggestFromRecurring(dataDir, now);
+  const added = await ayqSuggestFromRecurring(dataDir, now, today);
   return { plan: ayqPlan(dataDir, today), added };
 }

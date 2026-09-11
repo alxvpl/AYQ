@@ -621,28 +621,29 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       };
 
     case 'plan.save': {
-      const now = new Date().toISOString();
-      ayqSavePlan(dataDir, request.record, now);
-      return {
-        id,
-        ok: true,
-        kind: 'plan.save',
-        result: ayqPlan(dataDir, ayqToday(request.today)),
-      };
+      // Two clocks, on purpose. `createdAt` is the instant, for the audit
+      // trail; the date 03 §7.14 dates expectations from is the day the engine
+      // was asked about, so a stated `today` states both and the rule holds
+      // wherever it is exercised.
+      const today = ayqToday(request.today);
+      ayqSavePlan(dataDir, request.record, new Date().toISOString(), today);
+      return { id, ok: true, kind: 'plan.save', result: ayqPlan(dataDir, today) };
     }
 
     case 'plan.setState': {
+      const today = ayqToday(request.today);
       ayqSetPlanState(
         dataDir,
         request.recordId,
         request.state,
         new Date().toISOString(),
+        today,
       );
       return {
         id,
         ok: true,
         kind: 'plan.setState',
-        result: ayqPlan(dataDir, ayqToday(request.today)),
+        result: ayqPlan(dataDir, today),
       };
     }
 

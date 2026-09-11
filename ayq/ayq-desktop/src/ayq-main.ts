@@ -443,6 +443,78 @@ async function spendingShown(window: BrowserWindow): Promise<string> {
  * The spec is `name|amount|frequency|startDate`, and every part of it is
  * invented: this runs on a fixture, not on anybody's statement.
  */
+/**
+ * What 03 r004 changed, read back from the screen the person actually sees.
+ *
+ * The three rules the revision turned on, each proved from the rendered table
+ * rather than from what the harness put in: arrears that no longer expire
+ * (§7.13), a suggestion that brings no arrears with it (§7.14), and a match
+ * that is offered rather than made because two candidates qualify (§7.16).
+ */
+async function conformanceShown(window: BrowserWindow): Promise<string> {
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-tab="upcoming"]\').click(); true',
+  );
+
+  const ready = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-forecast]')",
+    )) === true;
+
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await ready())) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!(await ready())) return 'the forecast never appeared';
+
+  const seen = (await window.webContents.executeJavaScript(`(() => {
+    const rows = [...document.querySelectorAll('.grid tbody tr[data-ayq-record]')];
+    const forRecord = id => rows.filter(row => row.dataset.ayqRecord === id);
+    const tagged = (list, tag) =>
+      list.filter(row => row.innerText.toLowerCase().includes(tag)).length;
+    const arrears = forRecord('plan-conf-overdue');
+    const detected = forRecord('plan-conf-detected');
+    const twin = forRecord('plan-conf-twin');
+    return {
+      arrears: arrears.length,
+      arrearsOverdue: tagged(arrears, 'overdue'),
+      detected: detected.length,
+      detectedOverdue: tagged(detected, 'overdue'),
+      detectedSuggested: tagged(detected, 'suggested'),
+      twin: twin.length,
+      offered: Number(
+        document.querySelector('[data-ayq-matches]')?.dataset.ayqMatches || 0,
+      ),
+    };
+  })()`)) as Record<string, number>;
+
+  process.stdout.write(
+    `[ayq-smoke] 03 r004: arrears ${seen.arrears} (${seen.arrearsOverdue} flagged overdue), ` +
+      `detected ${seen.detected} (${seen.detectedOverdue} overdue, ${seen.detectedSuggested} tagged suggested), ` +
+      `subscription rows ${seen.twin}, matches offered ${seen.offered}\n`,
+  );
+
+  // 03 §7.13: six months of arrears, all of them, none expired by time alone.
+  if (seen.arrearsOverdue < 6) {
+    return `only ${seen.arrearsOverdue} arrears are counted; 03 §7.13 says none expire`;
+  }
+  // 03 §7.14: two years of detected history is history, and owes nothing.
+  if (seen.detected < 1) return 'the suggested record expects nothing at all';
+  if (seen.detectedOverdue !== 0) {
+    return `a record suggested today shows ${seen.detectedOverdue} overdue; 03 §7.14 says none`;
+  }
+  if (seen.detectedSuggested !== seen.detected) {
+    return 'a suggestion is not labelled as one on every row (03 §7.12)';
+  }
+  // 03 §7.16: two candidates qualify, so the match waits for a person, and the
+  // payment it might have settled is still expected.
+  if (seen.offered < 1) return 'no match was offered; 03 §7.16 says one should be';
+  if (seen.twin < 1) {
+    return 'the subscription was matched away; 03 §7.16 says nobody chose yet';
+  }
+  return '';
+}
+
 async function upcomingShown(
   window: BrowserWindow,
   addSpec: string,
@@ -890,12 +962,23 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   const expectPlan = process.env.AYQ_SMOKE_EXPECT_PLAN ?? '';
   const acceptMatch = process.env.AYQ_SMOKE_MATCH === '1';
   let upcomingOk = true;
+
+  if (process.env.AYQ_SMOKE_CONFORMANCE === '1') {
+    const wrong = await conformanceShown(window);
+    if (wrong !== '') {
+      process.stdout.write(`[ayq-smoke] 03 r004 conformance FAILED: ${wrong}\n`);
+      upcomingOk = false;
+    } else {
+      process.stdout.write('[ayq-smoke] 03 r004 conformance: held\n');
+    }
+  }
   if (planSpec !== '' || expectPlan !== '' || acceptMatch) {
     upcoming = await upcomingShown(window, planSpec, acceptMatch);
     process.stdout.write(
       `[ayq-smoke] upcoming:\n${upcoming || '(the view showed nothing)'}\n`,
     );
     upcomingOk =
+      upcomingOk &&
       upcoming !== '' &&
       !upcoming.startsWith('could not') &&
       !upcoming.startsWith('no match') &&
