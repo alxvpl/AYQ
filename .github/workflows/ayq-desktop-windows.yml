@@ -141,7 +141,7 @@ jobs:
           node start.mjs --smoke
           --require-host "electron utilityProcess"
           --import "${{ runner.temp }}\ayq-scale.xml"
-          --show-more --spending
+          --show-more
 
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
@@ -677,6 +677,11 @@ jobs:
           # the working tree's.
           $env:AYQ_DATA_DIR = "$env:RUNNER_TEMP\ayq-installed-grounds"
           New-Item -ItemType Directory -Force -Path $env:AYQ_DATA_DIR | Out-Null
+          # The import the 03 r004 run asked for is not this question, and it is
+          # still set: a second launch over a budget that already holds those
+          # entries imports nothing, which is a failed import check on a run
+          # that was never about importing.
+          Remove-Item Env:AYQ_SMOKE_IMPORT -ErrorAction SilentlyContinue
           $env:AYQ_SMOKE_GROUNDS = '1'
           $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-grounds-report.json"
           Invoke-Installed 'the three grounds:'
