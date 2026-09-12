@@ -22,7 +22,7 @@ export type AyqWindow = {
   close(): Promise<void>;
 };
 
-type Answer = (request: Record<string, unknown>) => unknown;
+type Answer = (request: Record<string, unknown>) => unknown | Promise<unknown>;
 
 /**
  * Opens a window, with a stand-in engine behind the bridge.
@@ -61,14 +61,17 @@ export async function ayqOpenWindow(answer: Answer): Promise<AyqWindow> {
 
   const asked: Array<Record<string, unknown>> = [];
   (window as unknown as Record<string, unknown>).ayq = {
-    request(request: Record<string, unknown>) {
+    async request(request: Record<string, unknown>) {
       asked.push(request);
-      const result = answer(request);
-      return Promise.resolve(
-        result === undefined
-          ? { id: request.id, ok: false, kind: 'error', message: 'no answer' }
-          : { id: request.id, ok: true, kind: request.kind, result },
-      );
+      // Awaited, so a test can hand back a promise it resolves later and hold
+      // the engine mid-answer. What a screen draws before the engine has
+      // answered is a thing it can get wrong — the Register once said the
+      // budget was empty while it was still reading — and it cannot be tested
+      // at all if every answer arrives before the first paint.
+      const result = await answer(request);
+      return result === undefined
+        ? { id: request.id, ok: false, kind: 'error', message: 'no answer' }
+        : { id: request.id, ok: true, kind: request.kind, result };
     },
   };
 

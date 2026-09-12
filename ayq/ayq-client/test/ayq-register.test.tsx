@@ -210,6 +210,45 @@ function screen(
   );
 }
 
+test('the Register does not say the budget is empty before it has looked', async () => {
+  // Found by an acceptance run on Windows, and it is the kind of untruth that
+  // is easy to write and hard to see: the table drew its empty state — "Nothing
+  // has been imported yet" — while the engine was still answering, so a person
+  // opening AYQ on a large budget was told for a moment that they had nothing.
+  // The run read the screen in that moment and reported a lost budget.
+  //
+  // Nothing is drawn as a table until there is an answer behind it, and the
+  // table's own marker appears with it.
+  let answer: ((rows: unknown) => void) | null = null;
+  const held = new Promise<unknown>(resolve => {
+    answer = resolve;
+  });
+
+  const window = await ayqOpenWindow(request => {
+    if (request.kind === 'transactions.list') return held;
+    return engineOver(ROWS)(request);
+  });
+  await window.render(screen());
+
+  assert.equal(
+    window.container.querySelector('[data-ayq-table="register"]'),
+    null,
+    'the Register drew a table before the engine had answered',
+  );
+  assert.ok(
+    window.container.querySelector('[data-ayq-reading="register"]'),
+    'the Register says nothing at all while it reads',
+  );
+  assert.ok(
+    !(window.container.textContent ?? '').includes(
+      ayqText('register.empty'),
+    ),
+    'the Register said the budget was empty before it had looked',
+  );
+
+  await window.close();
+});
+
 test('the table shows the rows the engine answered, in the accepted columns', async () => {
   const window = await ayqOpenWindow(engineOver(ROWS));
   await window.render(screen());

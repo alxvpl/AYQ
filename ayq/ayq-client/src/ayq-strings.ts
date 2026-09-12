@@ -93,6 +93,11 @@ const EN = {
   'import.outcome.nothing': 'nothing else',
   'import.files': '{count} files',
 
+  'store.damaged':
+    'AYQ could not read what it had kept beside this budget, so its rules and ' +
+    'the record of where each name came from are gone. Your transactions are ' +
+    'untouched. The unreadable file was kept as {file}.',
+
   'notBuilt.title': 'Not built yet',
 
   // Reports (04 A2, A20). Not built, and the screen says only that.

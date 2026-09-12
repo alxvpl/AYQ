@@ -208,6 +208,41 @@ verdicts and names what failed.
 Register took seven seconds" is not a fault anybody can act on; which request
 those seconds were in is.
 
+### And run 68, on the step that damages the store
+
+Three defects, and the first is the one worth the run.
+
+**The Register said the budget was empty before it had looked.** The table drew
+its own empty state — "Nothing has been imported yet" — from the moment the
+screen mounted until the engine answered. On a small fixture that is a flicker
+nobody sees; on fifty thousand transactions it is a second of AYQ telling a
+person their budget is gone. The acceptance step read the screen inside that
+window and reported exactly that. There is no table now until there is an answer
+behind it, and the table's own marker arrives with the answer — which is also
+what a run waiting for the Register has always actually been waiting for. The
+regression test holds the engine mid-answer and was proved to fail without the
+fix; holding an answer required the stand-in engine to await what a test hands
+back, so a screen's state before its first answer is testable at all.
+
+**A reload took down a message nobody had dismissed.** The shell cleared every
+notice each time its own read of the engine succeeded, and the rail reloads on
+every move — so the damaged-store sentence, which the step deliberately provokes,
+was gone as soon as the person clicked anything. The shell now takes down only
+the failure it put up itself, by remembering what that was.
+
+**A sentence was written into a component.** That damaged-store sentence lived in
+`ayq-application.tsx`, joined out of three pieces around the file name, which is
+an A24 violation of the plain kind. It is in the catalogue now. The A24 check did
+not see it because it only ever looked at JSX: a string handed to a state setter
+and drawn later is neither JSX text nor a JSX attribute. The check now reads any
+whole sentence in a component — several words ending in a full stop, `+` chains
+and template pieces reassembled first — and it found one real violation and
+nothing else in the whole client.
+
+One thing in the driver rather than the application: the wait for the Register
+was sixty seconds, and now that the marker means "answered" rather than "drawn"
+it is two minutes.
+
 ## S7 — Review and Settings (04 A6, A7; 03 §3.6, §4.1)
 
 ### The two decisions, kept apart on the screen and in the request

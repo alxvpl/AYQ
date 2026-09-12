@@ -13,6 +13,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -94,6 +95,8 @@ export function AyqApplication(): ReactNode {
   const [ledgerTotal, setLedgerTotal] = useState<number | null>(null);
 
   const reload = useCallback(() => setRound(one => one + 1), []);
+  /** The last thing the shell's own read failed with, so it can be taken down. */
+  const lastFailure = useRef<string | null>(null);
   // A screen that has finished drawing has changed what the window is holding,
   // and the attributes below are read off that.
   const say = useCallback((message: string) => setNotice(message), []);
@@ -110,10 +113,17 @@ export function AyqApplication(): ReactNode {
       setStatus(answered.result as AyqEngineStatus);
       setSummary(counted.result as AyqSummary);
       setFailure(null);
-      setNotice(null);
+      // Only the shell's own failure is taken down, and only because it is no
+      // longer true. What is on screen may be something else entirely — a store
+      // AYQ could not read, or what a screen has just said — and this used to
+      // clear all of it, on every reload. Since the rail reloads on every move,
+      // a person who clicked anything lost a message they had not dismissed.
+      setNotice(current => (current === lastFailure.current ? null : current));
+      lastFailure.current = null;
     })().catch((error: unknown) => {
       if (!live) return;
       const said = error instanceof Error ? error.message : String(error);
+      lastFailure.current = said;
       setFailure(said);
       setNotice(said);
     });
@@ -129,11 +139,7 @@ export function AyqApplication(): ReactNode {
     if (damaged === null || damaged === damagedTold) return;
     setDamagedTold(damaged);
     // Said, not failed: the transactions are Actual's and are all there.
-    setNotice(
-      'AYQ could not read what it had kept beside this budget, so its rules ' +
-        'and the record of where each name came from are gone. Your ' +
-        `transactions are untouched. The unreadable file was kept as ${damaged}.`,
-    );
+    setNotice(ayqText('store.damaged', { file: damaged }));
   }, [status, damagedTold]);
 
   // The attributes the acceptance runs read, set from the answers. The row

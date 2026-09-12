@@ -419,7 +419,11 @@ async function openDestination(
  */
 async function openRegister(window: BrowserWindow): Promise<void> {
   await openDestination(window, 'register');
-  const deadline = Date.now() + 60_000;
+  // The table exists only once the engine has answered — before that the pane
+  // says it is reading. That is what makes this wait mean "the Register has an
+  // answer" rather than "the Register has drawn something", which is what a run
+  // reading the ledger is actually waiting for.
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     const drawn = await window.webContents.executeJavaScript(
       "!!document.querySelector('[data-ayq-table=\"register\"]')",

@@ -5,6 +5,7 @@
 // has to mean the same one — a second copy would be a second place for the
 // evidence, the provenance and the actions to drift apart.
 
+import { makeStyles } from '@fluentui/react-components';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { ayqAsk } from '../ayq-bridge.ts';
@@ -17,11 +18,20 @@ import type {
   AyqTransactionDetail,
 } from '../ayq-ipc-contract.ts';
 import { ayqDate, ayqText } from '../ayq-strings.ts';
+import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 import { AyqTransactionDetailPane } from './ayq-transaction-detail.tsx';
+
+const useStyles = makeStyles({
+  reading: {
+    margin: '0',
+    padding: `${AYQ_METRIC.space.screen}px ${AYQ_METRIC.row.paddingX}px`,
+    color: 'var(--ayq-ink-faint)',
+  },
+});
 
 export function AyqLedgerPane({
   filter,
@@ -55,6 +65,7 @@ export function AyqLedgerPane({
   const [counterparties, setCounterparties] = useState<
     readonly AyqCounterparty[] | null
   >(null);
+  const { reading } = useStyles();
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AyqTransactionDetail | null>(null);
   const [round, setRound] = useState(0);
@@ -157,16 +168,29 @@ export function AyqLedgerPane({
     <AyqSplit
       table={
         <AyqPane mark={mark} title={title} note={note} actions={actions}>
-          <AyqTable
-            mark={mark}
-            columns={columns}
-            rows={ledger?.rows ?? []}
-            keyOf={row => row.id}
-            selected={openId}
-            onSelect={row => setOpenId(row.id)}
-            empty={empty}
-            footer={footer}
-          />
+          {/* No table until the engine has answered. "Nothing has been imported
+              yet" is a statement about a budget, and before the answer it is a
+              statement nobody has checked — a person opening AYQ on a budget of
+              fifty thousand transactions should not be told for a second that
+              they have none. It also means the table's own marker appears only
+              with an answer behind it, which is what an acceptance run waiting
+              for the Register is actually waiting for. */}
+          {ledger === null ? (
+            <p className={reading} data-ayq-reading={mark}>
+              {ayqText('common.loading')}
+            </p>
+          ) : (
+            <AyqTable
+              mark={mark}
+              columns={columns}
+              rows={ledger.rows}
+              keyOf={row => row.id}
+              selected={openId}
+              onSelect={row => setOpenId(row.id)}
+              empty={empty}
+              footer={footer}
+            />
+          )}
         </AyqPane>
       }
       detail={
