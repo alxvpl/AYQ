@@ -94,10 +94,25 @@ const EN = {
   'import.files': '{count} files',
 
   'notBuilt.title': 'Not built yet',
-  'notBuilt.reports':
-    'Reports begin with spending by category and period. The screen is empty ' +
-    'because that view has not been built, not because your data is ' +
-    'insufficient.',
+
+  // Reports (04 A2, A20). Not built, and the screen says only that.
+  'reports.title': 'Reports',
+  'reports.notBuilt':
+    'Reports is not built. This screen is empty because that view has not been ' +
+    'written, and for no other reason — there is no amount of history to ' +
+    'gather first and nothing here is waiting on you.',
+  'reports.willAnswer':
+    'It is the last step of the working cycle (04 A2), and the question it is ' +
+    'for is what has been spent, by category and over a period.',
+  'reports.spending':
+    'AYQ had a Spending screen before the accepted design. 04 A20’s rail has no ' +
+    'such destination and that question belongs here, so the screen was ' +
+    'removed. The engine still answers it, so nothing has to be rebuilt when ' +
+    'this screen is written.',
+  'reports.meanwhile':
+    'Until then: the Register filters by period, account, category and ' +
+    'counterparty and states the totals for whatever set it is showing.',
+  'reports.open.register': 'Open the Register',
 
   'settings.tab.accounts': 'Accounts',
   'settings.tab.categories': 'Categories',

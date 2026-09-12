@@ -1313,6 +1313,90 @@ async function accountsShown(
 }
 
 /**
+ * Reports, which is not built — and the two things that has to mean.
+ *
+ * It draws nothing that could be read as an answer, and it says so without
+ * inventing a reason. The second half is the one worth a check on the packaged
+ * application: a screen that blames a person's data for being empty is a screen
+ * that tells them something untrue, and it is the kind of sentence that gets
+ * written when somebody fills an empty page.
+ */
+async function reportsShown(window: BrowserWindow): Promise<string> {
+  if (!(await openDestination(window, 'reports'))) {
+    return 'the Reports destination never opened';
+  }
+
+  const drawn = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-not-built=\"reports\"]')",
+    )) === true;
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline && !(await drawn())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await drawn())) return 'Reports drew nothing at all, not even a reason';
+
+  const seen = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const screen = document.querySelector('[data-ayq-screen="reports"]');
+        return JSON.stringify({
+          said: screen.innerText.replace(/\\s+/g, ' ').trim(),
+          figures: screen.querySelectorAll('[data-ayq-figure]').length,
+          tables: screen.querySelectorAll('[data-ayq-table]').length,
+          chips: screen.querySelectorAll('[data-ayq-state]').length,
+          charts: screen.querySelectorAll('canvas, svg').length,
+          spending: !!screen.querySelector('[data-ayq-reports-spending]'),
+        });
+      })()`),
+    ),
+  ) as {
+    said: string;
+    figures: number;
+    tables: number;
+    chips: number;
+    charts: number;
+    spending: boolean;
+  };
+
+  process.stdout.write(
+    `[ayq-smoke] reports: ${seen.figures} figures, ${seen.tables} tables, ` +
+      `${seen.chips} chips, ${seen.charts} charts\n`,
+  );
+
+  // Nothing on it can be mistaken for an answer.
+  if (seen.figures + seen.tables + seen.chips + seen.charts > 0) {
+    return 'Reports draws something that could be read as an answer';
+  }
+  if (!/not built/i.test(seen.said)) return 'Reports does not say it is not built';
+  if (!/for no other reason/i.test(seen.said)) {
+    return 'Reports does not say that nothing else is the reason';
+  }
+  // And no threshold, invented or implied.
+  for (const invented of [
+    'not enough',
+    'insufficient',
+    'at least',
+    'more data',
+    'come back',
+    'once you have',
+  ]) {
+    if (seen.said.toLowerCase().includes(invented)) {
+      return `Reports blames the budget: "${invented}"`;
+    }
+  }
+  // 04 A20 removed the Spending screen and this is where its question went, so
+  // this is where the removal is readable.
+  if (!seen.spending) {
+    return 'Reports does not record the Spending screen the design removed';
+  }
+  process.stdout.write(
+    '[ayq-smoke] reports: says it is not built, blames nothing, draws nothing\n',
+  );
+  return '';
+}
+
+/**
  * Review and the two decisions of 03 §4.1, proved end to end on the window.
  *
  * The one thing a screen here must never do is make one decision look like the
@@ -2477,6 +2561,20 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // Reports: not built, and nothing on it that could be read as an answer.
+  const reportsAsked = process.env.AYQ_SMOKE_REPORTS === '1';
+  let reports = 'not asked';
+  let reportsOk = true;
+  if (reportsAsked) {
+    const wrong = await reportsShown(window);
+    reports = wrong === '' ? 'held' : wrong;
+    reportsOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] Reports: ${reportsOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+    await openRegister(window);
+  }
+
   // Review and Settings: the two decisions of 03 §4.1, and what Settings owns.
   const reviewAsked = process.env.AYQ_SMOKE_REVIEW === '1';
   let review = 'not asked';
@@ -2591,6 +2689,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     accountsOk &&
     todayOk &&
     reviewOk &&
+    reportsOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -2630,6 +2729,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           todayOk,
           review,
           reviewOk,
+          reports,
+          reportsOk,
           pagedOk,
           imports: importRounds,
           dataDir,
@@ -2664,7 +2765,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is

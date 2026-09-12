@@ -338,6 +338,35 @@ jobs:
           }
           Write-Host "and then learned one: $($Matches[1])"
 
+      # Reports, which is not built. Two things that has to mean, on the
+      # packaged application: nothing on the screen that could be read as an
+      # answer, and no reason invented for it being empty. The second is the one
+      # worth checking — a screen that blames a person's data for being empty
+      # tells them something untrue, and that is the sentence that gets written
+      # when somebody fills an empty page.
+      - name: Reports says it is not built, and blames nothing
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-reports-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml `
+            --reports `
+            --screenshot "${{ runner.temp }}\ayq-desktop-reports.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'Reports did not hold on the window' }
+          if ($said -notmatch 'Reports: held') {
+            throw 'the run did not check Reports at all'
+          }
+          if ($said -notmatch 'reports: (\d+) figures, (\d+) tables, (\d+) chips, (\d+) charts') {
+            throw 'the run did not count what Reports draws'
+          }
+          # A budget with transactions in it, so "it drew nothing" is a decision
+          # and not an accident of there being nothing to draw.
+          Write-Host "Reports drew $($Matches[1]) figures and $($Matches[2]) tables on a budget that holds transactions"
+
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
       - name: An unusable file is refused, and nothing is damaged
@@ -956,6 +985,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-accounts.png
             ${{ runner.temp }}\ayq-desktop-today.png
             ${{ runner.temp }}\ayq-desktop-review.png
+            ${{ runner.temp }}\ayq-desktop-reports.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json

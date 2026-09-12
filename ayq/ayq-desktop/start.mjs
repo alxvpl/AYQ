@@ -111,6 +111,11 @@ if (has('register')) env.AYQ_SMOKE_REGISTER = '1';
 // again on fifty thousand records.
 if (has('import-once')) env.AYQ_SMOKE_IMPORT_ONCE = '1';
 
+// `--reports` opens Reports and requires it to say it is not built, to invent no
+// reason for being empty, to draw nothing that could be read as an answer, and
+// to record the Spending screen 04 A20 removed — whose question is this one.
+if (has('reports')) env.AYQ_SMOKE_REPORTS = '1';
+
 // `--review` opens Review, files one counterparty *without* learning a rule and
 // requires Settings to hold no rule afterwards, then learns a rule for the next
 // one and requires it to be there, keyed on that counterparty — 03 §4.1's two

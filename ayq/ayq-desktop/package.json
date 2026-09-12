@@ -66,7 +66,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "${productName}-build-002-windows-${arch}-setup.${ext}"
+      "artifactName": "${productName}-build-003-windows-${arch}-setup.${ext}"
     },
     "nsis": {
       "oneClick": true,

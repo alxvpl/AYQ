@@ -32,12 +32,12 @@ import type {
 } from './ayq-ipc-contract.ts';
 import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
 import { AyqPlanScreen } from './ayq-screens/ayq-plan.tsx';
+import { AyqReportsScreen } from './ayq-screens/ayq-reports.tsx';
 import { AyqReviewScreen } from './ayq-screens/ayq-review.tsx';
 import { AyqTodayScreen } from './ayq-screens/ayq-today.tsx';
 import { AyqUpcomingScreen } from './ayq-screens/ayq-upcoming.tsx';
 import { AyqImportScreen } from './ayq-screens/ayq-import.tsx';
 import { AyqRegisterScreen } from './ayq-screens/ayq-register.tsx';
-import { AyqNotBuilt } from './ayq-screens/ayq-not-built.tsx';
 import {
   AYQ_SETTINGS_TABS,
   AyqSettingsScreen,
@@ -224,7 +224,14 @@ export function AyqApplication(): ReactNode {
       />
     );
   } else {
-    body = <AyqNotBuilt what={ayqText('notBuilt.reports')} />;
+    body = (
+      <AyqReportsScreen
+        onOpenRegister={() => {
+          setFilter({});
+          setDestination('register');
+        }}
+      />
+    );
   }
 
   return (

@@ -22,7 +22,7 @@ difference is recorded below.
 | S5 | Today (04 A21) | done |
 | S6 | Upcoming and Plan | done |
 | S7 | Review and Settings | done |
-| S8 | Reports destination | not started |
+| S8 | Reports destination | done |
 
 ## How the interface is being replaced
 
@@ -87,6 +87,45 @@ r009 shows. Canon governs: the order is now funds, how long it lasts, the
 transaction list, then the queues. It is pinned by a renderer test that reads the
 panes in document order, and by the Windows acceptance step, which reads the same
 order off the drawn window.
+
+## S8 — Reports (04 A2, A20)
+
+Not built, and the screen says exactly that. Two things follow, and both are
+checked rather than intended.
+
+**It draws nothing that could be read as an answer** — no figure, no table, no
+state chip, no chart — and the Windows step counts all four on a budget that
+holds transactions, so "it drew nothing" is a decision rather than an accident
+of there being nothing to draw.
+
+**It asks the engine nothing.** An empty screen that has queried a budget looks
+like a budget with nothing in it; an empty screen that has asked nothing can
+only be read as a screen that has not been written. The renderer test asserts
+the requests that crossed the bridge, and the only one is the window asking
+which ground to draw in.
+
+And it invents no reason. No history to accumulate, no threshold to reach,
+nothing waiting on anybody. Both the test and the acceptance step refuse a list
+of the sentences that get written when somebody fills an empty page — "not
+enough", "insufficient", "at least", "more data", "come back", "once you have".
+The only true reason is that the view is not built, and a screen implying a
+person is at fault for it is worse than an empty screen.
+
+It also records, where the question now lives, that AYQ had a Spending screen
+before the accepted design and that the screen was removed: A20's rail has no
+such destination, and its question — what has been spent, by category and over a
+period — is this one. The engine still answers it, so nothing has to be rebuilt
+when Reports is written. That removal is the owner's to overrule, and it should
+be readable on the screen rather than only in this file.
+
+`ayq-screens/ayq-not-built.tsx` is gone with it: Reports was the last
+destination using it, and a component whose one job is to say "not built" is
+better as the screen that has to say it.
+
+### The delivery
+
+`artifactName` names the installer for **build 003**. A delivery label and
+nothing else: no tag, no release, no change to the version scheme.
 
 ## What fifty thousand transactions cost, and what was done about it
 
