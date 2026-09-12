@@ -8,6 +8,7 @@ import { makeStyles, mergeClasses } from '@fluentui/react-components';
 import type { ReactNode } from 'react';
 
 import { AYQ_METRIC, AYQ_TYPE, type AyqStateName } from '../ayq-tokens.ts';
+import { ayqBorder } from './ayq-css.ts';
 
 const useStyles = makeStyles({
   chip: {
@@ -26,7 +27,7 @@ const useStyles = makeStyles({
   suggested: {
     color: 'var(--ayq-state-suggested-fg)',
     backgroundColor: 'var(--ayq-state-suggested-bg)',
-    border: '1px dashed currentColor',
+    ...ayqBorder('currentColor', '1px', 'dashed'),
   },
   overdue: {
     color: 'var(--ayq-state-overdue-fg)',

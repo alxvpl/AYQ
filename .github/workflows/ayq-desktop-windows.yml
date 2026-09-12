@@ -143,6 +143,40 @@ jobs:
           --import "${{ runner.temp }}\ayq-scale.xml"
           --show-more
 
+      # The shell, measured rather than looked at (04 A20, A22): the rail's
+      # width and the order of its destinations, one scroller at the window's
+      # right edge, and the table header and the detail pane staying put while
+      # nine hundred rows move under them.
+      #
+      # Nine hundred, because a screen that fits its window proves nothing
+      # about what happens when it does not.
+      - name: The shell, measured on the window
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-shell-budget
+        run: |
+          node make-scale-fixture.mjs "${{ runner.temp }}\ayq-shell.xml" 900
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import "${{ runner.temp }}\ayq-shell.xml" `
+            --shell `
+            --screenshot "${{ runner.temp }}\ayq-desktop-shell.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'the shell did not hold on the window' }
+          if ($said -notmatch 'the shell: held') {
+            throw 'the run did not measure the shell at all'
+          }
+          if ($said -notmatch 'rail 64px, 9 destinations, 2 hairlines') {
+            throw 'the rail is not what 04 A20 says it is'
+          }
+          # 04 A14 asked for Mica and asked for it to be verified rather than
+          # claimed. What the window actually got is printed, whichever it is.
+          if ($said -notmatch 'window material: (mica|none)') {
+            throw 'the run did not say what material the window got'
+          }
+          Write-Host ($said -split "`n" | Select-String 'window material')
+
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
       - name: An unusable file is refused, and nothing is damaged
@@ -702,12 +736,19 @@ jobs:
 
           $env:AYQ_SMOKE_IMPORT = "$env:GITHUB_WORKSPACE\ayq\ayq-camt\test\fixtures\ayq-abn-month.xml"
           $env:AYQ_SMOKE_CATEGORISE = 'Utilities'
+          # And the shell, on the build a person downloads.
+          $env:AYQ_SMOKE_SHELL = '1'
           # And a planned payment, added through the installed application's own
           # form. The forecast is the newest thing AYQ does and the one with the
           # least habit behind it, so it is proved on the build a person gets.
           $env:AYQ_SMOKE_PLAN = 'Rent|1200.00|monthly|2026-10-01'
           $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-report.json"
           Invoke-Installed 'import and file  :'
+          $shell = Get-Content $env:AYQ_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if ($shell.shell -ne 'held') {
+            throw "the installed application's shell did not hold: $($shell.shell)"
+          }
+          Remove-Item Env:AYQ_SMOKE_SHELL
 
           Remove-Item Env:AYQ_SMOKE_IMPORT
           Remove-Item Env:AYQ_SMOKE_CATEGORISE
@@ -740,6 +781,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-r004.png
             ${{ runner.temp }}\ayq-desktop-plan.png
             ${{ runner.temp }}\ayq-desktop-grounds.png
+            ${{ runner.temp }}\ayq-desktop-shell.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json

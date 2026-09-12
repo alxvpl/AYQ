@@ -14,6 +14,7 @@
 
 import { fork } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { release } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +38,13 @@ import {
 // against the product's own declared values rather than against a second copy
 // of them written into a test. It is data and arithmetic: no DOM, no engine.
 import {
+  AYQ_DESTINATIONS,
+  AYQ_RAIL_FOOT,
+  AYQ_RAIL_GROUPS,
+} from '../../ayq-client/src/ayq-destinations.ts';
+import {
   AYQ_GROUNDS,
+  AYQ_METRIC,
   AYQ_TOKENS,
   type AyqGroundResolved,
 } from '../../ayq-client/src/ayq-tokens.ts';
@@ -245,6 +252,36 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
   });
 }
 
+/**
+ * Whether this Windows can show Mica at all, and what was done about it.
+ *
+ * 04 A14 allows Mica for the window background and navigation and Acrylic for
+ * transient surfaces, and the task that built this required the claim to be
+ * verified rather than made. The verification is a build number: the backdrop
+ * materials arrived in Windows 11, build 22000. Below that Electron accepts
+ * `backgroundMaterial` and silently does nothing, which is the worst of the
+ * three outcomes — a product that says it uses Mica and does not.
+ *
+ * So it is asked, recorded, and where it is unavailable the window keeps a
+ * solid surface: the ground the token module already defines, which is the
+ * nearest thing to it.
+ */
+function windowMaterial(): { material: 'mica' | 'none'; why: string } {
+  if (process.platform !== 'win32') {
+    return { material: 'none', why: `${process.platform} has no Mica` };
+  }
+  // `10.0.22000` and upwards. `release()` is the kernel version, which is what
+  // the build number lives in.
+  const build = Number(release().split('.')[2] ?? '0');
+  if (Number.isFinite(build) && build >= 22_000) {
+    return { material: 'mica', why: `Windows build ${build}` };
+  }
+  return {
+    material: 'none',
+    why: `Windows build ${build} is older than 22000, which is where Mica begins`,
+  };
+}
+
 function createWindow(): BrowserWindow {
   // Electron gives every application a File/Edit/View/Window menu whether or
   // not it has anything to put in one. AYQ does not: every action it offers is
@@ -255,13 +292,25 @@ function createWindow(): BrowserWindow {
   // A desktop window, sized for the shell it holds: a navigation column and a
   // ledger with six columns beside it. 900x700 was the size of a page, and it
   // left the transactions table narrower than the window it was drawn in.
+  const material = windowMaterial();
+  process.stdout.write(
+    `[ayq] window material: ${material.material} (${material.why})\n`,
+  );
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 640,
     minHeight: 480,
     title: 'AYQ',
-    backgroundColor: '#fbfbfa',
+    // The ground the token module defines, so that the frame a person sees
+    // before the first paint is the one the application then paints.
+    backgroundColor: AYQ_TOKENS.light.surface.ground,
+    // Mica where Windows has it (04 A14), and nothing pretending to be it
+    // where it does not. Never behind figures: it is the window's background
+    // and the rail's, and every pane the figures sit on is solid.
+    ...(material.material === 'mica'
+      ? { backgroundMaterial: 'mica' as const }
+      : {}),
     show: false,
     webPreferences: {
       // The renderer gets the bridge and nothing else.
@@ -275,6 +324,52 @@ function createWindow(): BrowserWindow {
   window.once('ready-to-show', () => window.show());
   void window.loadFile(join(here, 'client', 'ayq-client.html'));
   return window;
+}
+
+/**
+ * Opens a destination from the rail, the way a person does, and waits for its
+ * screen to be the one on the page.
+ *
+ * Clicking and carrying on was fine while the shell redrew synchronously. It
+ * is not now: the screen is React's, and the element the next step looks for
+ * may not exist for another frame.
+ */
+async function openDestination(
+  window: BrowserWindow,
+  name: string,
+): Promise<boolean> {
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-tab="${name}"]')?.click(); true`,
+  );
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const there = await window.webContents.executeJavaScript(
+      `!!document.querySelector('[data-ayq-screen="${name}"]')`,
+    );
+    if (there === true) return true;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  return false;
+}
+
+/**
+ * Opens the Register and waits for it to have drawn.
+ *
+ * Every read of the ledger below goes through here: the ledger is one screen
+ * among nine now, and a test that reads rows from whichever screen happened to
+ * be open reads nothing at all.
+ */
+async function openRegister(window: BrowserWindow): Promise<void> {
+  await openDestination(window, 'register');
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const drawn = await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-legacy=\"register\"] .grid, " +
+        "[data-ayq-legacy=\"register\"] .empty-title')",
+    );
+    if (drawn === true) return;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
 }
 
 /** One published attribute from the page, as a string. */
@@ -294,9 +389,12 @@ async function dataset(window: BrowserWindow, name: string): Promise<string> {
  * renderer published, which are the engine's, not the screen's.
  */
 async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
+  if (!(await openDestination(window, 'import'))) {
+    throw new Error('the Import destination did not open');
+  }
   await window.webContents.executeJavaScript(
     'document.body.dataset.ayqImportState = ""; ' +
-      'document.getElementById("ayq-import").click(); true',
+      'document.querySelector(\'[data-ayq-action="import"]\').click(); true',
   );
 
   const deadline = Date.now() + 240_000;
@@ -337,6 +435,7 @@ async function categoriseNewest(
   window: BrowserWindow,
   name: string,
 ): Promise<string> {
+  await openRegister(window);
   const chose = String(
     await window.webContents.executeJavaScript(`(() => {
       const row = document.querySelector('.grid tbody tr');
@@ -376,6 +475,7 @@ async function categoriseNewest(
  * until the renderer has replaced it.
  */
 async function shownCategory(window: BrowserWindow): Promise<string> {
+  await openRegister(window);
   return String(
     await window.webContents.executeJavaScript(`(() => {
       const select = document.querySelector('.grid tbody tr .col-category select');
@@ -395,48 +495,6 @@ async function problemShown(window: BrowserWindow): Promise<string> {
       return bar && !bar.hidden ? bar.innerText.trim() : '';
     })()`),
   );
-}
-
-/**
- * Opens the Spending view and reads back what it says.
- *
- * Through the tab a person clicks, and read from the rendered table rather than
- * from any state the renderer kept — the same rule as the category control. If
- * the screen does not show the breakdown, it did not happen.
- */
-async function spendingShown(window: BrowserWindow): Promise<string> {
-  await window.webContents.executeJavaScript(
-    'document.querySelector(\'[data-ayq-tab="spending"]\').click(); true',
-  );
-
-  const deadline = Date.now() + 60_000;
-  let shown = '';
-  while (Date.now() < deadline) {
-    shown = String(
-      await window.webContents.executeJavaScript(`(() => {
-        const figures = [...document.querySelectorAll('.figures .figure')].map(one => {
-          const label = one.querySelector('.figure-label');
-          const value = one.querySelector('.figure-value');
-          return (label ? label.textContent : '') + ' ' + (value ? value.textContent : '');
-        });
-        if (figures.length === 0) return '';
-        const rows = [...document.querySelectorAll('.grid tbody tr')].map(row => {
-          const cell = name => row.querySelector('.col-' + name);
-          const bar = cell('share') && cell('share').querySelector('.share-bar');
-          return [
-            cell('payee') ? cell('payee').innerText.trim() : '',
-            bar ? bar.title : '',
-            cell('count') ? cell('count').innerText.trim() : '',
-            cell('amount') ? cell('amount').innerText.trim() : '',
-          ].join(' | ');
-        });
-        return figures.join('   ') + '\\n' + rows.join('\\n');
-      })()`),
-    );
-    if (shown !== '') break;
-    await new Promise(resolve => setTimeout(resolve, 250));
-  }
-  return shown;
 }
 
 /**
@@ -740,6 +798,7 @@ async function planShown(
  * indistinguishable from a working one unless something counts the rows.
  */
 async function showMore(window: BrowserWindow): Promise<string> {
+  await openRegister(window);
   const rows = async (): Promise<number> =>
     Number(
       await window.webContents.executeJavaScript(
@@ -776,6 +835,7 @@ async function showMore(window: BrowserWindow): Promise<string> {
  * value a failing run needs in a hundred lines that are the same for every row.
  */
 async function ledgerDump(window: BrowserWindow): Promise<string> {
+  await openRegister(window);
   return String(
     await window.webContents.executeJavaScript(`(() => {
       const lines = [...document.querySelectorAll('.grid tbody tr')].map(row => {
@@ -817,6 +877,8 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
     const first = await importOnce(window);
     const second = await importOnce(window);
     importRounds.push(first, second);
+    // The ledger is read below, and it is a destination of its own now.
+    await openRegister(window);
 
     const report = (round: string, summary: AyqImportSummary): void => {
       process.stdout.write(
@@ -866,6 +928,180 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
 }
 
 /**
+ * The shell, measured on the real window (04 A20, A22).
+ *
+ * Not a screenshot and not a list of classes: the rail's width, the order of
+ * its destinations, the number of hairlines between them, where the scrollbar
+ * is, and whether the table header and the detail pane stay put while the rows
+ * move. Everything is compared against the modules that decide it, so the two
+ * cannot drift.
+ */
+async function shellShown(window: BrowserWindow): Promise<string> {
+  const seen = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rail = document.querySelector('[data-ayq-rail]');
+        if (!rail) return JSON.stringify({ rail: null });
+        const items = [...rail.querySelectorAll('[data-ayq-tab]')]
+          .map(one => one.dataset.ayqTab);
+        const children = [...rail.children];
+        const separators = children
+          .map((one, index) => (one.hasAttribute('data-ayq-rail-separator') ? index : -1))
+          .filter(index => index >= 0);
+        const at = name => children.findIndex(one => one.dataset.ayqTab === name);
+        const box = rail.getBoundingClientRect();
+        const keyboard = [...rail.querySelectorAll('[data-ayq-tab]')].every(
+          one => one.tagName === 'BUTTON' && one.getAttribute('tabindex') === null,
+        );
+        const scrollers = document.querySelectorAll('[data-ayq-scroller]');
+        const scroller = scrollers[0];
+        const scrollerBox = scroller ? scroller.getBoundingClientRect() : null;
+        const status = document.querySelector('[data-ayq-status]');
+        return JSON.stringify({
+          rail: { width: Math.round(box.width), left: Math.round(box.left) },
+          items,
+          separators,
+          register: at('register'),
+          review: at('review'),
+          plan: at('plan'),
+          reports: at('reports'),
+          last: children.length > 0 ? children[children.length - 1].dataset.ayqTab : '',
+          wordmark: (rail.textContent || '').slice(0, 3),
+          keyboard,
+          scrollers: scrollers.length,
+          scrollerRight: scrollerBox ? Math.round(scrollerBox.right) : -1,
+          windowWidth: Math.round(document.documentElement.clientWidth),
+          status: status ? status.innerText.replace(/\s+/g, ' ').trim() : null,
+          panels: document.querySelectorAll('[data-ayq-window] header').length,
+        });
+      })()`),
+    ),
+  ) as {
+    rail: { width: number; left: number } | null;
+    items?: string[];
+    separators?: number[];
+    register?: number;
+    review?: number;
+    plan?: number;
+    reports?: number;
+    last?: string;
+    wordmark?: string;
+    keyboard?: boolean;
+    scrollers?: number;
+    scrollerRight?: number;
+    windowWidth?: number;
+    status?: string | null;
+    panels?: number;
+  };
+
+  if (seen.rail === null) return 'there is no rail';
+  if (seen.rail.width !== AYQ_METRIC.railWidth) {
+    return `the rail is ${seen.rail.width}px rather than ${AYQ_METRIC.railWidth}px`;
+  }
+  if (seen.rail.left !== 0) return `the rail is ${seen.rail.left}px from the left`;
+  if ((seen.items ?? []).join(',') !== AYQ_DESTINATIONS.join(',')) {
+    return `the rail reads ${(seen.items ?? []).join(', ')}`;
+  }
+  if ((seen.separators ?? []).length !== AYQ_RAIL_GROUPS.length - 1) {
+    return `${(seen.separators ?? []).length} hairlines for ${AYQ_RAIL_GROUPS.length} groups`;
+  }
+  const [first, second] = seen.separators ?? [];
+  if (
+    !(
+      (seen.register ?? -1) < first &&
+      first < (seen.review ?? -1) &&
+      (seen.plan ?? -1) < second &&
+      second < (seen.reports ?? -1)
+    )
+  ) {
+    return 'the hairlines do not fall between the groups';
+  }
+  if (seen.last !== AYQ_RAIL_FOOT) {
+    return `${seen.last} is at the foot of the rail, not ${AYQ_RAIL_FOOT}`;
+  }
+  if (seen.wordmark !== 'AYQ') return `the wordmark reads ${seen.wordmark}`;
+  if (seen.keyboard !== true) return 'a destination is not reachable by keyboard';
+  if (seen.panels !== 0) return 'the window has a panel across the top';
+  if (seen.scrollers !== 1) return `${seen.scrollers} scrollers on one screen`;
+  // A22: the scrollbar is at the window's right edge. Allowing two pixels of
+  // rounding, and nothing more: a pane's own scrollbar would be hundreds away.
+  if (Math.abs((seen.scrollerRight ?? 0) - (seen.windowWidth ?? 0)) > 2) {
+    return `the scroller ends at ${seen.scrollerRight} and the window at ${seen.windowWidth}`;
+  }
+  if (seen.status === null) return 'there is no status bar';
+  if (/\bv?\d+\.\d+/.test((seen.status ?? '').replace(/\d{1,2}:\d{2}/g, ''))) {
+    return `the status bar carries a version number: ${seen.status}`;
+  }
+  process.stdout.write(
+    `[ayq-smoke] rail ${seen.rail.width}px, ${(seen.items ?? []).length} destinations, ` +
+      `${(seen.separators ?? []).length} hairlines, one scroller at ${seen.scrollerRight}px\n`,
+  );
+  process.stdout.write(`[ayq-smoke] status bar: ${seen.status}\n`);
+
+  // And the two things A22 asks for that only a scroll can answer: the table
+  // header staying while the rows move, and the detail pane staying with the
+  // row it describes.
+  await openRegister(window);
+  const held = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const scroller = document.querySelector('[data-ayq-scroller]');
+        const row = document.querySelector('[data-ayq-legacy="register"] .grid tbody tr');
+        if (!scroller) return JSON.stringify({ why: 'no scroller' });
+        if (!row) return JSON.stringify({ why: 'no rows to scroll' });
+        row.click();
+        const head = document.querySelector('[data-ayq-legacy="register"] .grid thead th');
+        const pane = document.querySelector('[data-ayq-legacy="register"] .workbench-pane');
+        const rowsBefore = row.getBoundingClientRect().top;
+        scroller.scrollTop = scroller.scrollHeight;
+        const box = scroller.getBoundingClientRect();
+        return JSON.stringify({
+          scrolled: scroller.scrollTop,
+          moved: Math.round(rowsBefore - row.getBoundingClientRect().top),
+          headerTop: head ? Math.round(head.getBoundingClientRect().top - box.top) : null,
+          paneTop: pane ? Math.round(pane.getBoundingClientRect().top - box.top) : null,
+          rowTabIndex: row.tabIndex,
+        });
+      })()`),
+    ),
+  ) as {
+    why?: string;
+    scrolled?: number;
+    moved?: number;
+    headerTop?: number | null;
+    paneTop?: number | null;
+    rowTabIndex?: number;
+  };
+
+  if (held.why !== undefined) return held.why;
+  if ((held.scrolled ?? 0) <= 0) {
+    // Nothing to scroll is not a failure of A22, and it is not evidence of it
+    // either. Said rather than passed over.
+    process.stdout.write(
+      '[ayq-smoke] the screen fitted the window, so nothing scrolled\n',
+    );
+    return '';
+  }
+  if ((held.moved ?? 0) <= 0) return 'scrolling the screen moved no rows';
+  const headerTop = held.headerTop ?? null;
+  if (headerTop === null) return 'the table has no header';
+  if (Math.abs(headerTop) > 2) {
+    return `the header moved to ${headerTop}px from the top of the scroller`;
+  }
+  const paneTop = held.paneTop ?? null;
+  if (paneTop === null) return 'the selected row opened no detail pane';
+  if (paneTop < -2) {
+    return `the detail pane scrolled away, to ${paneTop}px`;
+  }
+  if ((held.rowTabIndex ?? -1) !== 0) return 'a table row is not in the tab order';
+  process.stdout.write(
+    `[ayq-smoke] scrolled ${held.scrolled}px: rows moved ${held.moved}px, ` +
+      `the header stayed at ${headerTop}px and the pane at ${paneTop}px\n`,
+  );
+  return '';
+}
+
+/**
  * The three grounds of 04 A23, on the screen rather than in the module.
  *
  * Opens AYQ's own Fluent screen, chooses each ground in turn through the
@@ -879,8 +1115,11 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
  * kept, and a value equal to the default would prove nothing.
  */
 async function groundsShown(window: BrowserWindow): Promise<string> {
+  if (!(await openDestination(window, 'settings'))) {
+    return 'Settings never opened';
+  }
   await window.webContents.executeJavaScript(
-    'document.querySelector(\'[data-ayq-tab="appearance"]\').click(); true',
+    'document.querySelector(\'[data-ayq-screen-tab="appearance"]\').click(); true',
   );
 
   const ready = async (): Promise<boolean> =>
@@ -892,7 +1131,7 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
   while (Date.now() < deadline && !(await ready())) {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  if (!(await ready())) return 'AYQ own Fluent screen never drew';
+  if (!(await ready())) return 'the Appearance screen never drew';
 
   // Fluent actually rendered, rather than a div that says it did: the ground
   // control is a Fluent radio group, so its inputs are on the page.
@@ -969,8 +1208,9 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
 
 /** The ground the window opened in, on a later launch. */
 async function groundKept(window: BrowserWindow): Promise<string> {
+  await openDestination(window, 'settings');
   await window.webContents.executeJavaScript(
-    'document.querySelector(\'[data-ayq-tab="appearance"]\').click(); true',
+    'document.querySelector(\'[data-ayq-screen-tab="appearance"]\')?.click(); true',
   );
   const deadline = Date.now() + 60_000;
   let seen = '';
@@ -1049,22 +1289,12 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
-  // Asked before the ledger is read back, because it leaves another view open;
-  // the run returns to the transactions afterwards so the dump is of those.
-  let spending = '';
+  // Spending had a workspace of its own before the accepted design; 04 A20's
+  // rail has no such destination, and Reports — which is where the question
+  // belongs — is not built. So there is nothing here to open, and nothing that
+  // pretends there is.
   let upcoming = '';
   let planSheet = '';
-  if (process.env.AYQ_SMOKE_SPENDING === '1') {
-    spending = await spendingShown(window);
-    process.stdout.write(
-      `[ayq-smoke] spending:\n${spending || '(the view showed nothing)'}\n`,
-    );
-    await window.webContents.executeJavaScript(
-      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
-    );
-    await new Promise(resolve => setTimeout(resolve, 1_000));
-  }
-  const spendingOk = process.env.AYQ_SMOKE_SPENDING !== '1' || spending !== '';
 
   // Plan: the worksheet, and one category's monthly plan set through it.
   const sheetSpec = process.env.AYQ_SMOKE_PLAN_SHEET ?? '';
@@ -1078,10 +1308,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       planSheet !== '' &&
       !planSheet.startsWith('could not') &&
       !planSheet.startsWith('the plan read back');
-    await window.webContents.executeJavaScript(
-      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
-    );
-    await new Promise(resolve => setTimeout(resolve, 1_000));
+    await openRegister(window);
   }
 
   // Upcoming: the forecast, and a planned payment added through the form the
@@ -1129,10 +1356,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           `${kept ? 'KEPT' : 'LOST'}\n`,
       );
     }
-    await window.webContents.executeJavaScript(
-      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
-    );
-    await new Promise(resolve => setTimeout(resolve, 1_000));
+    await openRegister(window);
   }
 
   // Reading further back than the first page, through the control that offers
@@ -1147,6 +1371,20 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   const pagedOk =
     process.env.AYQ_SMOKE_SHOW_MORE !== '1' ||
     /^(\d+) rows, then (?!\1\b)/.test(paged);
+
+  // The shell: the rail, its order, one scroller, and what stays put while the
+  // rows move (04 A20, A22).
+  const shellAsked = process.env.AYQ_SMOKE_SHELL === '1';
+  let shell = 'not asked';
+  let shellOk = true;
+  if (shellAsked) {
+    const wrong = await shellShown(window);
+    shell = wrong === '' ? 'held' : wrong;
+    shellOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] the shell: ${shellOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
 
   // The three grounds, and the setting outliving the process that chose it.
   // Asked for or not, and the report says which: an installed application
@@ -1175,10 +1413,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
   if (groundsAsked || expectGround !== '') {
-    await window.webContents.executeJavaScript(
-      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
-    );
-    await new Promise(resolve => setTimeout(resolve, 1_000));
+    await openRegister(window);
   }
 
   if (process.env.AYQ_SMOKE_GEOMETRY === '1') {
@@ -1216,10 +1451,10 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     emptyOk &&
     importOk &&
     categoryOk &&
-    spendingOk &&
     upcomingOk &&
     planOk &&
     groundsOk &&
+    shellOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -1242,7 +1477,6 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           importOk,
           categoryOk,
           categoryShown,
-          spendingOk,
           upcomingOk,
           upcoming,
           conformance,
@@ -1250,6 +1484,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           planSheet,
           grounds,
           groundsOk,
+          shell,
+          shellOk,
           pagedOk,
           imports: importRounds,
           dataDir,

@@ -52,6 +52,20 @@ export function ayqTable<T>(
       }
     }
     if (onRow) onRow(row, line);
+    // A row a mouse can choose is a row a keyboard must be able to choose
+    // (04 A20's keyboard rule). The caller marks a row clickable and attaches
+    // its own handler; this puts the row in the tab order and turns Enter and
+    // Space into the click that handler is already listening for, so there is
+    // one behaviour rather than two that can drift.
+    if (line.classList.contains('clickable')) {
+      line.tabIndex = 0;
+      line.addEventListener('keydown', event => {
+        const key = (event as KeyboardEvent).key;
+        if (key !== 'Enter' && key !== ' ') return;
+        event.preventDefault();
+        line.dispatchEvent(new Event('click', { bubbles: true }));
+      });
+    }
     body.append(line);
   }
   table.append(body);

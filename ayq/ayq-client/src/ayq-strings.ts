@@ -22,6 +22,92 @@ export type AyqLocaleTag = 'en-GB';
 const EN = {
   'app.name': 'AYQ',
 
+  'destination.today': 'Today',
+  'destination.accounts': 'Accounts',
+  'destination.register': 'Register',
+  'destination.review': 'Review',
+  'destination.upcoming': 'Upcoming',
+  'destination.plan': 'Plan',
+  'destination.reports': 'Reports',
+  'destination.import': 'Import',
+  'destination.settings': 'Settings',
+  'destination.group.whereYouStand': 'Where you stand',
+  'destination.group.whatNeedsDeciding': 'What needs deciding',
+  'destination.group.seldom': 'Seldom',
+
+  'screen.today.blurb':
+    'What you have, how long it lasts, and what is waiting on you.',
+  'screen.accounts.blurb':
+    'What each account holds, how far its statements reach, and whether AYQ ' +
+    'agrees with the bank.',
+  'screen.register.blurb':
+    'Every transaction AYQ holds. Uncategorised is a valid state and stays in ' +
+    'the totals.',
+  'screen.review.blurb':
+    'What needs a decision. This queue shrinks as rules accumulate — it is not ' +
+    'meant to stay long.',
+  'screen.upcoming.blurb': 'What is coming, and where it leaves you.',
+  'screen.plan.blurb':
+    'What you intend each category to take, against what it has taken. Money ' +
+    'is not assigned in advance.',
+  'screen.import.blurb':
+    'CAMT.053 statement files, as XML or ZIP. A ZIP is read in memory and ' +
+    'never unpacked to disk.',
+
+  'status.engine.running': 'Engine running',
+  'status.engine.starting': 'Starting the engine…',
+  'status.engine.failed': 'The engine did not answer',
+  'status.budget': 'Budget: {name}',
+  'status.transactions': '{count} transactions',
+  'status.accountsCounted': '{counted} of {total} accounts counted',
+  'status.lastImport': 'Last import {when}',
+  'status.noImport': 'Nothing imported yet',
+
+  'notice.retry': 'Try again',
+  'notice.dismiss': 'Dismiss',
+
+  'import.action': 'Import CAMT.053',
+  'import.waiting': 'Waiting for a file…',
+  'import.reading': 'Reading and importing…',
+  'import.readingMany': 'Reading and importing {count} files…',
+  'import.cancelled': 'No file chosen; nothing was imported.',
+  'import.failed': 'The import failed. {reason}',
+  'import.outcome':
+    '{file}: {imported} imported, {duplicates} already there — {account}',
+  'import.categorised': '{count} categorised by rules',
+  'import.skipped': '{count} skipped',
+  'import.problems': '{count} could not be read',
+  'import.history': 'What AYQ has read',
+
+  'notBuilt.title': 'Not built yet',
+  'notBuilt.today':
+    'Available funds, how long they last and what is waiting on you are not ' +
+    'built yet. The Register below the rail holds every transaction AYQ has.',
+  'notBuilt.accounts':
+    'Balances, how far each account’s statements reach and whether AYQ agrees ' +
+    'with the bank are not built yet.',
+  'notBuilt.review':
+    'The full Review — matches, counterparties, categories, suggestions and ' +
+    'what you have rejected — is not built yet. What is here is the ' +
+    'counterparties AYQ has resolved and what it knows them by.',
+  'notBuilt.reports':
+    'Reports begin with spending by category and period. The screen is empty ' +
+    'because that view has not been built, not because your data is ' +
+    'insufficient.',
+  'notBuilt.settingsAccounts':
+    'The switch that decides which accounts count toward available funds is ' +
+    'not built yet.',
+  'notBuilt.settingsCategories':
+    'Creating, renaming, grouping and archiving categories is not built yet.',
+
+  'settings.tab.accounts': 'Accounts',
+  'settings.tab.categories': 'Categories',
+  'settings.tab.rules': 'Rules',
+  'settings.tab.appearance': 'Appearance',
+
+  'common.loading': 'Reading…',
+  'common.failed': 'The budget could not be read.',
+
   'ground.light': 'Light',
   'ground.dark': 'Dark',
   'ground.system': 'Follow the system',

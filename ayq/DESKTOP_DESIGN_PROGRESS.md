@@ -16,7 +16,7 @@ difference is recorded below.
 | Stage | What it delivers | State |
 |---|---|---|
 | S1 | Fluent UI React v9 and the token module, alone | done |
-| S2 | The shell — rail, grounds, status bar, screen frame | not started |
+| S2 | The shell — rail, grounds, status bar, screen frame | done |
 | S3 | Register: table and detail pane | not started |
 | S4 | Accounts, coverage and reconciliation (03 §8) | not started |
 | S5 | Today (04 A21) | not started |
@@ -36,6 +36,70 @@ has always drawn, and a screen that has been brought over to Fluent is mounted
 into the same element as a React root. S2 turns the shell itself over, and the
 screens that are still the old ones are drawn inside the new frame until their
 own stage arrives. By S8 there is no seam left and the file goes.
+
+## S2 — The shell
+
+The window is React's now, top to bottom: a 64-pixel rail with the nine
+destinations of A20 in three hairline-separated groups and Settings at the
+foot, no top panel, a status bar with no version number on it, and a screen
+frame with exactly one scroller whose scrollbar is at the window's right edge.
+
+The screens that have not had their own stage yet are drawn inside that frame
+by the renderers that always drew them (`ayq-legacy-views.ts`), so Register,
+Upcoming, Plan, Import and the Rules list keep working and keep their
+acceptance while each waits its turn. Today, Accounts and Reports say plainly
+that they are not built; Review says the same and shows the counterparties
+surface under it, because that much of it exists.
+
+What the Windows run measures rather than looks at: the rail's width and the
+order of its destinations against `ayq-destinations.ts`, two hairlines falling
+between the three groups, Settings last, the wordmark reading AYQ, every
+destination a real button that is in the tab order, one scroller, its right
+edge within two pixels of the window's, and a status bar with nothing in it
+that reads as a version. Then nine hundred rows are scrolled and the table
+header has to still be at the top of the scroller and the detail pane still
+beside the row it describes (A22).
+
+### Mica and Acrylic (A14), verified rather than claimed
+
+`backgroundMaterial` is Electron's way to ask Windows for Mica, and it needs
+Windows 11 — build 22000. Below that Electron accepts the option and Windows
+does nothing with it, which is the worst of the three outcomes: a product that
+says it uses Mica and does not.
+
+So the build number is read at window creation, the material is set only where
+it can be honoured, and what the window actually got is printed and required by
+the run. GitHub's `windows-latest` is Windows Server 2022, build 20348, so what
+CI exercises is the fallback: the solid ground the token module defines. Mica
+itself will first be seen on the owner's own Windows 11 machine.
+
+Acrylic is for transient surfaces only and AYQ has none yet — no flyouts, no
+menus. Nothing claims it.
+
+### What the accepted design removes
+
+**The Spending screen is gone.** It had a workspace of its own before the
+design was accepted; 04 A20's rail has no such destination, and the question it
+answered — what the money went on, by category — belongs to Reports, which S8
+states plainly is not built. The engine's `spending` request is untouched and
+still answers; what is gone is the screen and the acceptance step that drove
+it. This is a capability the branch had and build 003 will not, and it is here
+rather than in a footnote because it is the owner's to overrule.
+
+**The Recurring screen is gone** for the same reason: no destination in A20,
+and what it showed is what Upcoming and Plan show from the same records.
+
+### PROVISIONAL in S2
+
+6. **Settings has an Appearance tab.** A23 makes the ground the owner's
+   setting and does not say where the choice is made; Settings is where a
+   setting lives, and the prototype's Settings has three tabs that are not it.
+7. **The status bar carries no version at all.** A20 says "no version number",
+   so the engine's version and the store's schema version — which the prototype
+   showed — are not there either. Both are still in the engine's answer.
+8. **The rail shows each destination's name under its icon.** A20 fixes the
+   width and the order and not this; a rail that has to be hovered to be read
+   is a rail nobody reads.
 
 ## S1 — Fluent UI React v9 and the token module
 

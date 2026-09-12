@@ -64,8 +64,6 @@ if (expectCategory) env.AYQ_SMOKE_EXPECT_CATEGORY = expectCategory;
 // started while this one still holds the budget.
 const hold = flag('hold');
 if (hold) env.AYQ_SMOKE_HOLD_MS = hold;
-// `--spending` opens the Spending view and requires it to show a breakdown.
-if (has('spending')) env.AYQ_SMOKE_SPENDING = '1';
 // `--show-more` presses the ledger's own "Show more" and requires more rows.
 if (has('show-more')) env.AYQ_SMOKE_SHOW_MORE = '1';
 // `--plan "name|amount|frequency|date"` opens Upcoming and adds that planned
@@ -94,6 +92,11 @@ if (seedStore) {
   copyFileSync(seedStore, join(target, 'ayq-store.json'));
   process.stdout.write(`[ayq-start] seeded ${join(target, 'ayq-store.json')}\n`);
 }
+
+// `--shell` measures the shell on the real window: the rail's width and order,
+// one scroller at the window's right edge, and the table header and the detail
+// pane staying put while the rows move (04 A20, A22).
+if (has('shell')) env.AYQ_SMOKE_SHELL = '1';
 
 // `--grounds` opens AYQ's own Fluent screen and requires each of the three
 // grounds of 04 A23 to be applied when it is chosen; it leaves the window on

@@ -1,13 +1,12 @@
-// A document for the renderer to draw into, outside Electron.
+// A document for the screens that have not been brought over to Fluent yet.
 //
-// The page it loads is the shipped one — `src/ayq-client.html`, the same file
-// the host serves — so a test that finds an element proves the element is in
-// the product, and a shell that stops providing somewhere to draw fails here
-// rather than on a Windows runner twenty minutes later.
+// Those screens are imperative renderers that draw into an element they are
+// given. This provides the element, inside the page the product ships, so a
+// test that finds something in it has found what the product draws.
 //
 // jsdom is a test dependency and only a test dependency. The renderer's own
-// sources still import nothing but each other; `ayq-boundary.test.ts` reads
-// `src/` and would say so if that changed.
+// sources still import nothing but each other, React and Fluent;
+// `ayq-boundary.test.ts` reads `src/` and would say so if that changed.
 
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -18,25 +17,12 @@ import { JSDOM } from 'jsdom';
 const here = dirname(fileURLToPath(import.meta.url));
 const page = join(here, '..', 'src', 'ayq-client.html');
 
-/** The elements the shell draws into, by the ids it looks them up with. */
 export type AyqShellElements = {
-  sections: HTMLElement;
-  accounts: HTMLElement;
-  title: HTMLElement;
-  context: HTMLElement;
+  /** Where a screen draws. */
   body: HTMLElement;
-  summary: HTMLElement;
-  problem: HTMLElement;
-  importButton: HTMLElement;
 };
 
-/**
- * Loads the shipped page and puts its document where the renderer looks.
- *
- * The renderer reads `document` as a global, which is what it has inside a
- * browser window; here that global is a jsdom one. Nothing is stubbed: the
- * elements, the classes and the events are real.
- */
+/** Loads the shipped page and puts its document where the renderer looks. */
 export async function ayqOpenShell(): Promise<AyqShellElements> {
   const html = await readFile(page, 'utf8');
   const dom = new JSDOM(html, { url: 'https://ayq.invalid/' });
@@ -56,24 +42,15 @@ export async function ayqOpenShell(): Promise<AyqShellElements> {
     globals[name] = (window as unknown as Record<string, unknown>)[name];
   }
 
-  const need = (id: string): HTMLElement => {
-    const found = window.document.getElementById(id);
-    if (found === null) {
-      throw new Error(`the shell has no #${id} for the renderer to draw into`);
-    }
-    return found as unknown as HTMLElement;
-  };
+  const root = window.document.getElementById('ayq-root');
+  if (root === null) {
+    throw new Error('the page AYQ ships has nowhere to draw');
+  }
+  const body = window.document.createElement('div');
+  body.dataset.ayqLegacy = 'test';
+  root.append(body);
 
-  return {
-    sections: need('ayq-sections'),
-    accounts: need('ayq-accounts'),
-    title: need('ayq-title'),
-    context: need('ayq-context'),
-    body: need('ayq-body'),
-    summary: need('ayq-summary'),
-    problem: need('ayq-problem'),
-    importButton: need('ayq-import'),
-  };
+  return { body: body as unknown as HTMLElement };
 }
 
 /** Clicks something, the way a person does: a real event on a real element. */

@@ -6,296 +6,228 @@
       content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'">
 <title>AYQ</title>
 <style>
-  :root {
-    --bg:#fbfbfa; --panel:#fff; --sunk:#f4f4f2; --ink:#16171a; --muted:#6b6f76;
-    --line:#e4e4e1; --accent:#1b4d3e; --in:#1b4d3e; --out:#3a3d42; --warn:#b3261e;
-    --nav:#f2f2ef; --nav-pick:#e2e8e4;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg:#121316; --panel:#191a1e; --sunk:#1f2126; --ink:#e8e8e6; --muted:#9a9ea6;
-      --line:#2a2c31; --accent:#7fc4a8; --in:#7fc4a8; --out:#c6c9cf; --warn:#f2b8b5;
-      --nav:#16171b; --nav-pick:#232830;
-    }
-  }
+  /* The page itself holds no design.
+     Colour, metric and type are `ayq-tokens.ts`, and the shell, the rail and
+     the status bar are drawn by the application (04 A15, A20). What is left
+     here is the ground the window sits on before the first paint, and the
+     styles of the screens that have not been brought over to Fluent yet —
+     which read the same tokens through the aliases below, so that a screen
+     still waiting its turn follows the ground like everything else. Every one
+     of them goes, and this block with them. */
+
   * { box-sizing: border-box; }
-  html, body { height:100%; }
+  html, body { height: 100%; margin: 0; }
   body {
-    margin:0; background:var(--bg); color:var(--ink); overflow:hidden;
-    font:13.5px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    -webkit-font-smoothing:antialiased;
+    overflow: hidden;
+    /* Before the first paint, and only until then: the application paints its
+       own ground the moment it knows which one to paint. */
+    background: #f4f5f6;
+    color: #14181b;
+    font: 13.5px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #ayq-root { height: 100%; }
+
+  /* ---- the screens that are still the old ones ------------------------- */
+
+  [data-ayq-ground] {
+    --panel: var(--ayq-pane);
+    --sunk: var(--ayq-ground);
+    --ink: var(--ayq-ink);
+    --muted: var(--ayq-ink-faint);
+    --line: var(--ayq-line);
+    --accent: var(--ayq-accent-pressed);
+    --in: var(--ayq-ink);
+    --out: var(--ayq-ink);
+    --warn: var(--ayq-state-overdue-fg);
   }
 
-  /* The desktop shell: a navigation column that stays, and a workspace that
-     takes everything else. Neither is centred and neither is capped — a window
-     is as wide as the person made it, and a ledger has columns to spend that
-     width on. */
-  .app { display:flex; height:100%; align-items:stretch; }
-
-  .sidenav {
-    flex:0 0 244px; width:244px; overflow-y:auto; overflow-x:hidden;
-    display:flex; flex-direction:column; gap:2px;
-    padding:14px 12px 20px; background:var(--nav); border-right:1px solid var(--line);
+  [data-ayq-legacy] h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; color: var(--ink); }
+  [data-ayq-legacy] h3 {
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500; margin: 16px 0 6px;
   }
-  .brand { padding:2px 8px 12px; font-size:17px; font-weight:600; letter-spacing:-.01em; }
-  #ayq-sections, #ayq-accounts { display:flex; flex-direction:column; gap:2px; }
-  .nav-heading {
-    margin:18px 8px 4px; font-size:10.5px; letter-spacing:.09em;
-    text-transform:uppercase; color:var(--muted); font-weight:500;
-  }
-  .nav-empty { margin:2px 8px; font-size:12px; color:var(--muted); }
-  .nav-item, .nav-account {
-    display:flex; align-items:center; gap:10px; width:100%; text-align:left;
-    background:transparent; color:var(--ink); border:1px solid transparent;
-    border-radius:4px; padding:6px 8px; font-weight:500; font-size:13px;
-  }
-  .nav-account { justify-content:space-between; }
-  .nav-item:hover, .nav-account:hover { background:var(--sunk); }
-  .nav-item.current, .nav-account.current { background:var(--nav-pick); font-weight:600; }
-  .nav-account-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .nav-account-balance {
-    flex:0 0 auto; font-variant-numeric:tabular-nums; font-weight:500; font-size:12.5px;
-  }
-  .nav-account-balance.in { color:var(--in); }
-  .nav-account-balance.out { color:var(--out); }
+  [data-ayq-legacy] p { color: var(--ink); }
 
-  .workspace { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; height:100%; }
-
-  /* The header does not scroll, because the one action that starts everything
-     must not be scrollable out of view by a ledger five hundred rows long. */
-  .bar {
-    flex:0 0 auto;
-    display:flex; align-items:flex-start; justify-content:space-between; gap:20px;
-    padding:16px 26px 12px; background:var(--bg); border-bottom:1px solid var(--line);
+  [data-ayq-legacy] button {
+    font: inherit; font-weight: 550;
+    color: var(--ayq-accent); background: var(--ayq-button-fill);
+    border: 1px solid var(--ayq-button-fill); border-radius: 3px;
+    padding: 5px 12px; cursor: pointer;
   }
-  .bar-heading { min-width:0; }
-  h1 { font-size:20px; font-weight:600; letter-spacing:-.01em; margin:0; }
-  #ayq-context {
-    display:flex; align-items:center; flex-wrap:wrap; gap:8px;
-    margin:3px 0 0; font-size:12.5px; color:var(--muted);
+  [data-ayq-legacy] button:hover:not(:disabled) {
+    background: var(--ayq-button-fill-hover); border-color: var(--ayq-button-fill-hover);
   }
-  #ayq-context .context-note + .context-note::before { content:'· '; }
-  h2 { font-size:15px; font-weight:600; margin:0 0 10px; }
-  h3 { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:500; margin:16px 0 6px; }
-
-  /* Notices sit between the header and the scrolling workspace, so a failure
-     and the recovery beside it cannot be scrolled away from. */
-  .notices { flex:0 0 auto; padding:0 26px; }
-  .workspace-scroll { flex:1 1 auto; overflow-y:auto; padding:0 26px 44px; }
-
-  button {
-    font:inherit; font-weight:550; color:var(--panel); background:var(--accent);
-    border:1px solid transparent; border-radius:3px; padding:7px 13px; cursor:pointer;
+  [data-ayq-legacy] button:disabled { opacity: .45; cursor: default; }
+  [data-ayq-legacy] button.quiet {
+    background: transparent; color: var(--ink); border-color: var(--ayq-line-strong);
   }
-  button:disabled { opacity:.55; cursor:default; }
-  button.quiet { background:transparent; color:var(--accent); border-color:var(--line); }
-  button.small { padding:3px 8px; font-size:12px; font-weight:500; }
-
-  #ayq-problem {
-    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    margin:12px 0 0; padding:9px 12px; border:1px solid var(--warn); border-radius:3px;
-    color:var(--warn); font-size:12.5px;
+  [data-ayq-legacy] button.quiet:hover:not(:disabled) { background: var(--ayq-row-hover); }
+  [data-ayq-legacy] button.small { padding: 3px 9px; font-size: 12.5px; font-weight: 500; }
+  [data-ayq-legacy] button:focus-visible {
+    outline: 2px solid var(--ayq-accent-focus); outline-offset: 1px;
   }
-  /* Never a bordered box with nothing in it: an element that is shown while
-     empty is a defect the reader has to interpret. */
-  #ayq-problem:empty { display:none; }
-  #ayq-problem .problem-text { flex:1 1 320px; white-space:pre-wrap; }
-  #ayq-problem button { color:var(--warn); border-color:var(--warn); }
 
-  #ayq-import-result { margin:9px 0 0; font-size:12.5px; color:var(--muted); }
-  #ayq-import-result:empty { display:none; }
-  .backlog { margin:22px 0 0; padding:14px 0 0; border-top:1px solid var(--line); }
-  .backlog-title { margin:0 0 2px; font-size:13.5px; font-weight:600; }
-
-  .import-outcome { display:flex; flex-direction:column; gap:2px; }
-  .import-done { color:var(--ink); }
-  .import-problem { color:var(--warn); }
-
-  .figures { display:flex; flex-wrap:wrap; gap:10px; margin:14px 0 4px; }
-  .figure-hint { font-size:10.5px; color:var(--muted); }
-  .col-share { width:34%; }
-  .share-bar {
-    height:8px; background:var(--panel); border:1px solid var(--line);
-    border-radius:2px; overflow:hidden;
+  [data-ayq-legacy] input, [data-ayq-legacy] select {
+    font: inherit; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--ayq-line-strong); border-radius: 3px; padding: 4px 8px;
   }
-  .share-fill { height:100%; background:var(--accent); }
-
-  #ayq-summary { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0 0; }
-  #ayq-summary:empty { display:none; }
-  .figure {
-    display:flex; flex-direction:column; gap:2px; min-width:118px;
-    padding:9px 12px; background:var(--panel); border:1px solid var(--line); border-radius:3px;
+  [data-ayq-legacy] input:focus-visible, [data-ayq-legacy] select:focus-visible {
+    outline: 2px solid var(--ayq-accent-focus); outline-offset: 0;
   }
-  .figure-label { font-size:10.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
-  .figure-value { font-size:16px; font-variant-numeric:tabular-nums; font-weight:550; }
-  .figure-value.in { color:var(--in); }
+  [data-ayq-legacy] input.search { flex: 1 1 260px; max-width: 420px; }
 
-  .filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:16px 0 12px; }
-  input, select {
-    font:inherit; color:var(--ink); background:var(--panel);
-    border:1px solid var(--line); border-radius:3px; padding:6px 8px;
+  [data-ayq-legacy] .grid {
+    width: 100%; border-collapse: collapse; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 5px;
   }
-  input.search { flex:1 1 260px; max-width:420px; }
-  .check { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12.5px; }
-  .check input { padding:0; }
+  [data-ayq-legacy] .grid th {
+    /* A22: the header stays while the rows move. The scroller is the screen's,
+       so sticking to its top is sticking to the top of the table's viewport. */
+    position: sticky; top: 0; z-index: 1; background: var(--panel);
+    text-align: left; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+    font-weight: 500; color: var(--muted); padding: 9px 12px;
+    border-bottom: 1px solid var(--ayq-line-strong);
+  }
+  [data-ayq-legacy] .grid td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  [data-ayq-legacy] .grid tr:last-child td { border-bottom: 0; }
+  [data-ayq-legacy] .grid tr.clickable { cursor: pointer; }
+  /* Focus is visible everywhere, rows included. */
+  [data-ayq-legacy] .grid tbody tr:focus-visible {
+    outline: 2px solid var(--ayq-accent-focus); outline-offset: -2px;
+  }
+  [data-ayq-legacy] .grid tr.clickable:hover td { background: var(--ayq-row-hover); }
+  [data-ayq-legacy] .grid tr.open td, [data-ayq-legacy] .grid tbody tr.current td {
+    background: var(--ayq-row-selected);
+  }
+  [data-ayq-legacy] .col-date, [data-ayq-legacy] .col-account,
+  [data-ayq-legacy] .col-category { white-space: nowrap; color: var(--muted); width: 1%; }
+  /* A19: figures are the interface face with tabular numerals, right-aligned,
+     and a negative amount carries a minus rather than a colour. */
+  [data-ayq-legacy] .col-amount {
+    text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 1%;
+    color: var(--ink);
+  }
+  [data-ayq-legacy] .col-amount .in, [data-ayq-legacy] .col-amount .out { color: var(--ink); }
+  [data-ayq-legacy] .col-amount .in { font-weight: 550; }
+  [data-ayq-legacy] .col-category select {
+    max-width: 170px; padding: 2px 4px; font-size: 12.5px;
+    background: transparent; border-color: transparent; color: var(--ink);
+  }
+  [data-ayq-legacy] .col-category select:hover,
+  [data-ayq-legacy] .col-category select:focus { border-color: var(--ayq-line-strong); background: var(--panel); }
+  [data-ayq-legacy] .col-category select.category-unset { color: var(--muted); }
 
-  .grid { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:3px; }
-  .grid th {
-    text-align:left; font-size:10.5px; letter-spacing:.07em; text-transform:uppercase;
-    font-weight:500; color:var(--muted); padding:9px 12px; border-bottom:1px solid var(--line);
-  }
-  .grid td { padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
-  .grid tr:last-child td { border-bottom:0; }
-  .grid tr.clickable { cursor:pointer; }
-  .grid tr.clickable:hover td { background:var(--sunk); }
-  .grid tr.open td { background:var(--sunk); }
-  .col-date { white-space:nowrap; color:var(--muted); width:1%; }
-  .col-account, .col-category { white-space:nowrap; color:var(--muted); width:1%; }
-  .col-amount { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; width:1%; }
-  .col-amount .in { color:var(--in); font-weight:550; }
-  .col-amount .out { color:var(--out); }
-  .col-category select {
-    max-width:170px; padding:2px 4px; font-size:12.5px;
-    background:transparent; border-color:transparent; color:var(--ink);
-  }
-  .col-category select:hover, .col-category select:focus { border-color:var(--line); background:var(--panel); }
-  .col-category select.category-unset { color:var(--muted); }
+  [data-ayq-legacy] .variant { display: flex; flex-direction: column; gap: 1px; }
+  [data-ayq-legacy] .variant-key { font-weight: 550; }
+  [data-ayq-legacy] .variant-names { font-size: 11.5px; color: var(--muted); }
 
-  /* The variant column: what an alias matches on, and under it the strings
-     the bank actually printed that normalise to it. */
-  .variant { display:flex; flex-direction:column; gap:1px; }
-  .variant-key { font-weight:550; }
-  .variant-names { font-size:11.5px; color:var(--muted); }
+  [data-ayq-legacy] .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+  [data-ayq-legacy] .check { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+  [data-ayq-legacy] .check input { padding: 0; accent-color: var(--ayq-accent); }
 
-  .chip {
-    display:inline-flex; align-items:center; gap:6px;
-    padding:3px 4px 3px 9px; font-size:12px; color:var(--muted);
-    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  [data-ayq-legacy] .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 4px 3px 9px; font-size: 12px; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   }
-  .categories { margin:0 0 6px; }
-  .category-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
-  .category-group { width:150px; font-size:11.5px; color:var(--muted); text-align:right; }
-  .category-name { flex:0 1 240px; }
+  [data-ayq-legacy] .tag {
+    margin-left: 6px; padding: 1px 6px; border-radius: 9px; font-size: 10.5px;
+    color: var(--ayq-state-neutral-fg); background: var(--ayq-state-neutral-bg);
+    border: 1px solid transparent;
+  }
+  [data-ayq-legacy] .tag.warn {
+    color: var(--ayq-state-overdue-fg); background: var(--ayq-state-overdue-bg);
+  }
 
-  .offer {
-    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-    margin:10px 0 0; padding:8px 11px; font-size:12.5px;
-    background:var(--panel); border:1px solid var(--line); border-radius:3px;
+  [data-ayq-legacy] .figures { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; }
+  [data-ayq-legacy] .figure {
+    display: flex; flex-direction: column; gap: 2px; min-width: 118px;
+    padding: 9px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
   }
-  .count { margin:9px 2px 0; font-size:12px; color:var(--muted); }
+  [data-ayq-legacy] .figure-label { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  [data-ayq-legacy] .figure-value { font-size: 16px; font-variant-numeric: tabular-nums; font-weight: 550; color: var(--ink); }
+  [data-ayq-legacy] .figure-value.in { color: var(--ink); }
+  [data-ayq-legacy] .figure-hint { font-size: 10.5px; color: var(--muted); }
 
-  .detail { margin:16px 0 0; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-radius:3px; }
-  .facts { display:grid; grid-template-columns:auto 1fr; gap:5px 18px; margin:0; }
-  .facts dt { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); white-space:nowrap; }
-  .facts dd { margin:0; overflow-wrap:anywhere; }
-  .categorise { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
-  .categorise select { min-width:240px; }
-  .categorise .check { margin-top:8px; }
+  [data-ayq-legacy] .offer {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin: 10px 0 0; padding: 8px 11px; font-size: 12.5px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+  }
+  [data-ayq-legacy] .count { margin: 9px 2px 0; font-size: 12px; color: var(--muted); }
 
-  /* The desktop pattern of 04 A4: the table is the screen and the pane beside
-     it is where the selected record is read and changed. Not a modal — a modal
-     hides the list you are working through, which is the one thing you need to
-     keep seeing. */
-  .workbench { display:flex; gap:16px; align-items:flex-start; margin-top:2px; }
-  .workbench-main { flex:1 1 auto; min-width:0; }
-  .workbench-pane {
-    flex:0 0 320px; max-width:340px; padding:14px 16px;
-    background:var(--panel); border:1px solid var(--line); border-radius:3px;
+  [data-ayq-legacy] .detail {
+    margin: 16px 0 0; padding: 14px 16px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 5px;
   }
-  .workbench-pane h2 { margin:0 0 10px; font-size:14px; font-weight:600; }
-  .pane-heading { margin:16px 0 8px; font-size:10.5px; letter-spacing:.06em;
-    text-transform:uppercase; color:var(--muted); }
-  .pane-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center;
-    margin-top:12px; }
-  .pane-note { flex:1 0 100%; margin:0; font-size:12px; color:var(--muted); }
-  .pane-form { display:flex; flex-direction:column; gap:8px; }
-  .pane-field { display:flex; flex-direction:column; gap:3px; }
-  .pane-field-label { font-size:10.5px; letter-spacing:.06em;
-    text-transform:uppercase; color:var(--muted); }
-  .pane-field input, .pane-field select { width:100%; }
-  .tag {
-    margin-left:6px; padding:1px 6px; border-radius:9px; font-size:10.5px;
-    color:var(--muted); background:var(--sunk); border:1px solid var(--line);
+  [data-ayq-legacy] .facts { display: grid; grid-template-columns: auto 1fr; gap: 5px 18px; margin: 0; }
+  [data-ayq-legacy] .facts dt {
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); white-space: nowrap;
   }
-  .tag.warn { color:var(--warn); border-color:var(--warn); }
-  .grid tbody tr.current { background:var(--sunk); }
-  /* The one editable cell on the plan sheet. Right-aligned and the width of a
-     four-figure amount, because it is a number in a column of numbers. */
-  .plan-input {
-    width:100px; padding:3px 6px; text-align:right;
-    font:inherit; font-variant-numeric:tabular-nums;
-    color:var(--ink); background:transparent;
-    border:1px solid transparent; border-radius:3px;
-  }
-  .plan-input:hover:not(:disabled), .plan-input:focus {
-    background:var(--panel); border-color:var(--line);
-  }
-  .plan-input:disabled { color:var(--muted); }
-  .grid tbody tr.muted-row td { color:var(--muted); }
+  [data-ayq-legacy] .facts dd { margin: 0; overflow-wrap: anywhere; }
+  [data-ayq-legacy] .categorise { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+  [data-ayq-legacy] .categorise select { min-width: 240px; }
+  [data-ayq-legacy] .categorise .check { margin-top: 8px; }
 
-  .empty { padding:26px 2px; }
-  .empty-title { margin:22px 0 6px; font-size:15px; font-weight:550; }
-  /* The one place a width cap earns itself: prose is unreadable across a
-     1600-pixel window, and a table is not. */
-  .empty-body { margin:0; max-width:52ch; color:var(--muted); }
-  .muted { color:var(--muted); }
-
-  footer { margin-top:30px; padding-top:11px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted); }
-
-  /* A small window is still a window AYQ has to work in: the column lies down
-     above the workspace and the whole shell scrolls as one. */
-  @media (max-width: 820px) {
-    body { overflow:auto; }
-    .app { display:block; height:auto; }
-    .sidenav {
-      flex:none; width:auto; height:auto; overflow:visible;
-      flex-direction:row; flex-wrap:wrap; align-items:center; gap:4px;
-      padding:10px 14px; border-right:0; border-bottom:1px solid var(--line);
-    }
-    .brand { padding:0 12px 0 2px; }
-    /* The pane goes under the table rather than beside it: 320 pixels of pane
-       beside a table in a 700-pixel window is neither a table nor a pane. */
-    .workbench { display:block; }
-    .workbench-pane { max-width:none; margin-top:16px; }
-    #ayq-sections, #ayq-accounts { flex-direction:row; flex-wrap:wrap; align-items:center; }
-    .nav-heading { margin:0 6px 0 10px; }
-    .nav-item, .nav-account { width:auto; }
-    .workspace { height:auto; }
-    .bar { padding:14px 16px 10px; }
-    .notices, .workspace-scroll { padding-left:16px; padding-right:16px; }
-    .workspace-scroll { overflow:visible; }
+  /* 04 A4: the table is the screen and the pane beside it is where the
+     selected record is read and changed. A22: the pane stays with the row
+     rather than scrolling away from it. */
+  [data-ayq-legacy] .workbench { display: flex; gap: 14px; align-items: flex-start; }
+  [data-ayq-legacy] .workbench-main { flex: 1 1 auto; min-width: 0; }
+  [data-ayq-legacy] .workbench-pane {
+    position: sticky; top: 0;
+    flex: 0 0 390px; max-width: 390px; padding: 14px 16px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
   }
+  [data-ayq-legacy] .workbench-pane h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+  [data-ayq-legacy] .pane-heading {
+    margin: 16px 0 8px; font-size: 10.5px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  [data-ayq-legacy] .pane-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
+  [data-ayq-legacy] .pane-note { flex: 1 0 100%; margin: 0; font-size: 12px; color: var(--muted); }
+  [data-ayq-legacy] .pane-form { display: flex; flex-direction: column; gap: 8px; }
+  [data-ayq-legacy] .pane-field { display: flex; flex-direction: column; gap: 3px; }
+  [data-ayq-legacy] .pane-field-label {
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  }
+  [data-ayq-legacy] .pane-field input, [data-ayq-legacy] .pane-field select { width: 100%; }
+
+  /* The one editable cell on the plan sheet: a number in a column of numbers. */
+  [data-ayq-legacy] .plan-input {
+    width: 100px; padding: 3px 6px; text-align: right;
+    font: inherit; font-variant-numeric: tabular-nums;
+    color: var(--ink); background: transparent;
+    border: 1px solid transparent; border-radius: 3px;
+  }
+  [data-ayq-legacy] .plan-input:hover:not(:disabled), [data-ayq-legacy] .plan-input:focus {
+    background: var(--panel); border-color: var(--ayq-line-strong);
+  }
+  [data-ayq-legacy] .plan-input:disabled { color: var(--muted); }
+  [data-ayq-legacy] .grid tbody tr.muted-row td { color: var(--muted); }
+
+  [data-ayq-legacy] .categories { margin: 0 0 6px; }
+  [data-ayq-legacy] .category-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  [data-ayq-legacy] .category-group { width: 150px; font-size: 11.5px; color: var(--muted); text-align: right; }
+  [data-ayq-legacy] .category-name { flex: 0 1 240px; }
+
+  [data-ayq-legacy] .backlog { margin: 22px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); }
+  [data-ayq-legacy] .backlog-title { margin: 0 0 2px; font-size: 13.5px; font-weight: 600; }
+  [data-ayq-legacy] .import-outcome { display: flex; flex-direction: column; gap: 2px; }
+  [data-ayq-legacy] .import-done { color: var(--ink); }
+  [data-ayq-legacy] .import-problem { color: var(--warn); }
+
+  [data-ayq-legacy] .empty { padding: 26px 2px; }
+  [data-ayq-legacy] .empty-title { margin: 22px 0 6px; font-size: 15px; font-weight: 550; }
+  [data-ayq-legacy] .empty-body { margin: 0; max-width: 52ch; color: var(--muted); }
+  [data-ayq-legacy] .muted { color: var(--muted); }
+  [data-ayq-legacy] .error { white-space: pre-wrap; color: var(--warn); }
 </style>
 </head>
 <body>
-<div class="app">
-  <nav class="sidenav">
-    <div class="brand">AYQ</div>
-    <div id="ayq-sections"></div>
-    <div id="ayq-accounts"></div>
-  </nav>
-
-  <div class="workspace">
-    <div class="bar">
-      <div class="bar-heading">
-        <h1 id="ayq-title">AYQ</h1>
-        <div id="ayq-context"></div>
-      </div>
-      <button id="ayq-import" type="button">Import CAMT.053</button>
-    </div>
-
-    <div class="notices">
-      <div id="ayq-problem" hidden></div>
-      <div id="ayq-import-result"></div>
-    </div>
-
-    <div class="workspace-scroll">
-      <div id="ayq-summary"></div>
-      <div id="ayq-body"><p class="muted">Opening the budget…</p></div>
-      <footer id="ayq-engine-note"></footer>
-    </div>
-  </div>
-</div>
+<div id="ayq-root"></div>
 <script type="module" src="./ayq-client.js"></script>
 </body>
 </html>

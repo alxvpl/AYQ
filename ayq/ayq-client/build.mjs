@@ -17,7 +17,7 @@ await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
 await build({
-  entryPoints: [join(here, 'src/ayq-app.ts')],
+  entryPoints: [join(here, 'src/ayq-app.tsx')],
   outfile: join(out, 'ayq-client.js'),
   bundle: true,
   format: 'esm',

@@ -170,8 +170,11 @@ test('the built bundle carries no engine or host code', async () => {
   // unminified source and anchors to the start of a line, because esbuild puts
   // any surviving import there — and because "Imported from" is a perfectly
   // good column heading that a looser check would flag.
-  const statements = [...source.matchAll(/^\s*import\b[^\n]*/gm)].map(match =>
-    match[0].trim(),
+  //
+  // `import:` is not one: Import is a destination, and a property named after
+  // it starts a line in the bundle exactly where an import statement would.
+  const statements = [...source.matchAll(/^\s*import\b(?!\s*:)[^\n]*/gm)].map(
+    match => match[0].trim(),
   );
   assert.deepEqual(
     statements,

@@ -22,7 +22,6 @@ import type {
   AyqCounterpartyDetail,
   AyqCounterpartyList,
 } from '../src/ayq-ipc-contract.ts';
-import { AYQ_VIEWS } from '../src/ayq-shell.ts';
 import {
   ayqClick,
   ayqOpenShell,
@@ -111,12 +110,6 @@ beforeEach(async () => {
 function draw(redraw: (reload: boolean) => void = () => {}): void {
   ayqRenderCounterparties(state, shell.body, redraw, () => {});
 }
-
-test('Counterparties is one of the workspaces the shell offers', () => {
-  const view = AYQ_VIEWS.find(one => one.id === 'counterparties');
-  assert.ok(view, 'the navigation has no Counterparties section');
-  assert.equal(view.label, 'Counterparties');
-});
 
 test('the counterparties the engine sent are the ones drawn', () => {
   state.list = listOf([STATION, FUEL, BOOKSHOP]);
@@ -318,4 +311,33 @@ test('an empty budget says so where the counterparties would be', () => {
     shell.body.querySelector('.empty-title')?.textContent ?? '',
     /No counterparty matches/,
   );
+});
+
+test('a row a mouse can choose, a keyboard can choose too', async () => {
+  state.list = listOf([STATION, FUEL, BOOKSHOP]);
+  const log = ayqStubBridge(request =>
+    request.kind === 'counterparty.detail' ? STATION_DETAIL : undefined,
+  );
+  draw(() => draw());
+
+  const row = shell.body.querySelector(
+    '[data-ayq-counterparty="TEST FUEL STATION"]',
+  ) as HTMLElement | null;
+  assert.ok(row, 'the row is not there');
+  assert.equal(row.tabIndex, 0, 'the row is not in the tab order');
+
+  row.dispatchEvent(
+    new (globalThis as unknown as { window: { KeyboardEvent: typeof KeyboardEvent } }).window.KeyboardEvent(
+      'keydown',
+      { key: 'Enter', bubbles: true },
+    ),
+  );
+
+  assert.equal(state.openKey, 'TEST FUEL STATION');
+  assert.deepEqual(
+    log.requests.map(request => request.kind),
+    ['counterparty.detail'],
+    'Enter did something other than what the click does',
+  );
+  await ayqSettled();
 });
