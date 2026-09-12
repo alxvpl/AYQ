@@ -134,6 +134,16 @@ a budget of fifty thousand invented transactions, against a gate of 5,000 ms.
 That gate has never actually passed: it was written in S3 and runs 62 to 65 all
 failed before reaching it. So this is the first time the number has been read.
 
+What it is now, measured by the screen itself on the same fixture and the same
+kind of runner:
+
+| | first draw | filtered |
+|---|---|---|
+| before, run 66 | 17,008 ms | — |
+| **after, run 67** | **2,098 ms** | **1,042 ms** |
+
+Both are inside the gate, and the gate did not move.
+
 Three things were wrong, and all three were AYQ's rather than the runner's.
 
 **The ledger fetched everything to draw a page.** An unfiltered Register asked
@@ -175,7 +185,26 @@ twice, because importing twice is how duplicate protection is checked — a rule
 step of its own already proves on a small fixture. `--import-once` says what the
 run actually wants.
 
-`AYQ_ENGINE_TIMING=1` makes the engine print how long each request took. "The
+### And then run 67 failed anyway, on the same screen
+
+Not on the measurement. The Register now draws faster than the status bar's
+summary comes back, and the acceptance run read the budget's size from the
+summary — so it saw a zero and concluded the budget was empty, on a run that had
+just imported fifty thousand transactions successfully. The count published for
+the runs is the *Register's own* answer now, which is the number both checks
+actually want, and the run waits for it to be the number the import said it would
+be rather than merely non-zero. A speedup that makes a race easier to lose is
+still a speedup; the race was always there.
+
+Two smaller things from the same run. The engine's own stderr does not reach a
+log under the `utilityProcess` host that ships, so a measurement taken inside the
+engine was invisible in exactly the runs that wanted it — it is taken in the host
+now, which is also the wait the renderer actually had and therefore the number a
+slow screen is made of. And the step threw "the Register did not hold" over an
+*import* failure, which sent the diagnosis to the wrong place; it prints the
+verdicts and names what failed.
+
+`AYQ_ENGINE_TIMING=1` makes the host print how long each request took. "The
 Register took seven seconds" is not a fault anybody can act on; which request
 those seconds were in is.
 

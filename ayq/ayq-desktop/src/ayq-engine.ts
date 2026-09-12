@@ -887,20 +887,9 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
   }
 }
 
-/**
- * Whether to say how long each answer took.
- *
- * Off by default and read once. It exists because "the Register took seven
- * seconds" is not a fault anybody can act on: what is actionable is which
- * request those seconds were in, and the only place that can be measured
- * without guessing is here.
- */
-const timing = process.env.AYQ_ENGINE_TIMING === '1';
-
 channel.onMessage(message => {
   void (async () => {
     const request = message as AyqRequest;
-    const began = Date.now();
     let response: AyqResponse;
     try {
       if (dataDir === '') {
@@ -914,11 +903,6 @@ channel.onMessage(message => {
         kind: 'error',
         message: explain(said(error)),
       };
-    }
-    if (timing) {
-      process.stderr.write(
-        `[ayq-engine] ${String(request?.kind ?? 'unknown')} ${Date.now() - began}ms\n`,
-      );
     }
     channel.send(response);
   })();

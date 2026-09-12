@@ -228,7 +228,15 @@ jobs:
           $clock.Stop()
           Write-Host $said
           Write-Host ("the whole launch, import included: {0:N0}s" -f $clock.Elapsed.TotalSeconds)
-          if ($LASTEXITCODE -ne 0) { throw 'the Register did not hold' }
+          if ($LASTEXITCODE -ne 0) {
+            # Name the check that failed rather than blaming the Register. This
+            # step exercises the import as well, and "the Register did not hold"
+            # over an import failure sent somebody looking in the wrong place.
+            if ($said -match '\[ayq-smoke\] verdicts: (.+)') {
+              throw "this run failed; the verdicts were: $($Matches[1])"
+            }
+            throw 'the run failed before it reached its verdicts'
+          }
           if ($said -notmatch 'the Register: held') {
             throw 'the run did not exercise the Register at all'
           }

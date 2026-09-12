@@ -90,6 +90,8 @@ export function AyqApplication(): ReactNode {
   // what it moved them to.
   const [filter, setFilter] = useState<AyqLedgerFilter>({});
   const [rowsShown, setRowsShown] = useState(0);
+  /** What the Register's own answer said the budget holds; null until it has. */
+  const [ledgerTotal, setLedgerTotal] = useState<number | null>(null);
 
   const reload = useCallback(() => setRound(one => one + 1), []);
   // A screen that has finished drawing has changed what the window is holding,
@@ -142,15 +144,24 @@ export function AyqApplication(): ReactNode {
     document.body.dataset.ayqState =
       failure !== null ? 'error' : status !== null ? 'ready' : '';
     if (status) document.body.dataset.ayqEngineHost = status.engineHost;
-    document.body.dataset.ayqLedgerTotal = String(summary?.transactionCount ?? 0);
+    document.body.dataset.ayqLedgerTotal = String(
+      ledgerTotal ?? summary?.transactionCount ?? 0,
+    );
     document.body.dataset.ayqLedgerRows = String(rowsShown);
-  }, [status, summary, failure, rowsShown]);
+  }, [status, summary, failure, rowsShown, ledgerTotal]);
 
   // What the Register drew, published for the acceptance runs. Held as state
   // rather than read out of a module, because the shell finishes reading
   // before the Register does and a value published once would be a stale one.
+  //
+  // The total is the *Register's* own, not the status bar's. They are the same
+  // number, but they arrive at different moments: the Register now draws faster
+  // than the summary behind the status bar comes back, so a run that read the
+  // summary's figure read a zero for as long as that took and concluded the
+  // budget was empty.
   const ledgerLoaded = useCallback((ledger: AyqLedger) => {
     setRowsShown(ledger.rows.length);
+    setLedgerTotal(ledger.total);
   }, []);
 
   const settingsTabs = useMemo(

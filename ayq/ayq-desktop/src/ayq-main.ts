@@ -144,6 +144,15 @@ type EngineHandle = { send(request: AyqRequest): void; stop(): void };
  */
 const AYQ_ENGINE_PATIENCE = 15 * 60_000;
 
+/**
+ * Whether to say how long each answer took.
+ *
+ * Off by default. It exists because "the Register took seven seconds" is not a
+ * fault anybody can act on: what is actionable is which request those seconds
+ * were in.
+ */
+const timing = process.env.AYQ_ENGINE_TIMING === '1';
+
 function startEngine(): EngineHandle {
   const enginePath = join(here, 'ayq-engine.js');
   const env = { ...process.env, AYQ_DATA_DIR: dataDir };
@@ -267,6 +276,7 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
     });
   }
 
+  const began = Date.now();
   return new Promise<AyqResponse>(resolve => {
     const timer = setTimeout(() => {
       if (pending.delete(request.id)) {
@@ -283,6 +293,16 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
 
     pending.set(request.id, response => {
       clearTimeout(timer);
+      // Measured here rather than in the engine, for two reasons. This is the
+      // wait the renderer actually had — which is the number a slow screen is
+      // made of — and the engine's own stderr does not reach a log under the
+      // `utilityProcess` host that ships, so a measurement taken there would be
+      // invisible in exactly the runs that want it.
+      if (timing) {
+        process.stdout.write(
+          `[ayq-engine] ${request.kind} ${Date.now() - began}ms\n`,
+        );
+      }
       resolve(response);
     });
 
@@ -1123,11 +1143,16 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
     importRounds.push(first, ...(once ? [] : [second]));
     // The ledger is read below, and it is a destination of its own now. The
     // count it publishes is the Register's, so it is waited for rather than
-    // read off the frame the screen opened on.
+    // read off the frame the screen opened on — and waited for until it is the
+    // number the import said it would be, rather than merely non-zero. A
+    // Register that draws its rows before the count arrives is a Register that
+    // reads as an empty budget for as long as that takes.
     await openRegister(window);
-    const rowsBy = Date.now() + 60_000;
+    const rowsBy = Date.now() + 120_000;
     while (Date.now() < rowsBy) {
-      if (Number(await dataset(window, 'ayqLedgerRows')) > 0) break;
+      const rows = Number(await dataset(window, 'ayqLedgerRows'));
+      const total = Number(await dataset(window, 'ayqLedgerTotal'));
+      if (rows > 0 && total === first.transactionCountAfter) break;
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
@@ -1851,6 +1876,17 @@ async function registerShown(window: BrowserWindow): Promise<string> {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!(await drawn())) return 'the Register never drew';
+
+  // The count the Register's own answer carried. It arrives with the rows now,
+  // but a run that read it in the same breath as the measurement could still
+  // catch the frame before it.
+  const heldBy = Date.now() + 60_000;
+  while (
+    Date.now() < heldBy &&
+    Number(await dataset(window, 'ayqLedgerTotal')) === 0
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
 
   const opening = Number(await dataset(window, 'ayqRegisterMs'));
   const seen = JSON.parse(
