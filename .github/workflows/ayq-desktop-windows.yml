@@ -192,6 +192,48 @@ jobs:
           }
           Write-Host ($said -split "`n" | Select-String 'window material')
 
+      # The Register (04 A3, A4), on a budget big enough for the question to be
+      # real: fifty thousand invented transactions, which is what the task
+      # asked the table to stay responsive on.
+      #
+      # The time is measured by the screen itself — from asking the engine to
+      # the frame that has the rows on it — because a stopwatch held out here
+      # can only see the last of that, and only to within a poll.
+      - name: The Register, on fifty thousand transactions
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 25
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-register-budget
+        run: |
+          node make-scale-fixture.mjs "${{ runner.temp }}\ayq-50k.xml" 50000
+          if ($LASTEXITCODE -ne 0) { throw 'the invented fixture could not be made' }
+          $file = Get-Item "${{ runner.temp }}\ayq-50k.xml"
+          Write-Host ("fixture: {0:N1} MB of invented statement" -f ($file.Length / 1MB))
+
+          $clock = [System.Diagnostics.Stopwatch]::StartNew()
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import "${{ runner.temp }}\ayq-50k.xml" `
+            --register `
+            --screenshot "${{ runner.temp }}\ayq-desktop-register.png" 2>&1 | Out-String
+          $clock.Stop()
+          Write-Host $said
+          Write-Host ("the whole launch, import included: {0:N0}s" -f $clock.Elapsed.TotalSeconds)
+          if ($LASTEXITCODE -ne 0) { throw 'the Register did not hold' }
+          if ($said -notmatch 'the Register: held') {
+            throw 'the run did not exercise the Register at all'
+          }
+          # The measurement the task asked to be recorded, and the size of the
+          # budget it was measured on. Both are required to be in the log.
+          if ($said -notmatch 'register performance: (\d+) transactions held, first draw (\d+)ms, filtered (\d+)ms') {
+            throw 'the run did not record how the Register performed'
+          }
+          $held = [int]$Matches[1]
+          if ($held -lt 50000) {
+            throw "the Register was measured on $held transactions, not fifty thousand"
+          }
+          Write-Host "AYQ Register: $held transactions, first draw $($Matches[2])ms, filtered $($Matches[3])ms"
+
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
       - name: An unusable file is refused, and nothing is damaged
@@ -806,6 +848,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-plan.png
             ${{ runner.temp }}\ayq-desktop-grounds.png
             ${{ runner.temp }}\ayq-desktop-shell.png
+            ${{ runner.temp }}\ayq-desktop-register.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json

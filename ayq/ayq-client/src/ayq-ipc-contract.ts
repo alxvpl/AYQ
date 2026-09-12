@@ -125,6 +125,15 @@ export type AyqLedgerFilter = {
   categoryId?: string;
   /** One canonical counterparty, by its grouping key. */
   counterpartyKey?: string;
+  /**
+   * Inclusive bounds on the size of the amount, in cents, ignoring direction.
+   *
+   * On the size rather than on the signed value, because the question a person
+   * asks of a register is "what were the large ones", and a large payment in
+   * and a large payment out are both large.
+   */
+  minCents?: number;
+  maxCents?: number;
   limit?: number;
 };
 
@@ -162,6 +171,19 @@ export type AyqLedger = {
   total: number;
   /** How many of them this answer carries. */
   shown: number;
+  /**
+   * What the filtered set comes to — all of it, not the page.
+   *
+   * Computed by the engine over every matching transaction, so a screen
+   * showing the newest five hundred of fifty thousand still states the truth
+   * about the fifty thousand. Uncategorised transactions are in these totals
+   * (03 §4.5): a total that quietly drops them is a total that is wrong.
+   */
+  incomeCents: number;
+  expenseCents: number;
+  netCents: number;
+  /** How many of the matching transactions have no category. */
+  uncategorised: number;
 };
 
 /**
@@ -218,6 +240,33 @@ export type AyqCategorised = {
   pendingForCounterparty: number;
 };
 
+/**
+ * One decision about where a transaction belongs, and who made it.
+ *
+ * 03 §4.3: a decision made by hand and one derived by a rule are different
+ * kinds of fact, and the difference decides what may overwrite what. Kept as a
+ * history rather than as a single current value, because "it is in Groceries
+ * because a rule put it there, after you had put it in Housekeeping" is the
+ * thing a person needs to see when a category looks wrong.
+ */
+export type AyqDecision = {
+  source: 'manual' | 'rule';
+  /** Empty when a person deliberately cleared the category. */
+  categoryName: string;
+  at: string;
+};
+
+/** What an expected payment this transaction was matched to is (03 §7.16). */
+export type AyqTransactionMatch = {
+  recordId: string;
+  name: string;
+  /** The occurrence's own date, which is not always the transaction's. */
+  dueDate: string;
+  /** A person's match, or one the engine made. */
+  provenance: 'manual' | 'automatic';
+  matchedAt: string | null;
+};
+
 export type AyqTransactionDetail = {
   row: AyqLedgerRow;
   /** The variant the bank printed, before the canonical name replaced it. */
@@ -225,6 +274,14 @@ export type AyqTransactionDetail = {
   notes: string | null;
   importedId: string | null;
   provenance: AyqProvenance | null;
+  /** The canonical counterparty key, aliases applied. */
+  counterpartyKey: string | null;
+  /** Oldest first; the last one is the one that stands. */
+  decisions: AyqDecision[];
+  /** The standing rule for this counterparty, if there is one (04 A7). */
+  rule: AyqCategoryRule | null;
+  /** The expected payment this turned out to be, if it was matched. */
+  match: AyqTransactionMatch | null;
 };
 
 export type AyqCategory = {

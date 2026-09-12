@@ -22,6 +22,7 @@ import type {
   AyqLedgerRow,
   AyqSummary,
   AyqTransactionDetail,
+  AyqTransactionMatch,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
@@ -31,7 +32,12 @@ import {
   ayqIsInternalTransfer,
   ayqOwnAccountNames,
 } from './ayq-funds.ts';
-import { ayqReadStore, ayqRowKey, type AyqStore } from './ayq-store.ts';
+import {
+  ayqReadStore,
+  ayqRowKey,
+  ayqStandingDecision,
+  type AyqStore,
+} from './ayq-store.ts';
 
 /** How many rows the screen is given when it does not ask for a number. */
 export const AYQ_LEDGER_LIMIT = 500;
@@ -300,6 +306,14 @@ export async function ayqLedger(
       if (key !== filter.counterpartyKey) return false;
     }
 
+    if (filter.minCents !== undefined || filter.maxCents !== undefined) {
+      // On the size, not the signed value: "the large ones" is a question
+      // about size, and a large payment in is one of them.
+      const size = Math.abs(Number(row.amount ?? 0));
+      if (filter.minCents !== undefined && size < filter.minCents) return false;
+      if (filter.maxCents !== undefined && size > filter.maxCents) return false;
+    }
+
     if (needle !== '') {
       // The counterparty first, then what the bank said: a person searching
       // for a shop should find it under either name.
@@ -317,9 +331,33 @@ export async function ayqLedger(
   const limit = filter.limit ?? AYQ_LEDGER_LIMIT;
   const rows = matching
     .slice(0, limit)
-    .map(row => toRow(row, store.decisions[ayqRowKey(row)]?.source ?? null));
+    .map(row =>
+      toRow(row, ayqStandingDecision(store, ayqRowKey(row))?.source ?? null),
+    );
 
-  return { rows, total: matching.length, shown: rows.length };
+  // Over everything that matched, not over the page. A screen showing the
+  // newest five hundred of fifty thousand still states the truth about the
+  // fifty thousand — and uncategorised transactions are counted in it, because
+  // 03 §4.5 says a total that drops them is wrong.
+  let incomeCents = 0;
+  let expenseCents = 0;
+  let uncategorised = 0;
+  for (const row of matching) {
+    const cents = Number(row.amount ?? 0);
+    if (cents >= 0) incomeCents += cents;
+    else expenseCents += -cents;
+    if (!row.categoryId) uncategorised += 1;
+  }
+
+  return {
+    rows,
+    total: matching.length,
+    shown: rows.length,
+    incomeCents,
+    expenseCents,
+    netCents: incomeCents - expenseCents,
+    uncategorised,
+  };
 }
 
 /** One transaction, with what the bank said and what AYQ made of it. */
@@ -335,14 +373,55 @@ export async function ayqDetail(
   if (!found) throw new Error(`no transaction ${transactionId} in this budget`);
 
   const store = ayqReadStore(dataDir);
+  const key = ayqRowKey(found);
+  // Canonical, so the rule the pane offers to show is the one that would
+  // actually act on this transaction rather than one written against a variant
+  // somebody has since said is the same shop.
+  const counterpartyKey =
+    ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) ?? null;
+
   return {
-    row: toRow(found, store.decisions[ayqRowKey(found)]?.source ?? null),
+    row: toRow(found, ayqStandingDecision(store, key)?.source ?? null),
     importedPayee: found.imported_payee ?? null,
     notes: found.notes ?? null,
     importedId: found.imported_id ?? null,
     provenance: found.imported_id
       ? (store.provenance[found.imported_id] ?? null)
       : null,
+    counterpartyKey,
+    decisions: store.decisions[key] ?? [],
+    rule:
+      counterpartyKey === null
+        ? null
+        : (store.rules.find(one => one.counterpartyKey === counterpartyKey) ??
+          null),
+    match: ayqMatchOf(store, found.id),
+  };
+}
+
+/**
+ * The expected payment this transaction turned out to be, if it was matched.
+ *
+ * Read rather than stored on the transaction: the match lives on the
+ * occurrence (03 §7.16), and a second copy of it here is a second thing that
+ * can disagree with the first.
+ */
+function ayqMatchOf(
+  store: AyqStore,
+  transactionId: string,
+): AyqTransactionMatch | null {
+  const occurrence = store.occurrences.find(
+    one => one.matchedTransactionId === transactionId,
+  );
+  if (!occurrence) return null;
+  const record = store.planned.find(one => one.id === occurrence.recordId);
+  if (!record) return null;
+  return {
+    recordId: record.id,
+    name: record.name,
+    dueDate: occurrence.rescheduledTo ?? occurrence.dueDate,
+    provenance: occurrence.matchProvenance ?? 'manual',
+    matchedAt: occurrence.matchedAt,
   };
 }
 

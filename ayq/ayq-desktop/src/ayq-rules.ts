@@ -24,9 +24,11 @@ import { ayqSetCategories } from './ayq-batch.ts';
 import { ayqCategories } from './ayq-categories.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import {
+  ayqAddDecision,
   ayqId,
   ayqReadStore,
   ayqRowKey,
+  ayqStandingDecision,
   ayqWriteStore,
   type AyqStore,
 } from './ayq-store.ts';
@@ -76,7 +78,11 @@ export function ayqRecordDecision(
   categoryName: string,
 ): void {
   const store = ayqReadStore(dataDir);
-  store.decisions[key] = { source, categoryName, at: new Date().toISOString() };
+  ayqAddDecision(store, key, {
+    source,
+    categoryName,
+    at: new Date().toISOString(),
+  });
   ayqWriteStore(dataDir, store);
 }
 
@@ -152,7 +158,7 @@ export async function ayqApplyRules(
 
   for (const row of rows) {
     const key = ayqRowKey(row);
-    const decision = store.decisions[key];
+    const decision = ayqStandingDecision(store, key);
     if (decision?.source === 'manual') continue;
 
     // The canonical counterparty, so a rule written for one shop also files
@@ -171,11 +177,11 @@ export async function ayqApplyRules(
     if (row.categoryId && decision?.source !== 'rule') continue;
 
     updates.push({ id: row.id, category: target.id });
-    store.decisions[key] = {
+    ayqAddDecision(store, key, {
       source: 'rule',
       categoryName: target.name,
       at: new Date().toISOString(),
-    };
+    });
     categorised += 1;
     if (!row.categoryId) filled += 1;
   }
@@ -222,7 +228,7 @@ export async function ayqPendingForCounterparty(
 
   return rows.filter(row => {
     const key = ayqRowKey(row);
-    if (store.decisions[key]?.source === 'manual') return false;
+    if (ayqStandingDecision(store, key)?.source === 'manual') return false;
     if (row.categoryId) return false;
     return (
       ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) ===

@@ -364,8 +364,7 @@ async function openRegister(window: BrowserWindow): Promise<void> {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const drawn = await window.webContents.executeJavaScript(
-      "!!document.querySelector('[data-ayq-legacy=\"register\"] .grid, " +
-        "[data-ayq-legacy=\"register\"] .empty-title')",
+      "!!document.querySelector('[data-ayq-table=\"register\"]')",
     );
     if (drawn === true) return;
     await new Promise(resolve => setTimeout(resolve, 200));
@@ -436,17 +435,37 @@ async function categoriseNewest(
   name: string,
 ): Promise<string> {
   await openRegister(window);
+
+  // Through the detail pane, which is where a category is changed now
+  // (04 A4): the row is chosen, the pane opens, and the category is set on
+  // the control a person uses. The row's own cell shows the category and does
+  // not offer to change it — a table of five hundred editable cells is a table
+  // of five hundred chances to change the wrong one.
+  const opened = await window.webContents.executeJavaScript(`(() => {
+    const row = document.querySelector('[data-ayq-table="register"] tbody tr');
+    if (!row) return false;
+    row.click();
+    return true;
+  })()`);
+  if (opened !== true) return 'no rows';
+
+  let deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const there = await window.webContents.executeJavaScript(
+      "!!document.querySelector('select[data-ayq-category-choice]')",
+    );
+    if (there === true) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
   const chose = String(
     await window.webContents.executeJavaScript(`(() => {
-      const row = document.querySelector('.grid tbody tr');
-      if (!row) return 'no rows';
-      const select = row.querySelector('.col-category select');
+      const select = document.querySelector('select[data-ayq-category-choice]');
       if (!select) return 'no control';
       const option = [...select.options].find(
         candidate => candidate.textContent === ${JSON.stringify(name)},
       );
       if (!option) return 'no such category';
-      select.dataset.ayqTyped = '1';
       select.value = option.value;
       select.dispatchEvent(new Event('change', { bubbles: true }));
       return 'chosen';
@@ -454,7 +473,7 @@ async function categoriseNewest(
   );
   if (chose !== 'chosen') return chose;
 
-  const deadline = Date.now() + 60_000;
+  deadline = Date.now() + 60_000;
   let shown = '';
   while (Date.now() < deadline) {
     shown = await shownCategory(window);
@@ -476,13 +495,14 @@ async function categoriseNewest(
  */
 async function shownCategory(window: BrowserWindow): Promise<string> {
   await openRegister(window);
+  // The row's own cell, which the renderer drew from what the engine answered
+  // — never the control the harness typed into, which would only ever confirm
+  // the harness's own input.
   return String(
     await window.webContents.executeJavaScript(`(() => {
-      const select = document.querySelector('.grid tbody tr .col-category select');
-      if (!select) return '';
-      if (select.dataset.ayqTyped === '1') return '';
-      const option = select.selectedOptions[0];
-      return option ? option.textContent : '';
+      const cell = document.querySelector(
+        '[data-ayq-table="register"] tbody tr [data-ayq-cell="category"]');
+      return cell ? cell.innerText.trim() : '';
     })()`),
   );
 }
@@ -802,22 +822,20 @@ async function showMore(window: BrowserWindow): Promise<string> {
   const rows = async (): Promise<number> =>
     Number(
       await window.webContents.executeJavaScript(
-        "document.querySelectorAll('.grid tbody tr').length",
+        "document.querySelectorAll('[data-ayq-table=\"register\"] tbody tr').length",
       ),
     );
 
   const before = await rows();
   const pressed = await window.webContents.executeJavaScript(`(() => {
-    const button = [...document.querySelectorAll('.count button')].find(
-      one => one.textContent === 'Show more',
-    );
-    if (!button) return false;
-    button.click();
+    const more = document.querySelector('[data-ayq-action="show-more"]');
+    if (!more) return false;
+    more.click();
     return true;
   })()`);
-  if (pressed !== true) return `no button, with ${before} rows shown`;
+  if (pressed !== true) return `${before} rows, and nothing offers more`;
 
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + 120_000;
   let after = before;
   while (Date.now() < deadline) {
     after = await rows();
@@ -838,23 +856,21 @@ async function ledgerDump(window: BrowserWindow): Promise<string> {
   await openRegister(window);
   return String(
     await window.webContents.executeJavaScript(`(() => {
-      const lines = [...document.querySelectorAll('.grid tbody tr')].map(row => {
-        const cell = name => row.querySelector('.col-' + name);
-        const select = cell('category') && cell('category').querySelector('select');
-        const chosen = select && select.selectedOptions[0]
-          ? select.selectedOptions[0].textContent
-          : '';
-        return [
-          cell('date') ? cell('date').innerText.trim() : '',
-          cell('payee') ? cell('payee').innerText.trim() : '',
-          chosen,
-          cell('account') ? cell('account').innerText.trim() : '',
-          cell('amount') ? cell('amount').innerText.trim() : '',
-        ].join(' | ');
-      });
-      const count = document.querySelector('.count');
-      if (count) lines.push(count.innerText.trim());
-      return lines.join('\\n');
+      const rows = [...document.querySelectorAll(
+        '[data-ayq-table="register"] tbody tr')].map(row =>
+        ['date', 'payee', 'category', 'account', 'amount']
+          .map(name => {
+            const cell = row.querySelector('[data-ayq-cell="' + name + '"]');
+            return cell ? cell.innerText.trim() : '';
+          })
+          .join(' | '),
+      );
+      const totals = document.querySelector('[data-ayq-totals]');
+      if (totals) rows.push(totals.innerText.replace(/\s+/g, ' ').trim());
+      const empty = document.querySelector(
+        '[data-ayq-table="register"][data-ayq-empty]');
+      if (empty) rows.push(empty.innerText.replace(/\s+/g, ' ').trim());
+      return rows.join('\n');
     })()`),
   );
 }
@@ -877,8 +893,15 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
     const first = await importOnce(window);
     const second = await importOnce(window);
     importRounds.push(first, second);
-    // The ledger is read below, and it is a destination of its own now.
+    // The ledger is read below, and it is a destination of its own now. The
+    // count it publishes is the Register's, so it is waited for rather than
+    // read off the frame the screen opened on.
     await openRegister(window);
+    const rowsBy = Date.now() + 60_000;
+    while (Date.now() < rowsBy) {
+      if (Number(await dataset(window, 'ayqLedgerRows')) > 0) break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
 
     const report = (round: string, summary: AyqImportSummary): void => {
       process.stdout.write(
@@ -1005,7 +1028,7 @@ async function registerShown(window: BrowserWindow): Promise<string> {
   // the one thing a filter must be able to name.
   await window.webContents.executeJavaScript(
     'document.body.dataset.ayqRegisterMs = ""; ' +
-      "document.querySelector('[data-ayq-filter-uncategorised] input').click(); true",
+      "document.querySelector('[data-ayq-filter-uncategorised]').click(); true",
   );
   deadline = Date.now() + 120_000;
   while (Date.now() < deadline && !(await drawn())) {

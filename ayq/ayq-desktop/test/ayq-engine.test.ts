@@ -401,6 +401,167 @@ test('the ledger can be searched and filtered', async () => {
   assert.equal(limited.total, 14, 'the budget still holds fourteen');
 });
 
+test('the totals describe the filtered set, and keep the unfiled in it', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const all = await ask(dataDir, { kind: 'transactions.list' });
+  // Over every matching transaction rather than over the page, which is what
+  // lets a screen show five hundred of fifty thousand and still tell the truth.
+  const fromRows =
+    all.rows.reduce(
+      (sum, row) => (row.amountCents > 0 ? sum + row.amountCents : sum),
+      0,
+    ) -
+    all.rows.reduce(
+      (sum, row) => (row.amountCents < 0 ? sum - row.amountCents : sum),
+      0,
+    );
+  assert.equal(all.netCents, fromRows, 'the whole ledger fits on one page here');
+  assert.equal(all.incomeCents - all.expenseCents, all.netCents);
+  assert.ok(all.incomeCents > 0 && all.expenseCents > 0);
+
+  // 03 §4.5: nothing has been filed yet, and every one of them is counted.
+  assert.equal(all.uncategorised, all.total);
+
+  const narrowed = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { search: 'albert' },
+  });
+  assert.equal(narrowed.total, 6);
+  assert.ok(
+    narrowed.expenseCents > 0 && narrowed.expenseCents < all.expenseCents,
+    'the filtered total is the filtered set, not everything',
+  );
+  assert.equal(
+    narrowed.uncategorised,
+    narrowed.total,
+    'the unfiled are counted in the filtered set too',
+  );
+
+  // A page does not change what the totals describe.
+  const paged = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { limit: 3 },
+  });
+  assert.equal(paged.shown, 3);
+  assert.equal(paged.total, all.total);
+  assert.equal(paged.netCents, all.netCents, 'a page is not a smaller ledger');
+});
+
+test('the ledger can be narrowed by how large the amount is', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const all = await ask(dataDir, { kind: 'transactions.list' });
+  const sizes = all.rows
+    .map(row => Math.abs(row.amountCents))
+    .sort((left, right) => left - right);
+  const middle = sizes[Math.floor(sizes.length / 2)];
+
+  const large = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { minCents: middle },
+  });
+  assert.ok(large.total > 0 && large.total < all.total);
+  assert.ok(
+    large.rows.every(row => Math.abs(row.amountCents) >= middle),
+    'a smaller amount than asked for came back',
+  );
+
+  // On the size, not the signed value: a large payment in is a large one.
+  const biggest = Math.max(...sizes);
+  const both = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { minCents: biggest },
+  });
+  assert.ok(
+    both.rows.some(row => row.amountCents > 0) ||
+      both.rows.some(row => row.amountCents < 0),
+  );
+
+  const small = await ask(dataDir, {
+    kind: 'transactions.list',
+    filter: { maxCents: middle - 1 },
+  });
+  assert.equal(small.total, all.total - large.total);
+});
+
+test('a transaction keeps every decision made about it, in order', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(one => one.name === 'Groceries');
+  const utilities = categories.find(one => one.name === 'Utilities');
+  assert.ok(groceries && utilities, 'the invented budget has these categories');
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const row = ledger.rows[0];
+
+  const first = await ask(dataDir, { kind: 'transaction.detail', transactionId: row.id });
+  assert.deepEqual(first.decisions, [], 'nobody has decided anything yet');
+  assert.equal(first.rule, null);
+  assert.equal(first.match, null, 'nothing was expected, so nothing was matched');
+
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: row.id,
+    categoryId: utilities.id,
+  });
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: row.id,
+    categoryId: groceries.id,
+  });
+
+  const after = await ask(dataDir, { kind: 'transaction.detail', transactionId: row.id });
+  assert.equal(after.decisions.length, 2, 'both decisions are kept');
+  assert.deepEqual(
+    after.decisions.map(one => one.categoryName),
+    ['Utilities', 'Groceries'],
+    'oldest first; the last one is the one that stands',
+  );
+  assert.ok(after.decisions.every(one => one.source === 'manual'));
+  assert.equal(after.row.category, 'Groceries');
+  assert.equal(after.row.categorySource, 'manual');
+  assert.ok(after.counterpartyKey, 'the canonical counterparty is named');
+
+  // And the history survives being written down and read back.
+  await restart(dataDir);
+  const reopened = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: row.id,
+  });
+  assert.equal(reopened.decisions.length, 2);
+});
+
+test('the detail names the rule that would file this counterparty', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const groceries = categories.find(one => one.name === 'Groceries');
+  assert.ok(groceries);
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const row = ledger.rows.find(one => one.payee !== null);
+  assert.ok(row);
+
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: row.id,
+    categoryId: groceries.id,
+    createRule: true,
+  });
+
+  const detail = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: row.id,
+  });
+  assert.ok(detail.rule, '04 A7: a rule a person can see');
+  assert.equal(detail.rule.categoryName, 'Groceries');
+  assert.equal(detail.rule.counterpartyKey, detail.counterpartyKey);
+});
+
 test('a transaction explains where its name came from', async () => {
   const dataDir = await budget();
   await ask(dataDir, { kind: 'import.camt', paths: [fixture] });

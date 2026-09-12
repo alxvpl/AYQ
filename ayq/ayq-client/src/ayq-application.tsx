@@ -26,15 +26,13 @@ import {
 } from './ayq-destinations.ts';
 import type {
   AyqEngineStatus,
+  AyqLedger,
   AyqLedgerFilter,
   AyqSummary,
 } from './ayq-ipc-contract.ts';
-import {
-  ayqLegacyState,
-  ayqOnOpenRegister,
-  type AyqLegacyView,
-} from './ayq-legacy-views.ts';
+import { ayqOnOpenRegister, type AyqLegacyView } from './ayq-legacy-views.ts';
 import { AyqImportScreen } from './ayq-screens/ayq-import.tsx';
+import { AyqRegisterScreen } from './ayq-screens/ayq-register.tsx';
 import { AyqNotBuilt } from './ayq-screens/ayq-not-built.tsx';
 import {
   AYQ_SETTINGS_TABS,
@@ -69,7 +67,6 @@ const useStyles = makeStyles({
 
 /** The legacy renderer a destination still uses, where it still uses one. */
 const LEGACY: Partial<Record<AyqDestination, AyqLegacyView>> = {
-  register: 'register',
   upcoming: 'upcoming',
   plan: 'plan',
   review: 'counterparties',
@@ -93,6 +90,11 @@ export function AyqApplication(): ReactNode {
   const [round, setRound] = useState(0);
   const [drawn, setDrawn] = useState(0);
   const [damagedTold, setDamagedTold] = useState('');
+  // The Register's filter lives here, not in the Register: arriving at it from
+  // a counterparty is the shell moving a person somewhere, and the filter is
+  // what it moved them to.
+  const [filter, setFilter] = useState<AyqLedgerFilter>({});
+  const [rowsShown, setRowsShown] = useState(0);
 
   const reload = useCallback(() => setRound(one => one + 1), []);
   // A screen that has finished drawing has changed what the window is holding,
@@ -147,19 +149,23 @@ export function AyqApplication(): ReactNode {
       failure !== null ? 'error' : status !== null ? 'ready' : '';
     if (status) document.body.dataset.ayqEngineHost = status.engineHost;
     document.body.dataset.ayqLedgerTotal = String(summary?.transactionCount ?? 0);
-    document.body.dataset.ayqLedgerRows = String(
-      ayqLegacyState.transactions.ledger?.rows.length ?? 0,
-    );
-  }, [status, summary, failure, drawn]);
+    document.body.dataset.ayqLedgerRows = String(rowsShown);
+  }, [status, summary, failure, drawn, rowsShown]);
 
   // A screen asking for the Register on something is asking the shell to move.
   useEffect(() => {
-    ayqOnOpenRegister((filter: AyqLedgerFilter) => {
-      ayqLegacyState.transactions.filter = filter;
+    ayqOnOpenRegister((next: AyqLedgerFilter) => {
+      setFilter(next);
       setDestination('register');
-      reload();
     });
-  }, [reload]);
+  }, []);
+
+  // What the Register drew, published for the acceptance runs. Held as state
+  // rather than read out of a module, because the shell finishes reading
+  // before the Register does and a value published once would be a stale one.
+  const ledgerLoaded = useCallback((ledger: AyqLedger) => {
+    setRowsShown(ledger.rows.length);
+  }, []);
 
   const settingsTabs = useMemo(
     () =>
@@ -169,7 +175,21 @@ export function AyqApplication(): ReactNode {
 
   const legacy = LEGACY[destination];
   let body: ReactNode;
-  if (destination === 'import') {
+  if (destination === 'register') {
+    body = (
+      <AyqRegisterScreen
+        accounts={summary?.accounts ?? []}
+        filter={filter}
+        onFilter={setFilter}
+        onShowTheRule={() => {
+          setDestination('settings');
+          setSettingsTab('rules');
+        }}
+        onFailure={say}
+        onLoaded={ledgerLoaded}
+      />
+    );
+  } else if (destination === 'import') {
     body = <AyqImportScreen onImported={reload} onFailure={say} />;
   } else if (destination === 'settings') {
     body = <AyqSettingsScreen tab={settingsTab} onFailure={say} />;

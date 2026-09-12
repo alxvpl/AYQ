@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import type {
   AyqAliasRecord,
   AyqCategoryRule,
+  AyqDecision,
   AyqGround,
   AyqImportRecord,
   AyqPlannedRecord,
@@ -77,12 +78,35 @@ export type AyqAccountFlags = {
  * Kept because the difference decides what may overwrite what: a rule may
  * revise its own earlier work, and may never touch a person's.
  */
-export type AyqCategoryDecision = {
-  source: 'manual' | 'rule';
-  /** Empty when a person deliberately cleared the category. */
-  categoryName: string;
-  at: string;
-};
+export type AyqCategoryDecision = AyqDecision;
+
+/**
+ * How many decisions about one transaction are kept.
+ *
+ * A history, because "it is in Groceries because a rule put it there, after
+ * you had put it in Housekeeping" is what a person needs when a category looks
+ * wrong — and bounded, because it is a record of a small argument and not a
+ * log. The oldest fall off the front; the one that stands is always the last.
+ */
+export const AYQ_DECISIONS_KEPT = 20;
+
+/** The decision that stands for one transaction, or nothing if none does. */
+export function ayqStandingDecision(
+  store: AyqStore,
+  key: string,
+): AyqCategoryDecision | null {
+  return store.decisions[key]?.at(-1) ?? null;
+}
+
+/** Adds a decision to a transaction's history, keeping the newest of them. */
+export function ayqAddDecision(
+  store: AyqStore,
+  key: string,
+  decision: AyqCategoryDecision,
+): void {
+  const kept = [...(store.decisions[key] ?? []), decision];
+  store.decisions[key] = kept.slice(-AYQ_DECISIONS_KEPT);
+}
 
 /** What the interface itself has been told to do (04 A23). */
 export const AYQ_DEFAULT_SETTINGS: AyqSettings = { ground: 'system' };
@@ -104,8 +128,11 @@ const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
  *      can date a record's expectations from the day it was decided.
  *   5  the interface settings: which ground the owner chose (04 A23). An older
  *      store gains the default, which is to follow the system.
+ *   6  a transaction's category decisions become a history rather than one
+ *      current value. The single decision an older store holds becomes a
+ *      history of one, which is exactly what it is.
  */
-export const AYQ_STORE_VERSION = 5;
+export const AYQ_STORE_VERSION = 6;
 
 export type AyqStore = {
   version: number;
@@ -113,8 +140,12 @@ export type AyqStore = {
   rules: AyqCategoryRule[];
   /** Keyed by the transaction's `imported_id`. */
   provenance: Record<string, AyqProvenance>;
-  /** Keyed the same way: who decided each category. */
-  decisions: Record<string, AyqCategoryDecision>;
+  /**
+   * Keyed the same way: who decided each category, oldest first.
+   *
+   * A list since version 6. The last entry is the decision that stands.
+   */
+  decisions: Record<string, AyqCategoryDecision[]>;
   /**
    * Explicit counterparty identity decisions, since version 2.
    *
@@ -238,10 +269,10 @@ function migrate(raw: unknown): AyqStore {
       typeof value.provenance === 'object' && value.provenance !== null
         ? value.provenance
         : {},
-    decisions:
-      typeof value.decisions === 'object' && value.decisions !== null
-        ? value.decisions
-        : {},
+    // Version 5 and earlier kept one decision per transaction. That decision
+    // is the one that stands, so it becomes a history with one entry in it —
+    // nothing is invented and nothing is lost.
+    decisions: decisionsOf(value.decisions),
     // Version 1 had no alias table. An empty one is the whole of that upgrade:
     // a budget imported before aliases existed has made no alias decisions.
     aliases: Array.isArray(value.aliases) ? value.aliases : [],
@@ -274,6 +305,19 @@ function migrate(raw: unknown): AyqStore {
     // asked, which is exactly what happened.
     settings: ayqNormaliseSettings(value.settings),
   };
+}
+
+function decisionsOf(value: unknown): Record<string, AyqCategoryDecision[]> {
+  if (typeof value !== 'object' || value === null) return {};
+  const held: Record<string, AyqCategoryDecision[]> = {};
+  for (const [key, one] of Object.entries(value as Record<string, unknown>)) {
+    if (Array.isArray(one)) {
+      held[key] = (one as AyqCategoryDecision[]).slice(-AYQ_DECISIONS_KEPT);
+    } else if (typeof one === 'object' && one !== null) {
+      held[key] = [one as AyqCategoryDecision];
+    }
+  }
+  return held;
 }
 
 const DAMAGED = /^ayq-store\.damaged-.+\.json$/;

@@ -9,6 +9,7 @@
 
 import { ayqAsk } from './ayq-bridge.ts';
 import type {
+  AyqCategory,
   AyqCategoryRule,
   AyqImportRecord,
   AyqLedgerFilter,
@@ -25,18 +26,12 @@ import {
   type AyqPlanViewState,
 } from './ayq-plan-view.ts';
 import {
-  ayqEmptyTransactionsState,
-  ayqRenderTransactions,
-  type AyqTransactionsState,
-} from './ayq-transactions.ts';
-import {
   ayqEmptyUpcomingState,
   ayqRenderUpcoming,
   type AyqUpcomingState,
 } from './ayq-upcoming.ts';
 
 export type AyqLegacyView =
-  | 'register'
   | 'upcoming'
   | 'plan'
   | 'imports'
@@ -44,7 +39,8 @@ export type AyqLegacyView =
   | 'rules';
 
 type AyqLegacyState = {
-  transactions: AyqTransactionsState;
+  /** Shared by the screens that offer a category picker. */
+  categories: AyqCategory[];
   plan: AyqPlanViewState;
   upcoming: AyqUpcomingState;
   counterparties: AyqCounterpartiesState;
@@ -53,7 +49,7 @@ type AyqLegacyState = {
 };
 
 export const ayqLegacyState: AyqLegacyState = {
-  transactions: ayqEmptyTransactionsState(),
+  categories: [],
   plan: ayqEmptyPlanViewState(),
   upcoming: ayqEmptyUpcomingState(),
   counterparties: ayqEmptyCounterpartiesState(),
@@ -90,30 +86,16 @@ export function ayqOnOpenRegister(open: (filter: AyqLedgerFilter) => void): void
 
 /** Opens the Register on one counterparty. */
 export function ayqLegacyOpenCounterparty(counterpartyKey: string): void {
-  ayqLegacyState.transactions.filter = { counterpartyKey };
-  ayqLegacyState.transactions.openId = null;
-  openRegister(ayqLegacyState.transactions.filter);
+  openRegister({ counterpartyKey });
 }
 
 async function categories(): Promise<void> {
-  if (ayqLegacyState.transactions.categories.length > 0) return;
-  ayqLegacyState.transactions.categories = (
-    await need({ kind: 'categories.list' })
-  ).result;
+  if (ayqLegacyState.categories.length > 0) return;
+  ayqLegacyState.categories = (await need({ kind: 'categories.list' })).result;
 }
 
 export async function ayqLoadLegacy(view: AyqLegacyView): Promise<void> {
   switch (view) {
-    case 'register':
-      await categories();
-      ayqLegacyState.transactions.ledger = (
-        await need({
-          kind: 'transactions.list',
-          filter: ayqLegacyState.transactions.filter,
-        })
-      ).result;
-      return;
-
     case 'plan':
       ayqLegacyState.plan.sheet = (
         await need({
@@ -163,16 +145,13 @@ export function ayqDrawLegacy(
   reload: () => void,
 ): void {
   switch (view) {
-    case 'register':
-      ayqRenderTransactions(ayqLegacyState.transactions, target, () => reload());
-      return;
     case 'plan':
       ayqRenderPlan(ayqLegacyState.plan, target, () => reload());
       return;
     case 'upcoming':
       ayqRenderUpcoming(
         ayqLegacyState.upcoming,
-        ayqLegacyState.transactions.categories,
+        ayqLegacyState.categories,
         target,
         () => reload(),
       );
@@ -188,7 +167,7 @@ export function ayqDrawLegacy(
     case 'rules':
       ayqRenderRules(
         ayqLegacyState.rules,
-        ayqLegacyState.transactions.categories,
+        ayqLegacyState.categories,
         target,
         () => reload(),
       );
