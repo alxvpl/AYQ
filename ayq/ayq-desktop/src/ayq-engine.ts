@@ -842,7 +842,7 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         id,
         ok: true,
         kind: 'budget.month',
-        result: await ayqBudgetMonth(request.month),
+        result: await ayqBudgetMonth(dataDir, request.month),
       };
 
     case 'budget.setPlan':
@@ -851,6 +851,7 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'budget.setPlan',
         result: await ayqSetPlan(
+          dataDir,
           request.month,
           request.categoryId,
           request.cents,

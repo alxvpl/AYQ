@@ -92,7 +92,7 @@ export async function ayqForecast(
 
   const plan: AyqForecastPlanRow[] = [];
   for (const month of ayqMonthsBetween(ayqMonthOf(today), ayqMonthOf(to))) {
-    for (const category of (await ayqBudgetMonth(month)).categories) {
+    for (const category of (await ayqBudgetMonth(dataDir, month)).categories) {
       // Income categories are not a plan to spend against, and a category with
       // no plan contributes nothing but a row.
       if (category.isIncome || category.planCents <= 0) continue;
@@ -134,7 +134,7 @@ export async function ayqPlanSheet(
   month?: string,
 ): Promise<AyqPlanSheet> {
   const chosen = month ?? ayqMonthOf(today);
-  const budget = await ayqBudgetMonth(chosen);
+  const budget = await ayqBudgetMonth(dataDir, chosen);
 
   const expected = new Map<string, number>();
   for (const event of (await ayqForecast(dataDir, today)).events) {

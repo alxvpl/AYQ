@@ -24,6 +24,7 @@ import type {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCategories } from './ayq-categories.ts';
+import { ayqCategorySpending } from './ayq-ledger.ts';
 
 /** What the budget's type must be for 03 §7.8 to hold. PROVISIONAL. */
 export const AYQ_BUDGET_TYPE = 'tracking';
@@ -134,8 +135,24 @@ async function emptyMonth(month: string): Promise<AyqBudgetMonth> {
  * `remainingCents` is clamped at zero because 03 §7.8 says overspending does
  * not create a negative remainder. What it does create is reported separately,
  * as `overspentCents`, rather than hidden inside a clamp.
+ *
+ * What an expense category took is AYQ's own reading of the ledger, not the
+ * engine's `spent`. Measured at the pinned baseline, `spent` is the sum of
+ * every transaction filed in the category, so it nets *any* credit against the
+ * month's spending — including one the bank gave no reversal evidence for,
+ * which 03 §9.5 says proves nothing. The engine cannot do otherwise: the
+ * evidence is AYQ's and is not a column of Actual's. So the plan is the
+ * engine's, as 02 §5.1 requires, and the actual is answered where the rule
+ * lives, once, for Reports and for Plan alike (§9.3).
+ *
+ * An income category's actual is still the engine's own figure. 03 §9 decided
+ * what a reversal of an *expense* does; money received is not that question,
+ * and settling it here by implication is what 00 §1 forbids.
  */
-export async function ayqBudgetMonth(month: string): Promise<AyqBudgetMonth> {
+export async function ayqBudgetMonth(
+  dataDir: string,
+  month: string,
+): Promise<AyqBudgetMonth> {
   if (!MONTH.test(month)) throw new Error('a budget month is YYYY-MM');
   // A month Actual keeps no budget for holds no plan, which is the truth about
   // it rather than an error. Saying so lets the forecast reach its full twelve
@@ -144,13 +161,23 @@ export async function ayqBudgetMonth(month: string): Promise<AyqBudgetMonth> {
 
   const answer = (await api.getBudgetMonth(month)) as unknown as ActualBudgetMonth;
 
+  // The last day is written as 31 whatever the month's length: the comparison
+  // is on the text of the date, so a shorter month simply has no rows past its
+  // end. The same form the status bar's month uses.
+  const spending = await ayqCategorySpending(dataDir, {
+    from: `${month}-01`,
+    to: `${month}-31`,
+  });
+
   const categories: AyqBudgetCategory[] = [];
   for (const group of answer.categoryGroups ?? []) {
     for (const category of group.categories ?? []) {
       const planCents = Number(category.budgeted ?? 0);
       const spent = Number(category.spent ?? 0);
       const isIncome = category.is_income === true;
-      const actualCents = isIncome ? spent : -spent;
+      const actualCents = isIncome
+        ? spent
+        : (spending.get(category.id) ?? 0);
       categories.push({
         categoryId: category.id,
         categoryName: category.name,
@@ -180,6 +207,7 @@ export async function ayqBudgetMonth(month: string): Promise<AyqBudgetMonth> {
 
 /** Sets one category's plan for one month. Zero clears it. */
 export async function ayqSetPlan(
+  dataDir: string,
   month: string,
   categoryId: string,
   cents: number,
@@ -196,5 +224,5 @@ export async function ayqSetPlan(
     );
   }
   await api.setBudgetAmount(month, categoryId, cents);
-  return ayqBudgetMonth(month);
+  return ayqBudgetMonth(dataDir, month);
 }

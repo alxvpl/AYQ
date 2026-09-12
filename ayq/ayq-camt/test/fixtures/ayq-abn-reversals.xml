@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A wholly invented statement, shaped like an ABN AMRO camt.053.001.02 export,
+  written for one question: what a reversal does to the totals (03 §9).
+
+  The IBANs, names and amounts belong to no one. Real bank data never enter the
+  repository — they stay on the user's machine (03 §6.1).
+
+  Eight entries, chosen so that every arm of 03 §9 has a row:
+
+    1  -40.00  direct debit, an ordinary expense
+    2  +2500.00  salary, an ordinary credit — income and nothing else
+    3  +40.00  the reversal of 1, carrying RvslInd AND RtrInf (§9.4)
+    4  -25.00  a second ordinary expense
+    5  +25.00  the reversal of 4, carrying RtrInf only and no RvslInd (§9.4)
+    6  -18.00  a card payment
+    7  +18.00  a credit from the same shop with NO reversal evidence at all —
+               a positive amount, an equal and opposite one, and an expense
+               category are exactly what §9.5 says do not prove a reversal
+    8  -12.00  a second card payment, so the categories below are not all zero
+
+  Opening 1000.00, movements +2488.00, closing 3488.00.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-20260615-0001</MsgId>
+      <CreDtTm>2026-06-16T03:05:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0123456789.2026-06-15</Id>
+      <ElctrncSeqNb>166</ElctrncSeqNb>
+      <LglSeqNb>166</LglSeqNb>
+      <CreDtTm>2026-06-16T03:05:00</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-06-15T00:00:00</FrDtTm>
+        <ToDtTm>2026-06-15T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL00TEST0123456789</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">1000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-06-15</Dt></Dt>
+      </Bal>
+
+      <!-- 1. An ordinary direct debit. -->
+      <Ntry>
+        <Amt Ccy="EUR">40.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000001</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>RDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-ENERGIE-202606</EndToEndId>
+              <MndtId>MANDAAT-4471902</MndtId>
+            </Refs>
+            <RltdPties>
+              <Cdtr><Nm>TESTENERGIE NEDERLAND B.V.</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>NL00TEST0987654321</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>SEPA Incasso algemeen doorlopend Incassant: TESTENERGIE NEDERLAND B.V.</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 2. Salary. An ordinary credit, and income by every reading. -->
+      <Ntry>
+        <Amt Ccy="EUR">2500.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000002</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>RCDT</Cd><SubFmlyCd>SALA</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>E2E-SALARIS-202606</EndToEndId></Refs>
+            <RltdPties>
+              <Dbtr><Nm>TESTWERKGEVER B.V.</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>NL00TEST0055500000</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>SEPA Overboeking Salaris juni 2026</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 3. The reversal of entry 1: RvslInd and RtrInf together. -->
+      <Ntry>
+        <Amt Ccy="EUR">40.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <RvslInd>true</RvslInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000003</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>RDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-ENERGIE-202606</EndToEndId>
+              <MndtId>MANDAAT-4471902</MndtId>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>TESTENERGIE NEDERLAND B.V.</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>NL00TEST0987654321</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RtrInf>
+              <Rsn><Cd>MD06</Cd></Rsn>
+              <AddtlInf>Terugboeking incasso op verzoek rekeninghouder</AddtlInf>
+            </RtrInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 4. A second ordinary direct debit. -->
+      <Ntry>
+        <Amt Ccy="EUR">25.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000004</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>RDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-WATER-202606</EndToEndId>
+              <MndtId>MANDAAT-7781004</MndtId>
+            </Refs>
+            <RltdPties>
+              <Cdtr><Nm>TESTWATER NV</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>NL00TEST0044400000</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>SEPA Incasso algemeen doorlopend Incassant: TESTWATER NV</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 5. The reversal of entry 4: RtrInf only, no RvslInd. -->
+      <Ntry>
+        <Amt Ccy="EUR">25.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000005</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>RDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-WATER-202606</EndToEndId>
+              <MndtId>MANDAAT-7781004</MndtId>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>TESTWATER NV</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>NL00TEST0044400000</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RtrInf>
+              <Rsn><Cd>MS03</Cd></Rsn>
+              <AddtlInf>Terugboeking incasso</AddtlInf>
+            </RtrInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 6. A card payment. -->
+      <Ntry>
+        <Amt Ccy="EUR">18.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000006</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTWINKEL 88,PAS421 NR:00C3D4, 15.06.26/14:02   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+
+      <!-- 7. A credit from the same shop with no reversal evidence: no RvslInd,
+           no RtrInf. Equal and opposite to entry 6 on purpose (§9.5). -->
+      <Ntry>
+        <Amt Ccy="EUR">18.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000007</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>RCDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>E2E-WINKEL-RETOUR</EndToEndId></Refs>
+            <RltdPties>
+              <Dbtr><Nm>TESTWINKEL 88</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>NL00TEST0066600000</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>SEPA Overboeking Retour bestelling 20260610-12</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 8. A second card payment, so that the first category is not emptied
+           by its own reversal and the arithmetic has something to say. -->
+      <Ntry>
+        <Amt Ccy="EUR">12.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-15</Dt></BookgDt>
+        <ValDt><Dt>2026-06-15</Dt></ValDt>
+        <AcctSvcrRef>2026061500000008</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTKIOSK 12,PAS421 NR:00C3D4, 15.06.26/17:41   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">3488.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-06-15</Dt></Dt>
+      </Bal>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

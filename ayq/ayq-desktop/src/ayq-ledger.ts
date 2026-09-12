@@ -38,6 +38,12 @@ import {
   ayqStandingDecision,
   type AyqStore,
 } from './ayq-store.ts';
+import {
+  ayqHasReversalEvidence,
+  ayqIncomeCents,
+  ayqMoneyKind,
+  ayqSpendingCents,
+} from './ayq-totals.ts';
 
 /** How many rows the screen is given when it does not ask for a number. */
 export const AYQ_LEDGER_LIMIT = 500;
@@ -191,61 +197,104 @@ function toRow(row: AyqQueriedRow, source: AyqCategorySource): AyqLedgerRow {
   };
 }
 
+type AyqCategoryTotal = { name: string; cents: number; count: number };
+
 /**
- * What each category took over a period.
+ * What each category took over a period, and what came in beside it.
  *
- * Spending only, and stated positive. Income is reported once as its own total
- * rather than netted into the categories, because "what did this year cost" and
- * "what came in" are two questions and answering them as one difference hides
- * both. A refund inside a category is a positive amount there and does reduce
- * that category, which is right: it is money that came back from that shop.
+ * The one place the period's arithmetic is done, so that Reports and Plan
+ * cannot come to disagree about the same month (03 §9.3). Every row is put to
+ * `ayqMoneyKind`, and what it counts as decides where it goes — the sign alone
+ * decides nothing (§9.5).
+ *
+ * Spending is stated positive, and a confirmed reversal is a negative
+ * contribution to its own category: 40.00 out and 40.00 reversed is a category
+ * that took nothing, which is what §9.1 says and what a person means. Income is
+ * reported once as its own total rather than netted into the categories,
+ * because "what did this year cost" and "what came in" are two questions and
+ * answering them as one difference hides both.
  *
  * What nobody has filed yet is a row like any other. A total that quietly drops
  * it would be a total that lies about the size of the year.
  */
-export async function ayqSpending(
+async function periodTotals(
   dataDir: string,
-  filter: AyqSpendingFilter = {},
-): Promise<AyqSpending> {
+  filter: AyqSpendingFilter,
+): Promise<{
+  rows: AyqQueriedRow[];
+  byCategory: Map<string, AyqCategoryTotal>;
+  income: number;
+  transfers: number;
+}> {
   const rows = await queried(filter);
   const store = ayqReadStore(dataDir);
   const isTransfer = await internalTransfers(dataDir, store);
+  const isReversal = reversals(store);
 
-  const byCategory = new Map<
-    string,
-    { name: string; cents: number; count: number }
-  >();
+  const byCategory = new Map<string, AyqCategoryTotal>();
   let income = 0;
   let transfers = 0;
 
   for (const row of rows) {
+    const cents = Number(row.amount ?? 0);
     // Money that moved between two accounts AYQ holds did not leave and did not
     // arrive (03 §7.6). Counting it would make a person who keeps a savings
     // account look like someone who spends twice what they earn.
-    if (isTransfer(row)) {
+    const kind = ayqMoneyKind(cents, isTransfer(row), isReversal(row));
+    if (kind === 'transfer') {
       transfers += 1;
       continue;
     }
-    const cents = Number(row.amount ?? 0);
-    if (cents > 0) {
-      income += cents;
-      continue;
-    }
-    if (cents === 0) continue;
+
+    income += ayqIncomeCents(kind, cents);
+
+    const spending = ayqSpendingCents(kind, cents);
+    if (spending === 0) continue;
 
     const id = row.categoryId ?? '';
     const found = byCategory.get(id);
     if (found) {
-      found.cents += -cents;
+      found.cents += spending;
       found.count += 1;
     } else {
       byCategory.set(id, {
         name: row.category ?? 'Uncategorised',
-        cents: -cents,
+        cents: spending,
         count: 1,
       });
     }
   }
+
+  return { rows, byCategory, income, transfers };
+}
+
+/**
+ * What each category took over a period, by category id.
+ *
+ * The Plan screen's actual, answered from AYQ's own reading of the ledger
+ * rather than from the engine's netting of every credit in a category — which
+ * is the same question Reports asks, and 03 §9.3 requires one answer to it.
+ * The empty string is what nobody has filed yet.
+ */
+export async function ayqCategorySpending(
+  dataDir: string,
+  filter: AyqSpendingFilter = {},
+): Promise<Map<string, number>> {
+  const { byCategory } = await periodTotals(dataDir, filter);
+  return new Map(
+    [...byCategory.entries()].map(([id, one]) => [id, one.cents]),
+  );
+}
+
+/** What each category took over a period, as the Reports screen asks it. */
+export async function ayqSpending(
+  dataDir: string,
+  filter: AyqSpendingFilter = {},
+): Promise<AyqSpending> {
+  const { rows, byCategory, income, transfers } = await periodTotals(
+    dataDir,
+    filter,
+  );
 
   const total = [...byCategory.values()].reduce(
     (sum, one) => sum + one.cents,
@@ -371,7 +420,7 @@ export async function ayqLedger(
     );
     matching.sort(compareRows);
     return {
-      ...totalsOf(matching),
+      ...totalsOf(matching, reversals(store)),
       rows: matching.slice(0, limit).map(row => toRow(row, source(row))),
       shown: Math.min(matching.length, limit),
     };
@@ -414,9 +463,32 @@ export async function ayqLedger(
     ) as Promise<{ data?: number }>,
   ]);
 
-  const incomeCents = Number(incoming.data ?? 0);
+  // 03 §9. The database can add up signs and nothing else: the evidence that
+  // makes a credit a reversal is AYQ's own and is not a column of Actual's. So
+  // the database still does the arithmetic over the whole set the conditions
+  // admit — never over the page — and the reversals are then moved from the one
+  // side to the other, by one more question that asks only about the rows the
+  // store already says are reversals. A budget holding none asks nothing.
+  const reversed = reversalKeys(store);
+  const reversedCents =
+    reversed.length === 0
+      ? 0
+      : Number(
+          (
+            (await api.aqlQuery(
+              apply(api.q('transactions'))
+                .filter({ imported_id: { $oneof: reversed } })
+                .filter({ amount: { $gt: 0 } })
+                .calculate({ $sum: '$amount' }),
+            )) as { data?: number }
+          ).data ?? 0,
+        );
+
+  // Out of Received, and off Spent: one figure moving sides, so the net of the
+  // two says exactly what it said before (§9.1, §9.2).
+  const incomeCents = Number(incoming.data ?? 0) - reversedCents;
   // The database sums what it holds, which for money going out is negative.
-  const expenseCents = -Number(outgoing.data ?? 0);
+  const expenseCents = -Number(outgoing.data ?? 0) - reversedCents;
 
   return {
     rows: (page.data ?? []).map(row => toRow(row, source(row))),
@@ -429,8 +501,17 @@ export async function ayqLedger(
   };
 }
 
-/** The totals over a set already in hand, for the one case that needs them. */
-function totalsOf(rows: readonly AyqQueriedRow[]): {
+/**
+ * The totals over a set already in hand, for the one case that needs them.
+ *
+ * The same rule the database path applies, applied here to rows rather than to
+ * sums — 03 §9.3 is a statement about the answer, not about how it was reached,
+ * and a second reading of the sign would be a second rule.
+ */
+function totalsOf(
+  rows: readonly AyqQueriedRow[],
+  isReversal: (row: AyqQueriedRow) => boolean,
+): {
   total: number;
   incomeCents: number;
   expenseCents: number;
@@ -442,8 +523,12 @@ function totalsOf(rows: readonly AyqQueriedRow[]): {
   let uncategorised = 0;
   for (const row of rows) {
     const cents = Number(row.amount ?? 0);
-    if (cents >= 0) incomeCents += cents;
-    else expenseCents += -cents;
+    // A transfer is not excluded here, and was not before: this is the
+    // Register, which shows every row the filter admits and totals what it
+    // shows. 03 §7.6 is Reports' and the forecast's question.
+    const kind = ayqMoneyKind(cents, false, isReversal(row));
+    incomeCents += ayqIncomeCents(kind, cents);
+    expenseCents += ayqSpendingCents(kind, cents);
     if (!row.categoryId) uncategorised += 1;
   }
   return {
@@ -536,6 +621,25 @@ async function internalTransfers(
   if (ownNames.size < 2) return () => false;
   return row =>
     ayqIsInternalTransfer(ownNames, store.provenance[ayqRowKey(row)]);
+}
+
+/**
+ * Whether a row is one the bank told AYQ was a reversal (03 §9.4).
+ *
+ * Read from the provenance the importer wrote, which is where `RvslInd` and
+ * `RtrInf` ended up. A row AYQ did not import has no such evidence and is
+ * therefore not one — which is the honest answer rather than a guess from its
+ * amount (§9.5).
+ */
+function reversals(store: AyqStore): (row: AyqQueriedRow) => boolean {
+  return row => ayqHasReversalEvidence(store.provenance[ayqRowKey(row)]);
+}
+
+/** The keys of every row the store holds reversal evidence for (03 §9.4). */
+function reversalKeys(store: AyqStore): string[] {
+  return Object.keys(store.provenance).filter(key =>
+    ayqHasReversalEvidence(store.provenance[key]),
+  );
 }
 
 /** Every account, with the balance the engine's spreadsheet computed. */

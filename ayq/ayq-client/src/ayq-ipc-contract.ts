@@ -596,8 +596,12 @@ export type AyqSummary = {
  *
  * Amounts are spending, stated positive: a person asking what a year cost does
  * not want to read it as a negative number. Income is left out entirely rather
- * than netted off, because a category's total is a question about outgoings and
- * a refund inside it is already subtracted.
+ * than netted off, because a category's total is a question about outgoings.
+ *
+ * A confirmed reversal is already subtracted here (03 §9.1): it is the money
+ * that came back, and the category kept none of it. A credit AYQ holds no
+ * reversal evidence for is income and is not subtracted, however exactly it
+ * matches an expense in the same category (§9.5).
  */
 export type AyqSpendingRow = {
   /** Null for the transactions nobody has filed yet. */
@@ -853,8 +857,12 @@ export type AyqBudgetCategory = {
   planCents: number;
   /**
    * What actually happened, in the direction the category means: spending for
-   * an expense category, money received for an income one. Negative only when a
-   * refund was bigger than the month's spending, which is true and stays true.
+   * an expense category, money received for an income one.
+   *
+   * An expense category's figure is AYQ's own reading of the ledger under
+   * 03 §9, the same one Reports states (§9.3) — not the engine's netting of
+   * every credit filed in the category. Negative only when the reversals were
+   * bigger than the month's spending, which is true and stays true.
    */
   actualCents: number;
   /** Plan minus actual, never below zero (03 §7.8). */
