@@ -141,3 +141,61 @@ export async function ayqPress(element: Element | null): Promise<void> {
     (element as HTMLElement).click();
   });
 }
+
+/**
+ * Types into a control the way a person does, and lets React see it.
+ *
+ * Through the prototype's own value setter, which is the part that matters.
+ * React caches the last value it saw on the element itself and skips `onChange`
+ * when the value it reads back is the one it cached — so assigning `.value`
+ * directly updates the cache as well and the change is swallowed. Calling the
+ * setter on the prototype writes the value without touching React's cache,
+ * which is exactly what a person typing does.
+ */
+export async function ayqType(
+  element: Element | null,
+  value: string,
+): Promise<void> {
+  if (element === null) throw new Error('there was nothing there to type into');
+  const window = (
+    globalThis as unknown as {
+      window: {
+        Event: typeof Event;
+        HTMLInputElement: typeof HTMLInputElement;
+        HTMLSelectElement: typeof HTMLSelectElement;
+        HTMLTextAreaElement: typeof HTMLTextAreaElement;
+      };
+    }
+  ).window;
+
+  const prototype =
+    element instanceof window.HTMLSelectElement
+      ? window.HTMLSelectElement.prototype
+      : element instanceof window.HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+  if (setter === undefined) throw new Error('that control has no value to set');
+
+  await act(async () => {
+    setter.call(element, value);
+    element.dispatchEvent(new window.Event('input', { bubbles: true }));
+    element.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+}
+
+/**
+ * Takes focus away from a control, which is when a typed-in cell commits.
+ *
+ * As `focusout`, not `blur`: `blur` does not bubble, so React listens for
+ * `focusout` and maps it to `onBlur`. A dispatched `blur` reaches the element
+ * and nothing else, which looks like a handler that was never wired.
+ */
+export async function ayqBlur(element: Element | null): Promise<void> {
+  if (element === null) throw new Error('there was nothing there to leave');
+  const window = (globalThis as unknown as { window: { FocusEvent: typeof FocusEvent } })
+    .window;
+  await act(async () => {
+    element.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true }));
+  });
+}

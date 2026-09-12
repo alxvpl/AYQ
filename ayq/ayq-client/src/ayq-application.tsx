@@ -32,7 +32,9 @@ import type {
 } from './ayq-ipc-contract.ts';
 import { ayqOnOpenRegister, type AyqLegacyView } from './ayq-legacy-views.ts';
 import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
+import { AyqPlanScreen } from './ayq-screens/ayq-plan.tsx';
 import { AyqTodayScreen } from './ayq-screens/ayq-today.tsx';
+import { AyqUpcomingScreen } from './ayq-screens/ayq-upcoming.tsx';
 import { AyqImportScreen } from './ayq-screens/ayq-import.tsx';
 import { AyqRegisterScreen } from './ayq-screens/ayq-register.tsx';
 import { AyqNotBuilt } from './ayq-screens/ayq-not-built.tsx';
@@ -69,8 +71,6 @@ const useStyles = makeStyles({
 
 /** The legacy renderer a destination still uses, where it still uses one. */
 const LEGACY: Partial<Record<AyqDestination, AyqLegacyView>> = {
-  upcoming: 'upcoming',
-  plan: 'plan',
   review: 'counterparties',
 };
 
@@ -225,6 +225,16 @@ export function AyqApplication(): ReactNode {
     );
   } else if (destination === 'accounts') {
     body = <AyqAccountsScreen onFailure={say} round={round} />;
+  } else if (destination === 'upcoming') {
+    body = (
+      <AyqUpcomingScreen
+        key={`upcoming-${round}`}
+        onFailure={say}
+        onNotice={setNotice}
+      />
+    );
+  } else if (destination === 'plan') {
+    body = <AyqPlanScreen key={`plan-${round}`} onFailure={say} />;
   } else if (destination === 'today') {
     body = (
       <AyqTodayScreen

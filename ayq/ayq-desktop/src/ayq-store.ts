@@ -9,13 +9,21 @@
 // The file is versioned and written atomically. A budget written by a newer
 // AYQ is refused rather than quietly rewritten with fields it does not know —
 // losing a person's rules to a downgrade is not an acceptable failure mode.
+//
+// Changing its shape is governed by 03 §5.3–§5.8: the file is copied first and
+// the copy is kept, the steps run one version at a time in order, the new file
+// is moved into place rather than edited where it lies, an interrupted
+// migration leaves a store that still opens, and a step changes shape and never
+// meaning. Every step is proved on a store of the version before it.
 
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -131,7 +139,10 @@ export const AYQ_DEFAULT_SETTINGS: AyqSettings = { ground: 'system' };
 const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
 
 /**
- * Bump this when the shape changes, and add a step to `migrate`.
+ * Bump this when the shape changes, and add one step to `AYQ_MIGRATIONS`.
+ *
+ * The steps run one integer version at a time, in order (03 §5.6), and the
+ * store is copied before any of them runs (§5.3).
  *
  *   1  imports, rules, provenance, decisions.
  *   2  aliases: the explicit "this imported variant is that counterparty"
@@ -239,16 +250,32 @@ export function ayqNormaliseSettings(value: unknown): AyqSettings {
 }
 
 /**
- * Brings an older store up to the current shape.
+ * Bringing an older store up to the current shape (03 §5.3–§5.8).
  *
- * Every field is defaulted one by one rather than spread from what was read, so
- * a store written by version 1 comes back complete and a field this AYQ does
- * not know about cannot ride along into the next write.
+ * One integer version at a time, in order (§5.6). Each step below is handed the
+ * store as the version before it wrote it and returns the version after — so a
+ * store from version 1 passes through every step that has been written since,
+ * and adding a version means adding one step rather than editing six defaults.
  *
- * A store from a newer AYQ is refused rather than migrated downwards. Losing
- * somebody's aliases and rules to a downgrade is not an acceptable failure, and
- * a version this code has never seen cannot be read safely by guessing.
+ * A step changes shape and not meaning (§5.7). None of them resolves a
+ * counterparty, applies a rule, sets a category or matches an expected payment,
+ * and where a new field has no value for existing data it stays empty, because
+ * empty is what AYQ actually knows about it.
+ *
+ * The whole chain runs in memory and the file is only ever replaced atomically
+ * (§5.4), which is what makes it repeatable (§5.5): interrupted, the old file
+ * is still there to be read, and reading it again completes the change.
  */
+type AyqRaw = Record<string, unknown>;
+
+/** One step, from the version before it to `to`. */
+type AyqMigration = {
+  to: number;
+  /** What the shape change is, in the words a person would use. */
+  what: string;
+  change: (store: AyqRaw) => AyqRaw;
+};
+
 /**
  * A version 3 record, given the two dates 03 §7.14 turns on.
  *
@@ -273,69 +300,128 @@ function decided(one: AyqPlannedRecord): AyqPlannedRecord {
   };
 }
 
-function migrate(raw: unknown): AyqStore {
-  if (typeof raw !== 'object' || raw === null) return empty();
-  const value = raw as Partial<AyqStore>;
+const AYQ_MIGRATIONS: readonly AyqMigration[] = [
+  {
+    to: 2,
+    what: 'an alias table',
+    // A budget imported before aliases existed has made no alias decisions, so
+    // an empty table is the whole of this upgrade.
+    change: store => ({ ...store, aliases: array(store.aliases) }),
+  },
+  {
+    to: 3,
+    what: 'planned records, occurrence decisions and the account flags',
+    // Same rule: a budget that predates the forecast has made no plan
+    // decisions, and nothing already in the file is rewritten.
+    change: store => ({
+      ...store,
+      planned: array(store.planned),
+      occurrences: array(store.occurrences).map(one => {
+        const held = one as AyqRaw;
+        return { ...held, rejected: array(held.rejected) };
+      }),
+      accountFlags: record(store.accountFlags),
+    }),
+  },
+  {
+    to: 4,
+    what: 'the day each planned record was confirmed or suggested (03 §7.14)',
+    change: store => ({
+      ...store,
+      planned: (array(store.planned) as AyqPlannedRecord[]).map(decided),
+    }),
+  },
+  {
+    to: 5,
+    what: 'the interface settings (04 A23)',
+    // The default is to follow the system, which is the same as never having
+    // been asked — which is exactly what happened.
+    change: store => ({ ...store, settings: ayqNormaliseSettings(store.settings) }),
+  },
+  {
+    to: 6,
+    what: 'a transaction\u2019s category decisions as a history',
+    // The one decision an older store holds is the decision that stands, so it
+    // becomes a history with one entry in it. Nothing is invented, nothing is
+    // lost, and no decision changes.
+    change: store => ({ ...store, decisions: decisionsOf(store.decisions) }),
+  },
+  {
+    to: 7,
+    what: 'how far each account\u2019s statements reach (03 §8.1)',
+    // Empty is the truth about an older store: nothing was recorded at import
+    // time, and deriving it from the ledger now would be AYQ agreeing with
+    // itself rather than with the bank.
+    change: store => ({ ...store, coverage: record(store.coverage) }),
+  },
+];
 
-  const version = Number(value.version ?? 0);
-  if (version > AYQ_STORE_VERSION) {
+function array(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function record(value: unknown): Record<string, never> {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, never>)
+    : {};
+}
+
+/** The version a file claims, with a missing one read as the first shape. */
+export function ayqStoreVersionOf(raw: unknown): number {
+  if (typeof raw !== 'object' || raw === null) return AYQ_STORE_VERSION;
+  const claimed = Number((raw as AyqRaw).version ?? 0);
+  return Number.isFinite(claimed) && claimed >= 1 ? claimed : 1;
+}
+
+/**
+ * Runs the steps a store of this version has not had, in order.
+ *
+ * Exported so a test can hand it a store of one version and read back the next,
+ * which is what 03 §5.8 asks of every migration.
+ */
+export function ayqMigrate(raw: unknown): AyqStore {
+  if (typeof raw !== 'object' || raw === null) return empty();
+
+  const from = ayqStoreVersionOf(raw);
+  if (from > AYQ_STORE_VERSION) {
+    // Refused rather than migrated downwards (§5.6). Losing somebody's aliases
+    // and rules to a downgrade is not an acceptable failure, and a shape this
+    // code has never seen cannot be read safely by guessing.
     throw new Error(
-      `this budget's AYQ store is version ${version}, and this AYQ knows ` +
+      `this budget's AYQ store is version ${from}, and this AYQ knows ` +
         `version ${AYQ_STORE_VERSION}. A newer AYQ wrote it; upgrade rather ` +
         'than overwrite it.',
     );
   }
 
+  let held = raw as AyqRaw;
+  for (const step of AYQ_MIGRATIONS) {
+    if (step.to <= from) continue;
+    held = step.change(held);
+    held = { ...held, version: step.to };
+  }
+
+  // And then the shape is asserted rather than assumed. A field a development
+  // build wrote half of, or a file somebody edited by hand, arrives here as
+  // whatever it is; every reader below has a right to the type it declares.
   return {
     version: AYQ_STORE_VERSION,
-    imports: Array.isArray(value.imports) ? value.imports : [],
-    rules: Array.isArray(value.rules) ? value.rules : [],
-    provenance:
-      typeof value.provenance === 'object' && value.provenance !== null
-        ? value.provenance
-        : {},
-    // Version 5 and earlier kept one decision per transaction. That decision
-    // is the one that stands, so it becomes a history with one entry in it —
-    // nothing is invented and nothing is lost.
-    decisions: decisionsOf(value.decisions),
-    // Version 1 had no alias table. An empty one is the whole of that upgrade:
-    // a budget imported before aliases existed has made no alias decisions.
-    aliases: Array.isArray(value.aliases) ? value.aliases : [],
-    // And versions 1 and 2 had no plan. Same rule: a budget that predates the
-    // forecast has made no plan decisions, so an empty set is the whole
-    // upgrade, and nothing already in the file is rewritten.
-    //
-    // Version 3 had the records but not the two dates 03 §7.14 turns on. A
-    // record written then was decided when it was created — that is the only
-    // date the file holds and it is the true one, because version 3 created a
-    // record and confirmed or suggested it in the same act. So `createdAt`
-    // fills whichever of the two the record's state calls for, and every
-    // record survives the upgrade with the future it already had.
-    planned: Array.isArray(value.planned) ? value.planned.map(decided) : [],
-    // Each occurrence is normalised rather than trusted: a field added while
-    // version 3 was being built would otherwise arrive as `undefined` in code
-    // that has every right to expect an array.
-    occurrences: Array.isArray(value.occurrences)
-      ? value.occurrences.map(one => ({
-          ...one,
-          rejected: Array.isArray(one?.rejected) ? one.rejected : [],
-        }))
-      : [],
-    accountFlags:
-      typeof value.accountFlags === 'object' && value.accountFlags !== null
-        ? value.accountFlags
-        : {},
-    // Versions 1 to 4 had no interface settings. An older store gains the
-    // default, which is to follow the system — the same as never having been
-    // asked, which is exactly what happened.
-    settings: ayqNormaliseSettings(value.settings),
-    // Versions 1 to 6 recorded no coverage. An empty one is the truth about
-    // such a store: what the bank said at the end of a statement was not kept,
-    // and deriving it from the ledger now would be AYQ agreeing with itself.
-    coverage:
-      typeof value.coverage === 'object' && value.coverage !== null
-        ? (value.coverage as Record<string, AyqStatementCoverage>)
-        : {},
+    imports: array(held.imports) as AyqImportRecord[],
+    rules: array(held.rules) as AyqCategoryRule[],
+    provenance: record(held.provenance) as unknown as Record<string, AyqProvenance>,
+    decisions: decisionsOf(held.decisions),
+    aliases: array(held.aliases) as AyqAliasRecord[],
+    planned: array(held.planned) as AyqPlannedRecord[],
+    occurrences: array(held.occurrences) as AyqPlanOccurrenceRecord[],
+    accountFlags: record(held.accountFlags) as unknown as Record<
+      string,
+      AyqAccountFlags
+    >,
+    settings: ayqNormaliseSettings(held.settings),
+    coverage: record(held.coverage) as unknown as Record<
+      string,
+      AyqStatementCoverage
+    >,
   };
 }
 
@@ -405,7 +491,60 @@ export function ayqReadStore(dataDir: string): AyqStore {
     return empty();
   }
 
-  return migrate(parsed);
+  const from = ayqStoreVersionOf(parsed);
+  if (from < AYQ_STORE_VERSION) {
+    // 03 §5.3: the store is copied before the shape changes, and the copy is
+    // kept. AYQ has already migrated a live store from 3 to 4 with no rule
+    // requiring one, and that is the single way the owner's rules, aliases and
+    // plan can be lost beyond recovery. A migration that could not first make
+    // its copy does not run — so this throws rather than proceeding, and the
+    // window reports it the way it reports any store it could not open.
+    ayqKeepBeforeMigrating(dataDir, from);
+  }
+
+  return ayqMigrate(parsed);
+}
+
+/**
+ * The copy 03 §5.3 requires, made before a migration and kept afterwards.
+ *
+ * One per version, not one per launch: a store read and never written is
+ * migrated again on the next launch, and a directory filling with identical
+ * copies of the same shape is noise rather than safety. The copy that exists is
+ * the one that matters, so an existing one is left exactly where it is.
+ *
+ * "Kept until the migrated store has been opened successfully at least once" is
+ * the floor and not the ceiling: nothing here ever deletes one. A file of a few
+ * kilobytes is the cheapest insurance in this product, and the owner can remove
+ * one whenever they choose.
+ */
+export function ayqKeepBeforeMigrating(dataDir: string, from: number): string {
+  const path = ayqStorePath(dataDir);
+  const kept = join(dataDir, `ayq-store.before-v${from}-to-v${AYQ_STORE_VERSION}.json`);
+  // A file, specifically. Anything else standing at that name — a directory, a
+  // dangling link — is not a copy of anybody's store, and treating it as one
+  // would let the migration run with no copy at all.
+  if (existsSync(kept) && statSync(kept).isFile()) return kept;
+
+  try {
+    // Copied, not moved: the store AYQ is about to read from stays where it is,
+    // so an interruption here leaves the old shape intact and readable (§5.5).
+    copyFileSync(path, kept);
+  } catch (error) {
+    throw new Error(
+      `this budget's AYQ store is version ${from} and has to be brought to ` +
+        `version ${AYQ_STORE_VERSION}, and AYQ could not first keep a copy of ` +
+        `it at ${kept} (${
+          error instanceof Error ? error.message : String(error)
+        }). The store has not been changed. Make that directory writable, or ` +
+        'copy the file aside yourself, and open AYQ again.',
+    );
+  }
+  process.stderr.write(
+    `[ayq-store] kept ${kept} before bringing version ${from} to ` +
+      `${AYQ_STORE_VERSION}\n`,
+  );
+  return kept;
 }
 
 /**

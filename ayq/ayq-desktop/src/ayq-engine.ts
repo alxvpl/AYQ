@@ -159,9 +159,42 @@ async function findBudgetId(): Promise<string | null> {
   return match?.id ?? null;
 }
 
+/**
+ * The open that is already in flight, if one is.
+ *
+ * `opened` is only set once a budget is loaded, so two requests arriving
+ * together both found it null, both ran `api.init`, and both created a budget.
+ * On a first launch that produced two budget ids, a SQLite "table payees
+ * already exists", and a window that said it had an unknown problem opening a
+ * budget it had just made.
+ *
+ * It only became reachable when the renderer became a React shell that asks
+ * several questions at once — which is the right thing for a renderer to do.
+ * The engine is what has to be able to answer them: the first request opens the
+ * budget and the rest wait on that same open.
+ */
+let opening: Promise<AyqOpenBudget> | null = null;
+
 async function openBudget(dataDir: string): Promise<AyqOpenBudget> {
   if (opened) return opened;
+  if (opening === null) {
+    opening = openBudgetOnce(dataDir);
+    // Cleared either way. Resolved, `opened` answers from then on; rejected,
+    // the next request must be able to try again rather than be handed the same
+    // failure for the life of the process.
+    opening.then(
+      () => {
+        opening = null;
+      },
+      () => {
+        opening = null;
+      },
+    );
+  }
+  return opening;
+}
 
+async function openBudgetOnce(dataDir: string): Promise<AyqOpenBudget> {
   // On a first launch the directory does not exist yet, and the API expects to
   // be handed one that does.
   mkdirSync(dataDir, { recursive: true });

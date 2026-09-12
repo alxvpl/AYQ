@@ -537,42 +537,78 @@ async function problemShown(window: BrowserWindow): Promise<string> {
  * (§7.13), a suggestion that brings no arrears with it (§7.14), and a match
  * that is offered rather than made because two candidates qualify (§7.16).
  */
-async function conformanceShown(window: BrowserWindow): Promise<string> {
-  await window.webContents.executeJavaScript(
-    'document.querySelector(\'[data-ayq-tab="upcoming"]\').click(); true',
-  );
-
-  const ready = async (): Promise<boolean> =>
+/**
+ * Opens Upcoming and waits for the forecast table to have drawn.
+ *
+ * The table is the forecast, so a screen that has opened but not answered has no
+ * rows — and reading it then would report what it looked like before the engine
+ * replied rather than what it says.
+ */
+async function openUpcoming(window: BrowserWindow): Promise<boolean> {
+  if (!(await openDestination(window, 'upcoming'))) return false;
+  const drawn = async (): Promise<boolean> =>
     (await window.webContents.executeJavaScript(
-      "!!document.querySelector('[data-ayq-forecast]')",
+      "!!document.querySelector('[data-ayq-table=\"upcoming\"]')",
     )) === true;
-
   const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline && !(await ready())) {
+  while (Date.now() < deadline && !(await drawn())) {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  if (!(await ready())) return 'the forecast never appeared';
+  return drawn();
+}
 
-  const seen = (await window.webContents.executeJavaScript(`(() => {
-    const rows = [...document.querySelectorAll('.grid tbody tr[data-ayq-record]')];
-    const forRecord = id => rows.filter(row => row.dataset.ayqRecord === id);
-    const tagged = (list, tag) =>
-      list.filter(row => row.innerText.toLowerCase().includes(tag)).length;
-    const arrears = forRecord('plan-conf-overdue');
-    const detected = forRecord('plan-conf-detected');
-    const twin = forRecord('plan-conf-twin');
-    return {
-      arrears: arrears.length,
-      arrearsOverdue: tagged(arrears, 'overdue'),
-      detected: detected.length,
-      detectedOverdue: tagged(detected, 'overdue'),
-      detectedSuggested: tagged(detected, 'suggested'),
-      twin: twin.length,
-      offered: Number(
-        document.querySelector('[data-ayq-matches]')?.dataset.ayqMatches || 0,
-      ),
-    };
-  })()`)) as Record<string, number>;
+/** How many matches the screen is offering. -1 when it is not saying. */
+async function matchesOffered(window: BrowserWindow): Promise<number> {
+  const said = await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-matches]')?.getAttribute('data-ayq-matches') ?? ''",
+  );
+  return said === '' ? -1 : Number(said);
+}
+
+/**
+ * What 03 r004 changed, on the screen rather than in the engine's own tests.
+ *
+ * Three rules that are easy to state and easy to get wrong, each read off the
+ * rows of one seeded budget: six months of arrears that do not expire by the
+ * passage of time (§7.13), two years of detected history that owes nothing
+ * because a suggestion counts only from the day it was suggested (§7.14), and a
+ * match with two candidates that AYQ will not decide for a person (§7.16).
+ *
+ * The states are read from the state chip's own attribute rather than from the
+ * words in the row: the chip carries the state the screen believes, and the
+ * words are the catalogue's, which a translation may change.
+ */
+async function conformanceShown(window: BrowserWindow): Promise<string> {
+  if (!(await openUpcoming(window))) return 'the forecast never appeared';
+
+  const seen = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rows = [...document.querySelectorAll('[data-ayq-table="upcoming"] tbody tr')];
+        const forRecord = id =>
+          rows.filter(row =>
+            (row.getAttribute('data-ayq-row') || '').indexOf('record:' + id + ':') === 0);
+        const inState = (list, state) =>
+          list.filter(row =>
+            !!row.querySelector('[data-ayq-state="' + state + '"]')).length;
+        const arrears = forRecord('plan-conf-overdue');
+        const detected = forRecord('plan-conf-detected');
+        const twin = forRecord('plan-conf-twin');
+        const offered = document.querySelector('[data-ayq-matches]');
+        return JSON.stringify({
+          arrears: arrears.length,
+          arrearsOverdue: inState(arrears, 'overdue'),
+          detected: detected.length,
+          detectedOverdue: inState(detected, 'overdue'),
+          detectedSuggested: inState(detected, 'suggested'),
+          twin: twin.length,
+          offered: offered
+            ? Number(offered.getAttribute('data-ayq-matches'))
+            : -1,
+        });
+      })()`),
+    ),
+  ) as Record<string, number>;
 
   process.stdout.write(
     `[ayq-smoke] 03 r004: arrears ${seen.arrears} (${seen.arrearsOverdue} flagged overdue), ` +
@@ -594,6 +630,7 @@ async function conformanceShown(window: BrowserWindow): Promise<string> {
   }
   // 03 §7.16: two candidates qualify, so the match waits for a person, and the
   // payment it might have settled is still expected.
+  if (seen.offered < 0) return 'the screen does not say whether anything is offered';
   if (seen.offered < 1) return 'no match was offered; 03 §7.16 says one should be';
   if (seen.twin < 1) {
     return 'the subscription was matched away; 03 §7.16 says nobody chose yet';
@@ -601,118 +638,251 @@ async function conformanceShown(window: BrowserWindow): Promise<string> {
   return '';
 }
 
+/**
+ * Upcoming: a planned payment added the way a person adds one, and the scopes.
+ *
+ * The record is written through the fields and the button, and read back from
+ * the *table*, which the renderer rebuilt from the engine's answer — never from
+ * the controls the harness typed into, which would only ever agree with the
+ * harness.
+ *
+ * Then the thing 03 §7.17 turns on, checked on the screen: a single payment is
+ * offered no action that reaches beyond itself, and a series offers ending the
+ * series as an action of its own rather than as what dismissing does.
+ */
+/**
+ * What the Upcoming check found: what is wrong, and what the screen showed.
+ *
+ * Two fields rather than one string, because the caller used to decide whether a
+ * returned string was a failure by testing it against a list of prefixes — so a
+ * failure whose wording was not on the list passed as a screen dump. Every
+ * reason this function can give is a reason it has to name.
+ */
+type AyqUpcomingVerdict = { wrong: string; dump: string };
+
+function upcomingWrong(wrong: string): AyqUpcomingVerdict {
+  return { wrong, dump: '' };
+}
+
 async function upcomingShown(
   window: BrowserWindow,
   addSpec: string,
   acceptMatch: boolean,
-): Promise<string> {
-  await window.webContents.executeJavaScript(
-    'document.querySelector(\'[data-ayq-tab="upcoming"]\').click(); true',
-  );
-
-  const ready = async (): Promise<boolean> =>
-    (await window.webContents.executeJavaScript(
-      "!!document.querySelector('[data-ayq-forecast]')",
-    )) === true;
-
-  let deadline = Date.now() + 60_000;
-  while (Date.now() < deadline && !(await ready())) {
-    await new Promise(resolve => setTimeout(resolve, 250));
+): Promise<AyqUpcomingVerdict> {
+  if (!(await openUpcoming(window))) {
+    return upcomingWrong('the Upcoming screen never drew its table');
   }
-  if (!(await ready())) return '';
 
   if (addSpec !== '') {
     const [name, amount, frequency, startDate] = addSpec.split('|');
     const filled = String(
       await window.webContents.executeJavaScript(`(() => {
-        const add = document.getElementById('ayq-plan-new');
+        const add = document.querySelector('[data-ayq-action="plan-new"]');
         if (!add) return 'no button';
         add.click();
-        const field = which =>
-          document.querySelector('[data-ayq-plan-field="' + which + '"]');
+        return 'opened';
+      })()`),
+    );
+    if (filled !== 'opened') return upcomingWrong(`could not add the payment: ${filled}`);
+
+    // The form is a React render away from the click, so it is waited for
+    // rather than assumed to be there in the same breath.
+    let formBy = Date.now() + 30_000;
+    while (
+      Date.now() < formBy &&
+      (await window.webContents.executeJavaScript(
+        "!!document.querySelector('[data-ayq-record-form]')",
+      )) !== true
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    const typed = String(
+      await window.webContents.executeJavaScript(`(() => {
+        // The attribute is on the native control: a Fluent Input passes the
+        // data-* props to its input, which is the element a person types into.
+        //
+        // Through the prototype's own value setter, and that is not a detail.
+        // React keeps the last value it saw on the element itself and ignores an
+        // event whose value matches it — so assigning the value property updates
+        // that cache as well and the change is swallowed, in a real browser as
+        // much as in a test. The setter on the prototype writes the value
+        // without touching the cache, which is what a person typing does.
         const set = (which, value) => {
-          const control = field(which);
+          const control = document.querySelector('[data-ayq-field="' + which + '"]');
           if (!control) return false;
-          control.value = value;
+          const prototype = Object.getPrototypeOf(control);
+          const setter = Object.getOwnPropertyDescriptor(prototype, 'value');
+          if (setter && setter.set) setter.set.call(control, value);
+          else control.value = value;
+          control.dispatchEvent(new Event('input', { bubbles: true }));
           control.dispatchEvent(new Event('change', { bubbles: true }));
           return true;
         };
         if (!set('name', ${JSON.stringify(name)})) return 'no name field';
         if (!set('amount', ${JSON.stringify(amount)})) return 'no amount field';
         if (!set('frequency', ${JSON.stringify(frequency)})) return 'no frequency field';
-        if (!set('startDate', ${JSON.stringify(startDate)})) return 'no date field';
-        const save = document.getElementById('ayq-plan-save');
-        if (!save) return 'no save button';
-        save.click();
-        return 'saved';
+        if (!set('start', ${JSON.stringify(startDate)})) return 'no date field';
+        return 'typed';
       })()`),
     );
-    if (filled !== 'saved') return `could not add the payment: ${filled}`;
+    if (typed !== 'typed') return upcomingWrong(`could not fill the form: ${typed}`);
+
+    const saved = await window.webContents.executeJavaScript(`(() => {
+      const save = document.querySelector('[data-ayq-action="record-save"]');
+      if (!save) return false;
+      save.click();
+      return true;
+    })()`);
+    if (saved !== true) return upcomingWrong('the form had no save button');
 
     // Waited for in the table, which is drawn from what the engine answered.
-    deadline = Date.now() + 60_000;
+    formBy = Date.now() + 60_000;
     let listed = false;
-    while (Date.now() < deadline && !listed) {
+    while (Date.now() < formBy && !listed) {
       listed =
         (await window.webContents.executeJavaScript(`(() => {
-          const rows = [...document.querySelectorAll('.grid tbody tr[data-ayq-record]')];
-          return rows.some(row => row.innerText.includes(${JSON.stringify(name)}));
+          const rows = [...document.querySelectorAll('[data-ayq-table="upcoming"] tbody tr')];
+          return rows.some(row => {
+            const cell = row.querySelector('[data-ayq-cell="name"]');
+            return cell && cell.innerText.indexOf(${JSON.stringify(name)}) >= 0;
+          });
         })()`)) === true;
       if (!listed) await new Promise(resolve => setTimeout(resolve, 250));
     }
     if (!listed) {
       const said = await problemShown(window);
-      return `the payment was not listed after saving${said === '' ? '' : ` — the screen said: ${said}`}`;
+      return upcomingWrong(
+        `the payment was not listed after saving${
+          said === '' ? '' : ` — the screen said: ${said}`
+        }`,
+      );
+    }
+
+    // 03 §7.17, on the screen. The record just added is a series or a single
+    // payment, and which it is decides what may be offered over it.
+    const scopes = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const rows = [...document.querySelectorAll('[data-ayq-table="upcoming"] tbody tr')];
+          const row = rows.find(one => {
+            const cell = one.querySelector('[data-ayq-cell="name"]');
+            return cell && cell.innerText.indexOf(${JSON.stringify(name)}) >= 0;
+          });
+          if (!row) return JSON.stringify({ why: 'the row went away' });
+          row.click();
+          return JSON.stringify({ clicked: true });
+        })()`),
+      ),
+    ) as { why?: string; clicked?: boolean };
+    if (scopes.why !== undefined) return upcomingWrong(scopes.why);
+
+    let paneBy = Date.now() + 30_000;
+    while (
+      Date.now() < paneBy &&
+      (await window.webContents.executeJavaScript(
+        "!!document.querySelector('[data-ayq-scope=\"occurrence\"]')",
+      )) !== true
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    const offered = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const scoped = where => {
+            const block = document.querySelector('[data-ayq-scope="' + where + '"]');
+            return block
+              ? [...block.querySelectorAll('[data-ayq-action]')].map(one =>
+                  one.getAttribute('data-ayq-action'))
+              : null;
+          };
+          return JSON.stringify({
+            occurrence: scoped('occurrence'),
+            record: scoped('record'),
+            single: !!document.querySelector('[data-ayq-single]'),
+            rhythm: (document.querySelector('[data-ayq-rhythm]') || {}).innerText || '',
+          });
+        })()`),
+      ),
+    ) as {
+      occurrence: string[] | null;
+      record: string[] | null;
+      single: boolean;
+      rhythm: string;
+    };
+
+    if (offered.occurrence === null || offered.record === null) {
+      return upcomingWrong('the pane does not say what any of its actions reaches');
+    }
+    process.stdout.write(
+      `[ayq-smoke] scopes: this occurrence ${offered.occurrence.join(', ')}; ` +
+        `the record ${offered.record.join(', ')}; ${offered.rhythm}\n`,
+    );
+
+    // Moving and dismissing reach one occurrence, and are in that block.
+    for (const wanted of ['occurrence-reschedule', 'occurrence-dismiss']) {
+      if (!offered.occurrence.includes(wanted)) {
+        return upcomingWrong(`${wanted} is not offered as reaching one occurrence`);
+      }
+      if (offered.record.includes(wanted)) {
+        return upcomingWrong(`${wanted} is offered as reaching the whole record`);
+      }
+    }
+    // Ending a series is its own action, and never what dismissing does.
+    if (offered.occurrence.includes('record-end-series')) {
+      return upcomingWrong('ending the series is offered as an action over one occurrence');
+    }
+    if (offered.single) {
+      if (offered.record.includes('record-end-series')) {
+        return upcomingWrong('a single payment is offered an end to a series it does not have');
+      }
+    } else if (!offered.record.includes('record-end-series')) {
+      return upcomingWrong('a series offers no way to end it');
     }
   }
 
   if (acceptMatch) {
     // The match AYQ found and would not make on its own. It has to be offered,
     // and accepting it has to take the payment out of what is still expected.
-    const offered = Number(
-      await window.webContents.executeJavaScript(
-        "Number(document.querySelector('[data-ayq-matches]')?.dataset.ayqMatches || 0)",
-      ),
-    );
-    if (offered < 1) return 'no match was offered to accept';
+    const offered = await matchesOffered(window);
+    if (offered < 1) return upcomingWrong('no match was offered to accept');
 
     const clicked = await window.webContents.executeJavaScript(`(() => {
-      const yes = document.querySelector('[data-ayq-match-accept]');
+      const yes = document.querySelector('[data-ayq-action="match-apply"]');
       if (!yes) return false;
       yes.click();
       return true;
     })()`);
-    if (clicked !== true) return 'the offered match had nothing to accept';
+    if (clicked !== true) return upcomingWrong('the offered match had nothing to accept');
 
-    deadline = Date.now() + 60_000;
+    const deadline = Date.now() + 60_000;
     let left = offered;
     while (Date.now() < deadline && left >= offered) {
-      left = Number(
-        await window.webContents.executeJavaScript(
-          "Number(document.querySelector('[data-ayq-matches]')?.dataset.ayqMatches || 0)",
-        ),
-      );
+      left = await matchesOffered(window);
+      if (left < 0) left = offered;
       if (left >= offered) await new Promise(resolve => setTimeout(resolve, 250));
     }
-    if (left >= offered) return 'accepting the match changed nothing';
+    if (left >= offered) return upcomingWrong('accepting the match changed nothing');
     process.stdout.write(
       `[ayq-smoke] matches offered: ${offered}, left after accepting one: ${left}\n`,
     );
   }
 
-  return String(
+  const dump = String(
     await window.webContents.executeJavaScript(`(() => {
-      const figures = [...document.querySelectorAll('.figures .figure')].map(one => {
-        const label = one.querySelector('.figure-label');
-        const value = one.querySelector('.figure-value');
-        return (label ? label.textContent : '') + ' ' + (value ? value.textContent : '');
-      });
-      const rows = [...document.querySelectorAll('.grid tbody tr')].slice(0, 12).map(row =>
-        [...row.querySelectorAll('td')].map(cell => cell.innerText.trim()).join(' | '),
-      );
-      return figures.join('   ') + '\\n' + rows.join('\\n');
+      const lowest = document.querySelector('[data-ayq-lowest]');
+      const rows = [...document.querySelectorAll('[data-ayq-table="upcoming"] tbody tr')]
+        .slice(0, 12)
+        .map(row =>
+          [...row.querySelectorAll('[data-ayq-cell]')]
+            .map(cell => cell.innerText.replace(/\\s+/g, ' ').trim())
+            .join(' | '));
+      return (lowest ? lowest.innerText.replace(/\\s+/g, ' ').trim() : '') +
+        '\\n' + rows.join('\\n');
     })()`),
   );
+  return { wrong: '', dump };
 }
 
 /**
@@ -726,13 +896,11 @@ async function planShown(
   window: BrowserWindow,
   spec: string,
 ): Promise<string> {
-  await window.webContents.executeJavaScript(
-    'document.querySelector(\'[data-ayq-tab="plan"]\').click(); true',
-  );
+  if (!(await openDestination(window, 'plan'))) return '';
 
   const ready = async (): Promise<boolean> =>
     (await window.webContents.executeJavaScript(
-      "!!document.querySelector('[data-ayq-plan-sheet]')",
+      "!!document.querySelector('[data-ayq-table=\"plan\"] tbody tr')",
     )) === true;
 
   let deadline = Date.now() + 60_000;
@@ -745,67 +913,81 @@ async function planShown(
     const [category, amount] = spec.split(':');
     const typed = String(
       await window.webContents.executeJavaScript(`(() => {
-        const row = [...document.querySelectorAll('.grid tbody tr')].find(one => {
-          const cell = one.querySelector('.col-payee');
-          return cell && cell.innerText.trim() === ${JSON.stringify(category)};
+        const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
+        const row = rows.find(one => {
+          const cell = one.querySelector('[data-ayq-cell="category"]');
+          return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
         });
         if (!row) return 'no such category on the sheet';
-        const field = row.querySelector('input.plan-input');
-        if (!field) return 'that row has no plan to set';
-        if (field.disabled) return 'this month cannot be planned in';
-        field.value = ${JSON.stringify(amount)};
-        field.dispatchEvent(new Event('blur'));
+        const field = row.querySelector('[data-ayq-plan-cell]');
+        if (!field) return 'this month cannot be planned in';
+        // Through the prototype's setter: see the note in the record form above.
+        const setter = Object.getOwnPropertyDescriptor(
+          Object.getPrototypeOf(field), 'value');
+        if (setter && setter.set) setter.set.call(field, ${JSON.stringify(amount)});
+        else field.value = ${JSON.stringify(amount)};
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        // As focusout, not blur: blur does not bubble, so React listens for
+        // focusout and maps it to onBlur. A dispatched blur reaches the element
+        // and nothing else.
+        field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
         return 'typed';
       })()`),
     );
     if (typed !== 'typed') return `could not set the plan: ${typed}`;
 
     // Read from the Left column, which is the engine's arithmetic over what it
-    // stored. A plan that did not store leaves it at zero.
-    const want = `€ ${Number(amount).toLocaleString('nl-NL', {
-      minimumFractionDigits: 2,
-    })}`;
+    // stored. A plan that did not store leaves it at zero. Compared as cents
+    // rather than as words, so a locale's spacing cannot decide the outcome.
+    const want = Math.round(Number(amount) * 100);
     deadline = Date.now() + 60_000;
-    let shown = '';
+    let shown = -1;
     while (Date.now() < deadline) {
-      shown = String(
+      shown = Number(
         await window.webContents.executeJavaScript(`(() => {
-          const row = [...document.querySelectorAll('.grid tbody tr')].find(one => {
-            const cell = one.querySelector('.col-payee');
-            return cell && cell.innerText.trim() === ${JSON.stringify(category)};
+          const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
+          const row = rows.find(one => {
+            const cell = one.querySelector('[data-ayq-cell="category"]');
+            return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
           });
-          if (!row) return '';
-          const cells = row.querySelectorAll('.col-amount');
-          return cells.length >= 3 ? cells[2].innerText.trim() : '';
+          if (!row) return -1;
+          const cell = row.querySelector('[data-ayq-cell="remaining"] [data-ayq-figure]');
+          return cell ? Number(cell.getAttribute('data-ayq-figure')) : -1;
         })()`),
       );
-      if (shown.replace(/\u00a0/g, ' ') === want) break;
+      if (shown === want) break;
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    if (shown.replace(/\u00a0/g, ' ') !== want) {
+    if (shown !== want) {
       const said = await problemShown(window);
-      return `the plan read back as ${shown || '(nothing)'} rather than ${want}${
+      return `the plan read back as ${shown} cents rather than ${want}${
         said === '' ? '' : ` — the screen said: ${said}`
       }`;
     }
+    process.stdout.write(
+      `[ayq-smoke] the plan for ${category} read back as ${shown} cents\n`,
+    );
   }
 
   return String(
     await window.webContents.executeJavaScript(`(() => {
       const month = document.querySelector('[data-ayq-plan-month]');
-      const figures = [...document.querySelectorAll('.figures .figure')].map(one => {
-        const label = one.querySelector('.figure-label');
-        const value = one.querySelector('.figure-value');
-        return (label ? label.textContent : '') + ' ' + (value ? value.textContent : '');
-      });
-      const rows = [...document.querySelectorAll('.grid tbody tr')].slice(0, 12).map(row =>
-        [...row.querySelectorAll('td')].map(cell => {
-          const field = cell.querySelector('input');
-          return field ? field.value : cell.innerText.trim();
-        }).join(' | '),
-      );
-      return (month ? month.dataset.ayqPlanMonth : '') + '\\n' +
-        figures.join('   ') + '\\n' + rows.join('\\n');
+      const totals = document.querySelector('[data-ayq-plan-totals]');
+      const rule = document.querySelector('[data-ayq-plan-rule]');
+      const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')]
+        .slice(0, 12)
+        .map(row =>
+          [...row.querySelectorAll('[data-ayq-cell]')]
+            .map(cell => {
+              const field = cell.querySelector('input');
+              return field ? field.value : cell.innerText.replace(/\\s+/g, ' ').trim();
+            })
+            .join(' | '));
+      return (month ? month.value : '') + '\\n' +
+        (totals ? totals.innerText.replace(/\\s+/g, ' ').trim() : '') + '\\n' +
+        (rule ? rule.innerText.replace(/\\s+/g, ' ').trim() : '') + '\\n' +
+        rows.join('\\n');
     })()`),
   );
 }
@@ -1132,6 +1314,9 @@ async function todayShown(window: BrowserWindow): Promise<string> {
             ? coverage.innerText.replace(/\\s+/g, ' ').trim()
             : null,
           imports: !!screen.querySelector('[data-ayq-action="today-import"]'),
+          order: [...screen.querySelectorAll('[data-ayq-pane]')]
+            .map(one => one.getAttribute('data-ayq-pane'))
+            .filter(one => one && one.indexOf('today-') === 0),
           total: waiting ? waiting.dataset.ayqWaiting : null,
           lines,
         });
@@ -1145,6 +1330,7 @@ async function todayShown(window: BrowserWindow): Promise<string> {
     laterTop: number | null;
     coverage: string | null;
     imports: boolean;
+    order: string[];
     total: string | null;
     lines: string[];
   };
@@ -1176,6 +1362,23 @@ async function todayShown(window: BrowserWindow): Promise<string> {
 
   // A20: Import is reachable from here.
   if (!seen.imports) return 'Import cannot be reached from Today';
+
+  // A21 in its own words: available funds first, "the transaction list
+  // follows", "queues come last". Prototype r009 put the queues above the list;
+  // Canon governs, so the order is measured on the window rather than trusted
+  // to the file that draws it.
+  const wanted = [
+    'today-funds',
+    'today-lasts',
+    'today-movements',
+    'today-movements-detail',
+    'today-waiting',
+  ];
+  if (seen.order.join(',') !== wanted.join(',')) {
+    return `Today is in the order ${seen.order.join(', ')}, and A21 asks for ${
+      wanted.join(', ')
+    }`;
+  }
 
   // A5: a queue with nothing in it is not drawn as a line saying zero.
   if (seen.total === null) return 'Today draws no waiting list at all';
@@ -1869,20 +2072,21 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     }
   }
   if (planSpec !== '' || expectPlan !== '' || acceptMatch) {
-    upcoming = await upcomingShown(window, planSpec, acceptMatch);
+    const verdict = await upcomingShown(window, planSpec, acceptMatch);
+    upcoming = verdict.wrong === '' ? verdict.dump : verdict.wrong;
     process.stdout.write(
-      `[ayq-smoke] upcoming:\n${upcoming || '(the view showed nothing)'}\n`,
+      `[ayq-smoke] upcoming:\n${
+        verdict.wrong === ''
+          ? verdict.dump || '(the view showed nothing)'
+          : `FAILED: ${verdict.wrong}`
+      }\n`,
     );
-    upcomingOk =
-      upcomingOk &&
-      upcoming !== '' &&
-      !upcoming.startsWith('could not') &&
-      !upcoming.startsWith('no match') &&
-      !upcoming.startsWith('the offered match') &&
-      !upcoming.startsWith('accepting the match') &&
-      !upcoming.startsWith('the payment was not listed');
+    // The check says whether it holds. It is not inferred from the wording of
+    // what it returned, which is how a failure nobody had thought to list used
+    // to pass as a screen dump.
+    upcomingOk = upcomingOk && verdict.wrong === '' && verdict.dump !== '';
     if (expectPlan !== '') {
-      const kept = upcoming.includes(expectPlan);
+      const kept = verdict.dump.includes(expectPlan);
       upcomingOk = upcomingOk && kept;
       process.stdout.write(
         `[ayq-smoke] after restart the plan lists ${expectPlan} -> ` +

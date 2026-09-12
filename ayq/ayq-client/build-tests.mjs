@@ -15,7 +15,7 @@
 // with them. Everything else — React, Fluent, the renderer's own files — is
 // bundled in, so a test exercises the code as it ships.
 
-import { readdir, rm, mkdir } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,17 +25,39 @@ const here = dirname(fileURLToPath(import.meta.url));
 const from = join(here, 'test');
 const out = join(here, 'dist-test');
 
-const entries = (await readdir(from))
-  .filter(name => name.endsWith('.test.ts') || name.endsWith('.test.tsx'))
-  .map(name => join(from, name));
+const files = (await readdir(from)).filter(
+  name => name.endsWith('.test.ts') || name.endsWith('.test.tsx'),
+);
 
-if (entries.length === 0) {
+if (files.length === 0) {
   process.stderr.write('ayq-client: no tests to build\n');
   process.exit(1);
 }
 
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
+
+// Each test is bundled from a shim that loads the DOM before anything else.
+//
+// Not a convenience: `react-dom` decides at load time whether the browser has
+// an `input` event, by reading the global `document`. Loaded without one it
+// decides no, caches that for the life of the process, and `onChange` stops
+// firing for every text input — which made a form look untestable when what was
+// missing was a document. The shim is the entry point, so the import that
+// installs the window is evaluated before the import that reads it.
+const shims = join(out, 'entry');
+await mkdir(shims, { recursive: true });
+const entries = [];
+for (const name of files) {
+  const shim = join(shims, `${name.replace(/\.tsx?$/, '')}.ts`);
+  await writeFile(
+    shim,
+    `import '${join(from, 'ayq-dom-first.ts').split('\\').join('/')}';\n` +
+      `import '${join(from, name).split('\\').join('/')}';\n`,
+    'utf8',
+  );
+  entries.push(shim);
+}
 
 await build({
   entryPoints: entries,
@@ -54,5 +76,14 @@ await build({
   sourcemap: 'inline',
   logLevel: 'warning',
 });
+
+// Flattened, so the runner's glob finds them beside the shim directory rather
+// than inside it.
+for (const name of await readdir(join(out, 'entry'))) {
+  if (name.endsWith('.mjs') || name.endsWith('.mjs.map')) {
+    await rename(join(out, 'entry', name), join(out, name));
+  }
+}
+await rm(join(out, 'entry'), { recursive: true, force: true });
 
 process.stdout.write(`ayq-client: dist-test/ built (${entries.length} files)\n`);

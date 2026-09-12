@@ -20,29 +20,12 @@ import {
   type AyqCounterpartiesState,
 } from './ayq-counterparties.ts';
 import { ayqRenderImports, ayqRenderRules } from './ayq-other-views.ts';
-import {
-  ayqEmptyPlanViewState,
-  ayqRenderPlan,
-  type AyqPlanViewState,
-} from './ayq-plan-view.ts';
-import {
-  ayqEmptyUpcomingState,
-  ayqRenderUpcoming,
-  type AyqUpcomingState,
-} from './ayq-upcoming.ts';
 
-export type AyqLegacyView =
-  | 'upcoming'
-  | 'plan'
-  | 'imports'
-  | 'counterparties'
-  | 'rules';
+export type AyqLegacyView = 'imports' | 'counterparties' | 'rules';
 
 type AyqLegacyState = {
   /** Shared by the screens that offer a category picker. */
   categories: AyqCategory[];
-  plan: AyqPlanViewState;
-  upcoming: AyqUpcomingState;
   counterparties: AyqCounterpartiesState;
   rules: AyqCategoryRule[];
   imports: AyqImportRecord[];
@@ -50,8 +33,6 @@ type AyqLegacyState = {
 
 export const ayqLegacyState: AyqLegacyState = {
   categories: [],
-  plan: ayqEmptyPlanViewState(),
-  upcoming: ayqEmptyUpcomingState(),
   counterparties: ayqEmptyCounterpartiesState(),
   rules: [],
   imports: [],
@@ -96,29 +77,6 @@ async function categories(): Promise<void> {
 
 export async function ayqLoadLegacy(view: AyqLegacyView): Promise<void> {
   switch (view) {
-    case 'plan':
-      ayqLegacyState.plan.sheet = (
-        await need({
-          kind: 'plan.month',
-          ...(ayqLegacyState.plan.month === null
-            ? {}
-            : { month: ayqLegacyState.plan.month }),
-        })
-      ).result;
-      return;
-
-    case 'upcoming':
-      await categories();
-      // Two questions, because they answer different halves of the screen: the
-      // forecast is what the position does, and the plan is what the records
-      // are. The pane reads a record; the table reads the projection.
-      ayqLegacyState.upcoming.forecast = (await need({ kind: 'forecast' })).result;
-      ayqLegacyState.upcoming.plan = (await need({ kind: 'plan.list' })).result;
-      ayqLegacyState.upcoming.proposals = (
-        await need({ kind: 'match.propose' })
-      ).result.proposals;
-      return;
-
     case 'counterparties':
       ayqLegacyState.counterparties.list = (
         await need({
@@ -145,17 +103,6 @@ export function ayqDrawLegacy(
   reload: () => void,
 ): void {
   switch (view) {
-    case 'plan':
-      ayqRenderPlan(ayqLegacyState.plan, target, () => reload());
-      return;
-    case 'upcoming':
-      ayqRenderUpcoming(
-        ayqLegacyState.upcoming,
-        ayqLegacyState.categories,
-        target,
-        () => reload(),
-      );
-      return;
     case 'counterparties':
       ayqRenderCounterparties(
         ayqLegacyState.counterparties,

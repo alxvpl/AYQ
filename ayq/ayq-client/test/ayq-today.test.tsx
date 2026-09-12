@@ -138,6 +138,30 @@ test('available funds is the first figure, with the accounts beside it', async (
   await window.close();
 });
 
+test('A21\u2019s order, in A21\u2019s own words', async () => {
+  const window = await ayqOpenWindow(engine(TODAY));
+  await window.render(screen());
+
+  // "Available funds is the first figure on the screen... The transaction list
+  // follows. Queues come last." Prototype r009 put the queues above the list;
+  // this is the order Canon fixes, and it is pinned here so it cannot drift
+  // back on a later change to the layout.
+  const order = [...window.container.querySelectorAll('[data-ayq-pane]')]
+    .map(one => one.getAttribute('data-ayq-pane'))
+    .filter(one => one !== null && one.startsWith('today-'));
+
+  assert.deepEqual(order, [
+    'today-funds',
+    'today-lasts',
+    // The table and, beside it, the pane that holds the chosen row (A4).
+    'today-movements',
+    'today-movements-detail',
+    'today-waiting',
+  ]);
+
+  await window.close();
+});
+
 test('the reliability boundary is stated, and it is the earliest', async () => {
   const window = await ayqOpenWindow(engine(TODAY));
   await window.render(screen());

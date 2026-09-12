@@ -27,7 +27,7 @@
 import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -210,6 +210,57 @@ async function ask<K extends keyof AyqResults>(
 async function budget(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'ayq-desktop-'));
 }
+
+test('several questions at once open one budget, not one each', async () => {
+  const dataDir = await budget();
+
+  // What the React shell does on a first launch: the status, the summary and a
+  // screen's own read, all asked before any of them has answered. Before the
+  // engine serialised its open, each of these found no budget, each created
+  // one, and Actual refused the second with "table payees already exists" — so
+  // the window opened on an error, on a budget it had just made itself.
+  const [status, accounts, ledger, categories] = await Promise.all([
+    ask(dataDir, { kind: 'engine.status' }),
+    ask(dataDir, { kind: 'accounts.view' }),
+    ask(dataDir, { kind: 'transactions.list' }),
+    ask(dataDir, { kind: 'categories.list' }),
+  ]);
+
+  assert.ok(status.budgetId.length > 0, 'no budget was opened');
+  assert.equal(status.budgetCreated, true, 'a fresh directory creates one');
+  assert.equal(ledger.total, 0, 'a new budget is empty');
+  assert.equal(accounts.accounts.length, 0);
+  assert.ok(categories.length > 0, 'the seeded categories are there');
+
+  // One budget directory, not one per concurrent question. Counted on disk,
+  // because the id the engine reports would be one of two if there were two.
+  const budgets = (await readdir(dataDir, { withFileTypes: true }))
+    .filter(one => one.isDirectory() && one.name.startsWith('AYQ-'))
+    .map(one => one.name);
+  assert.equal(
+    budgets.length,
+    1,
+    `the engine made ${budgets.length} budgets: ${budgets.join(', ')}`,
+  );
+  assert.equal(budgets[0], status.budgetId);
+
+  // And asking again, still concurrently, opens nothing new: the same budget
+  // answers, and the directory still holds one. (`budgetCreated` says what this
+  // process did on its own first open and goes on saying it, which is what the
+  // restart test beside this one turns on.)
+  const [again, third] = await Promise.all([
+    ask(dataDir, { kind: 'engine.status' }),
+    ask(dataDir, { kind: 'engine.status' }),
+  ]);
+  assert.equal(again.budgetId, status.budgetId);
+  assert.equal(third.budgetId, status.budgetId);
+  assert.equal(
+    (await readdir(dataDir, { withFileTypes: true })).filter(
+      one => one.isDirectory() && one.name.startsWith('AYQ-'),
+    ).length,
+    1,
+  );
+});
 
 test('a fresh budget is created, and it is empty', async () => {
   const dataDir = await budget();

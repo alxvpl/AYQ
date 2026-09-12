@@ -20,7 +20,7 @@ difference is recorded below.
 | S3 | Register: table and detail pane | done |
 | S4 | Accounts, coverage and reconciliation (03 §8) | done |
 | S5 | Today (04 A21) | done |
-| S6 | Upcoming and Plan | not started |
+| S6 | Upcoming and Plan | done |
 | S7 | Review and Settings | not started |
 | S8 | Reports destination | not started |
 
@@ -36,6 +36,178 @@ has always drawn, and a screen that has been brought over to Fluent is mounted
 into the same element as a React root. S2 turns the shell itself over, and the
 screens that are still the old ones are drawn inside the new frame until their
 own stage arrives. By S8 there is no seam left and the file goes.
+
+## Canon read again, and what it changed
+
+The task named `03_DATA` r005. Drive holds **r006**, which is CURRENT and
+supersedes it, so r006 governs. §7 and §8 are unchanged; §5.3–§5.8 are new, and
+the repository did not satisfy them.
+
+r006 says why in its own supersedes note: "The store has already been migrated on
+a live machine (version 3 to 4) with no rule requiring a copy first, which is the
+one way data here can be lost beyond recovery." That is the owner's own store, and
+three more versions have been added to it in this session.
+
+What was already true: the store is written atomically (§5.4), a store from a
+newer AYQ is refused rather than read down (§5.6), and a migration decides
+nothing (§5.7).
+
+What was not, and now is:
+
+- **§5.3 — the copy.** Before the shape changes, the store is copied to
+  `ayq-store.before-v<from>-to-v<to>.json` and the copy is kept. A migration that
+  could not first make its copy **does not run**: the read throws with the file it
+  wanted and the remedy, and the window reports it the way it reports any store it
+  could not open. Nothing here ever deletes a copy — "kept until the migrated
+  store has been opened successfully at least once" is the floor, not the ceiling,
+  and a few kilobytes is the cheapest insurance in this product.
+- **§5.6 — one version at a time, in order.** `migrate` was one function that
+  defaulted every field at once. It is now six named steps, 1→2 through 6→7, each
+  handed the store as the previous version wrote it. Adding a version means adding
+  one step rather than editing six defaults.
+- **§5.8 — proved on a store of the previous version.** `test/ayq-store.test.ts`
+  builds a store at each version from 1 to 6, migrates it, and asserts the record
+  counts before and after, that the owner's own category decisions read back
+  exactly as they were, that a manual match kept its provenance, and that running
+  the chain again over its own output changes nothing (§5.5). Then: that the copy
+  is made and is byte-for-byte the old shape, that an already-current store copies
+  nothing, that a migration which cannot make its copy leaves the store untouched,
+  and that reading an old store does not rewrite it — so an interrupted migration
+  leaves a store that still opens.
+
+One detail the copy rule needed: only a regular *file* counts as a kept copy. A
+directory standing at that name is not a copy of anybody's store, and treating it
+as one would let the migration run with no copy at all.
+
+### A21's order, corrected
+
+04 A21 says, in its own words: "Available funds is the first figure on the
+screen... **The transaction list follows. Queues come last.**" Today was built
+with the queues beside the forecast and above the list, which is what prototype
+r009 shows. Canon governs: the order is now funds, how long it lasts, the
+transaction list, then the queues. It is pinned by a renderer test that reads the
+panes in document order, and by the Windows acceptance step, which reads the same
+order off the drawn window.
+
+## S6 — Upcoming and Plan (03 §7, 04 A8, A9)
+
+Two screens over one record set (A9), and the seam between them is where the
+work was. Upcoming is the time-based projection; Plan is the monthly frame.
+
+### The table on Upcoming is the forecast, not the record list
+
+That is the decision the rest of the screen follows from. The forecast is the one
+place the running position, the overdue flag and §7.10's "the larger of, never
+their sum" are worked out, so drawing anything else here would be a second
+arithmetic that could disagree with Today's counts and with the Plan sheet.
+Records are read beside it, in the pane, where they are edited.
+
+It has one consequence worth stating: a row can be the unaccounted part of a
+category's plan (§7.11) rather than a record. Such a row has nothing to act on,
+and the pane says which it is and points at Plan, rather than offering buttons
+that would do nothing.
+
+A dismissed occurrence is not in the forecast — that is what dismissing does —
+and it is drawn anyway, from the plan, with "not counted" where the position
+would be. A decision a person cannot see is a decision they cannot undo.
+
+### Every action says what it reaches (§7.17)
+
+The pane has two blocks, marked and labelled in words: *this occurrence only* —
+move, dismiss, unmatch — and *the whole record* — edit, accept, put away, remove,
+end the series. Ending a series is its own action and is never what dismissing
+does; a single payment is offered no such action at all, because it has a date
+and not a rhythm and nothing over it may reach beyond itself. All of that is
+asserted twice: in the renderer tests and, on the packaged application, by
+reading the two blocks off the window.
+
+### Matching waits for a person (§7.16)
+
+Opening Upcoming runs the matcher, which applies only what nothing about could
+be in doubt and offers the rest. Each offer states what was expected, what
+happened, and what the two have in common in words — so agreeing to it is
+informed rather than blind. Agreeing and refusing send exactly that decision and
+nothing else, which the tests check by the *keys* that crossed the boundary.
+
+### The Plan worksheet
+
+Categories down, one month across: planned, actual, left, still expected. Every
+figure is the engine's; the screen adds nothing up. "Still expected" is the
+larger of what is left of the plan and the records expected in the category
+(§7.10), and the rule is printed under the sheet, because a column a person
+cannot reconstruct is a column they cannot trust.
+
+A cell shows the engine's figure until an edit is committed, and a plan that has
+not changed is not written again. A month outside the range the budget can be
+planned in has no cell to type into and says so, rather than refusing when it is
+used.
+
+### The seam is nearly gone
+
+`ayq-upcoming.ts` and `ayq-plan-view.ts` are deleted, and `ayq-legacy-views.ts`
+now carries three views instead of five. S7 takes the rest.
+
+### Three defects this stage found, two of them serious
+
+**The engine opened a budget more than once.** `openBudget` set its guard only
+once the budget was loaded, so two requests arriving together both found no
+budget and both created one — two budget directories, a SQLite "table payees
+already exists", and a window reporting an unknown problem opening a budget it
+had just made itself. It became reachable the moment the renderer became a React
+shell that asks several questions at once, which is the right thing for a
+renderer to do. **This is what runs 61 to 65 were failing on**: run 64 hung
+before it could say so, and run 65 said it in one line. The first request now
+opens the budget and the rest wait on that same open, and a test fires four
+requests at a fresh engine and requires one budget directory — it fails with the
+runner's own error message when the guard is removed.
+
+**React was loaded without a document, so no text input worked.** `react-dom`
+decides at load time whether the browser has an `input` event, by reading the
+global `document`, and caches the answer for the process. The renderer tests
+created their window *after* importing the components, so React concluded there
+was no `input` event and fell back to a polyfill watching `keydown` and
+`selectionchange` — and `onChange` never fired for a text input, however the
+value was set. Every other handler worked, which is why it looked like a quirk
+of one control. `build-tests.mjs` now bundles each test from a shim that loads
+`test/ayq-dom-first.ts` first; typing is testable, and the form tests that
+needed it pass.
+
+**`onBlur` is `focusout`.** A dispatched `blur` reaches the element and nothing
+else, because `blur` does not bubble and React listens for `focusout`. Both the
+harness and the acceptance driver dispatch `focusout` now.
+
+A fourth, smaller: the Upcoming acceptance step used to return one string and the
+caller decided whether it was a failure by testing it against a list of prefixes
+— so a failure nobody had thought to list passed as a screen dump. It returns a
+verdict and a dump, and the caller reads the verdict.
+
+### Typing into a React control, from outside
+
+Worth recording because it is not obvious and it bit both the tests and the
+acceptance run. React keeps the last value it saw on the element itself and
+ignores an event whose value matches it, so assigning `element.value` updates
+that cache as well and the change is swallowed — in a real browser as much as in
+a test. The value has to be written through the *prototype's* setter, which is
+what a person typing does. The acceptance driver and the test harness both do
+that now.
+
+### PROVISIONAL in S6
+
+14. **The waiting matches sit above the forecast table.** A5 puts what requires
+    action first on the dashboard and says nothing about Upcoming; these are
+    decisions waiting on a person, so they are above the projection they would
+    change.
+15. **Opening Upcoming runs the matcher.** §7.16 says matching runs after every
+    import and may apply only what is beyond doubt; it does not say when else.
+    Opening the screen that shows what is expected is the other moment a person
+    would expect it to have looked, and Today already does the same to count
+    what is waiting.
+16. **A dismissed occurrence is drawn with "not counted" beside it.** §7.13 names
+    dismissal as one of three ways to deal with an overdue occurrence and does
+    not say whether it can be undone. Drawn, and reversible, is the cautious
+    option.
+17. **The record editor's fields, and their order.** 04 r002 does not specify a
+    form. These are the fields `AyqPlanDraft` carries and nothing more.
 
 ## S5 — Today (04 A21)
 

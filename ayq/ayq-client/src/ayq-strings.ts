@@ -177,6 +177,134 @@ const EN = {
   'today.open.accounts': 'See accounts',
   'today.open.import': 'Import statements',
 
+  // Upcoming (03 §7.2): what is coming, and what it does to the position.
+  'upcoming.title': 'Upcoming',
+  'upcoming.blurb':
+    'What is expected between now and {horizon}, and where the position stands ' +
+    'after each of them.',
+  'upcoming.column.date': 'Date',
+  'upcoming.column.name': 'What',
+  'upcoming.column.category': 'Category',
+  'upcoming.column.amount': 'Amount',
+  'upcoming.column.balance': 'Position after',
+  'upcoming.column.state': 'State',
+  'upcoming.state.expected': 'Expected',
+  'upcoming.state.overdue': 'Overdue, still counted',
+  'upcoming.state.suggested': 'Suggested',
+  'upcoming.state.plan': 'Rest of the plan',
+  'upcoming.state.dismissed': 'Dismissed',
+  'upcoming.notCounted': 'not counted',
+  'upcoming.empty': 'Nothing is expected yet.',
+  'upcoming.lowest': 'Lowest point {amount} on {date}',
+  'upcoming.new': 'New planned payment',
+  'upcoming.match': 'Check what has already happened',
+  'upcoming.suggest': 'Find what keeps coming back',
+
+  // What is waiting on a person, and never applied for them (03 §7.16).
+  'upcoming.matches': 'Matches to confirm',
+  'upcoming.matches.note':
+    'AYQ is not sure enough about these to decide them for you.',
+  'upcoming.matches.expected': 'Expected',
+  'upcoming.matches.happened': 'What happened',
+  'upcoming.matches.evidence': 'What they have in common',
+  'upcoming.matches.apart': '{days} days apart',
+  'upcoming.matches.yes': 'The same payment',
+  'upcoming.matches.no': 'Not this one',
+
+  // The pane. Every action says what it reaches (03 §7.17).
+  'upcoming.pane.occurrence': 'This occurrence',
+  'upcoming.pane.record': 'The record it comes from',
+  'upcoming.pane.none': 'Choose a row to see what is behind it.',
+  'upcoming.pane.planOnly':
+    'This is the part of {category}’s plan for the month that no record ' +
+    'accounts for (03 §7.11). It is not a record, so there is nothing here to ' +
+    'act on — change the plan on the Plan screen.',
+  'upcoming.pane.planOnlyNoCategory':
+    'This is the part of the month’s plan that no record accounts for. It is ' +
+    'not a record, so there is nothing here to act on.',
+  'upcoming.pane.due': 'Due {date}',
+  'upcoming.pane.moved': 'Moved from {date}',
+  'upcoming.pane.every': 'Every {frequency}',
+  'upcoming.pane.once': 'Once, on {date}',
+  'upcoming.pane.onceNote':
+    'A single payment. It has a date, not a rhythm, so nothing here reaches ' +
+    'beyond this one occurrence (03 §7.17).',
+  'upcoming.pane.overdueNote':
+    'Its date has passed with nothing matched to it. It still counts, as due ' +
+    'today, until you match, reschedule or dismiss it (03 §7.13).',
+  'upcoming.pane.suggestedNote':
+    'AYQ noticed this rhythm. It is an offer, not a decision, and it is ' +
+    'counted as a suggestion until you accept it (03 §7.7, §7.12).',
+  'upcoming.pane.matched': 'Matched to {payee} on {date}',
+  'upcoming.pane.matchedBy.manual': 'matched by you',
+  'upcoming.pane.matchedBy.automatic': 'matched by AYQ',
+  'upcoming.pane.confirmedAt': 'Confirmed {date}, and expected from then on',
+  'upcoming.pane.suggestedAt': 'Suggested {date}, and counted from then on',
+  'upcoming.pane.ends': 'Ends {date}',
+  'upcoming.pane.endsNever': 'No end date',
+
+  'upcoming.do.reschedule': 'Move this one',
+  'upcoming.do.rescheduleTo': 'Move to',
+  'upcoming.do.dismiss': 'Dismiss this one',
+  'upcoming.do.undismiss': 'Expect this one again',
+  'upcoming.do.unmatch': 'Not the same payment after all',
+  'upcoming.do.edit': 'Edit the record',
+  'upcoming.do.accept': 'Accept the record',
+  'upcoming.do.putAway': 'Put the record away',
+  'upcoming.do.endSeries': 'End the series',
+  'upcoming.do.endSeriesOn': 'Last date',
+  'upcoming.do.remove': 'Remove the record',
+  'upcoming.do.scope.occurrence': 'this occurrence only',
+  'upcoming.do.scope.record': 'the whole record',
+
+  // The one editor. Both a new record and an existing one are written here.
+  'upcoming.form.new': 'A new planned payment',
+  'upcoming.form.edit': 'Editing {name}',
+  'upcoming.form.name': 'What it is',
+  'upcoming.form.kind': 'Direction',
+  'upcoming.form.kind.expense': 'Money out',
+  'upcoming.form.kind.income': 'Money in',
+  'upcoming.form.amount': 'Amount',
+  'upcoming.form.category': 'Category',
+  'upcoming.form.category.none': 'No category',
+  'upcoming.form.start': 'First date',
+  'upcoming.form.frequency': 'How often',
+  'upcoming.form.interval': 'Every how many',
+  'upcoming.form.end': 'Last date, if it has one',
+  'upcoming.form.save': 'Save the record',
+  'upcoming.form.cancel': 'Cancel',
+  'upcoming.form.needsName': 'A record needs a name.',
+  'upcoming.form.needsAmount': 'A record needs an amount above zero.',
+  'upcoming.form.needsDate': 'A record needs a first date.',
+
+  'frequency.once': 'once',
+  'frequency.weekly': 'week',
+  'frequency.fortnightly': 'fortnight',
+  'frequency.monthly': 'month',
+  'frequency.quarterly': 'quarter',
+  'frequency.half-yearly': 'six months',
+  'frequency.yearly': 'year',
+
+  // Plan (03 §7.8, §7.10): categories down, one month across.
+  'plan.title': 'Plan',
+  'plan.blurb':
+    'What each category is planned to take this month, what it has taken, and ' +
+    'what AYQ still expects before the month is out.',
+  'plan.month': 'Month',
+  'plan.column.category': 'Category',
+  'plan.column.plan': 'Planned',
+  'plan.column.actual': 'Actual',
+  'plan.column.remaining': 'Left',
+  'plan.column.expected': 'Still expected',
+  'plan.total': 'All categories',
+  'plan.notEditable':
+    'This month is outside the range the budget can be planned in, so it can ' +
+    'be read and not changed.',
+  'plan.expectedNote':
+    'Still expected is the larger of what is left of the plan and the records ' +
+    'expected in the category — never their sum (03 §7.10).',
+  'plan.empty': 'This budget has no categories yet.',
+
   'accounts.column.name': 'Account',
   'accounts.column.counts': 'In available funds',
   'accounts.column.statements': 'Statements to',

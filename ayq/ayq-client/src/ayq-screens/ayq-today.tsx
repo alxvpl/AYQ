@@ -5,9 +5,14 @@
 // boundary stated under it (03 §8.4) — a position without the date it can be
 // relied on to is a number presented as more certain than it is.
 //
-// Then how long it lasts, then what is waiting, then the movements. Queues come
-// last (A21) and none of their counts is stored: they are counted when the
-// screen is opened, because a stored queue length is one that can be wrong.
+// Then how long it lasts, then the transaction list, and the queues last. That
+// is A21's own order, in its own words: "The transaction list follows. Queues
+// come last." Prototype r009 put the queues beside the forecast and above the
+// list; Canon governs, and the difference is recorded in
+// DESKTOP_DESIGN_PROGRESS.md.
+//
+// None of the queue counts is stored: they are counted when the screen is
+// opened, because a stored queue length is one that can be wrong.
 
 import { makeStyles } from '@fluentui/react-components';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
@@ -78,11 +83,6 @@ const useStyles = makeStyles({
     backgroundColor: 'var(--ayq-ground)',
     color: 'var(--ayq-ink-quiet)',
     fontSize: 'var(--ayq-size-small)',
-  },
-  twoUp: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: `${AYQ_METRIC.space.wide}px`,
   },
   body: {
     display: 'flex',
@@ -239,91 +239,53 @@ export function AyqTodayScreen({
         </div>
       </AyqPane>
 
-      <div className={styles.twoUp}>
-        <AyqPane
-          mark="today-lasts"
-          title={ayqText('today.lasts')}
-          actions={
-            <AyqButton
-              size="small"
-              mark="today-upcoming"
-              onClick={() => onOpen('upcoming')}
-            >
-              {ayqText('today.open.upcoming')}
-            </AyqButton>
-          }
-        >
-          <div className={styles.body}>
-            {today.lowest === null ? (
-              <p className={styles.note}>{ayqText('today.noForecast')}</p>
-            ) : (
-              <>
-                <div className={styles.figureBlock} data-ayq-lowest={today.lowest.date}>
-                  <span className={styles.label}>{ayqText('today.lowest')}</span>
-                  <AyqFigure cents={today.lowest.balanceCents} size="large" />
-                  <span className={styles.note}>
-                    {ayqText('today.lowest.on', {
-                      date: ayqDate(today.lowest.date),
+      <AyqPane
+        mark="today-lasts"
+        title={ayqText('today.lasts')}
+        actions={
+          <AyqButton
+            size="small"
+            mark="today-upcoming"
+            onClick={() => onOpen('upcoming')}
+          >
+            {ayqText('today.open.upcoming')}
+          </AyqButton>
+        }
+      >
+        <div className={styles.body}>
+          {today.lowest === null ? (
+            <p className={styles.note}>{ayqText('today.noForecast')}</p>
+          ) : (
+            <>
+              <div className={styles.figureBlock} data-ayq-lowest={today.lowest.date}>
+                <span className={styles.label}>{ayqText('today.lowest')}</span>
+                <AyqFigure cents={today.lowest.balanceCents} size="large" />
+                <span className={styles.note}>
+                  {ayqText('today.lowest.on', {
+                    date: ayqDate(today.lowest.date),
+                  })}
+                </span>
+              </div>
+              {today.monthEnd === null ? null : (
+                <div className={styles.figureBlock} data-ayq-month-end={today.monthEnd.month}>
+                  <span className={styles.label}>
+                    {ayqText('today.monthEnd', {
+                      month: ayqMonthName(today.monthEnd.month),
                     })}
                   </span>
+                  <AyqFigure
+                    cents={today.monthEnd.closingCents}
+                    size="large"
+                  />
+                  <span className={styles.note}>
+                    {ayqText('today.monthEnd.note')}
+                  </span>
                 </div>
-                {today.monthEnd === null ? null : (
-                  <div className={styles.figureBlock} data-ayq-month-end={today.monthEnd.month}>
-                    <span className={styles.label}>
-                      {ayqText('today.monthEnd', {
-                        month: ayqMonthName(today.monthEnd.month),
-                      })}
-                    </span>
-                    <AyqFigure
-                      cents={today.monthEnd.closingCents}
-                      size="large"
-                    />
-                    <span className={styles.note}>
-                      {ayqText('today.monthEnd.note')}
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </AyqPane>
-
-        <AyqPane
-          mark="today-waiting"
-          title={ayqText('today.waiting')}
-          note={ayqCount(waiting.total)}
-          actions={
-            <AyqButton
-              size="small"
-              mark="today-review"
-              onClick={() => onOpen('review')}
-            >
-              {ayqText('today.open.review')}
-            </AyqButton>
-          }
-        >
-          <ul className={styles.waiting} data-ayq-waiting={String(waiting.total)}>
-            {waiting.total === 0 ? (
-              <li className={styles.waitingLine}>
-                {ayqText('today.waiting.none')}
-              </li>
-            ) : null}
-            <Waiting
-              count={waiting.overdue}
-              label={ayqText('today.waiting.overdue', {
-                amount: ayqMoney(waiting.overdueCents),
-              })}
-            />
-            {lines.map(line => (
-              <Waiting
-                key={line.key}
-                count={line.count}
-                label={ayqText(line.key)}
-              />
-            ))}
-          </ul>
-        </AyqPane>
-      </div>
+              )}
+            </>
+          )}
+        </div>
+      </AyqPane>
 
       <AyqLedgerPane
         mark="today-movements"
@@ -345,6 +307,42 @@ export function AyqTodayScreen({
         onLoaded={nothing}
         reloadToken={round}
       />
+
+      <AyqPane
+        mark="today-waiting"
+        title={ayqText('today.waiting')}
+        note={ayqCount(waiting.total)}
+        actions={
+          <AyqButton
+            size="small"
+            mark="today-review"
+            onClick={() => onOpen('review')}
+          >
+            {ayqText('today.open.review')}
+          </AyqButton>
+        }
+      >
+        <ul className={styles.waiting} data-ayq-waiting={String(waiting.total)}>
+          {waiting.total === 0 ? (
+            <li className={styles.waitingLine}>
+              {ayqText('today.waiting.none')}
+            </li>
+          ) : null}
+          <Waiting
+            count={waiting.overdue}
+            label={ayqText('today.waiting.overdue', {
+              amount: ayqMoney(waiting.overdueCents),
+            })}
+          />
+          {lines.map(line => (
+            <Waiting
+              key={line.key}
+              count={line.count}
+              label={ayqText(line.key)}
+            />
+          ))}
+        </ul>
+      </AyqPane>
     </>
   );
 }
