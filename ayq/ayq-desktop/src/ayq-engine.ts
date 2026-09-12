@@ -33,6 +33,7 @@ import {
   ayqSetPlan,
 } from './ayq-budget.ts';
 import { ayqImportCamt, ayqImports } from './ayq-camt-import.ts';
+import { ayqAccountsView } from './ayq-coverage.ts';
 import {
   ayqCategories,
   ayqCreateCategory,
@@ -333,6 +334,14 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'accounts.list',
         result: await ayqAccounts(dataDir),
+      };
+
+    case 'accounts.view':
+      return {
+        id,
+        ok: true,
+        kind: 'accounts.view',
+        result: await ayqAccountsView(dataDir),
       };
 
     case 'accounts.setFlag':

@@ -144,6 +144,55 @@ const EN = {
     'this table.',
   'register.emptyFiltered': 'No transaction matches this filter.',
 
+  'accounts.column.name': 'Account',
+  'accounts.column.counts': 'In available funds',
+  'accounts.column.statements': 'Statements to',
+  'accounts.column.balance': 'Balance',
+  'accounts.column.agrees': 'Agrees with the bank',
+  'accounts.counts.yes': 'Counted',
+  'accounts.counts.no': 'Not counted',
+  'accounts.statements.none': 'Nothing imported',
+  'accounts.agrees.yes': 'Agrees',
+  'accounts.agrees.no': 'Differs by {amount}',
+  'accounts.agrees.unknown': 'Nothing to compare',
+  'accounts.footer.available':
+    'Available funds · {counted} of {total} accounts',
+  'accounts.footer.held': 'Held in total',
+  'accounts.reliableTo':
+    'Everything computed from these accounts is reliable to {date}: the ' +
+    'earliest date the counted accounts’ statements reach.',
+  'accounts.reliableUnknown':
+    'One of the counted accounts has no statement at all, so there is no date ' +
+    'to which the position can be relied on. Importing its statements gives ' +
+    'one.',
+  'accounts.empty': 'No account yet. Importing a statement makes one.',
+  'accounts.detail.statement': 'The statement says',
+  'accounts.detail.ledger': 'AYQ holds',
+  'accounts.detail.difference': 'They differ by',
+  'accounts.detail.readFrom': 'Read from',
+  'accounts.detail.readAt': 'Read on',
+  'accounts.detail.counts': 'Counts toward available funds',
+  'accounts.detail.agrees':
+    'What the statement closed at and what AYQ holds are the same figure.',
+  'accounts.detail.differs':
+    'The two disagree by this much. AYQ does not say which statement is ' +
+    'missing, and it changes nothing in the ledger to close it: no adjustment, ' +
+    'no balancing entry. The way to close it is to import what is missing.',
+  'accounts.detail.nothing':
+    'No statement has been imported for this account, so there is nothing to ' +
+    'compare its balance with.',
+  'accounts.detail.informs':
+    'This informs you and gates nothing: a difference does not block import, ' +
+    'matching, planning or the forecast.',
+
+  'settings.accounts.only':
+    'Only this switch lives here. Balances, how far each account’s statements ' +
+    'reach and whether AYQ agrees with the bank are on the Accounts screen.',
+  'settings.accounts.transfers':
+    'A transfer between a counted and an uncounted account moves money in or ' +
+    'out of available funds; it is never income or expense.',
+  'settings.accounts.open': 'Open Accounts',
+
   'detail.none': 'Choose a transaction to see what is behind it.',
   'detail.bankSaid': 'What the bank said',
   'detail.counterparty': 'Counterparty',

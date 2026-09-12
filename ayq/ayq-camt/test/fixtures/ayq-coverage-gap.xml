@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A wholly invented statement for a month AYQ has not seen all of.
+
+  It exists for 03 §8: its closing balance is the bank's arithmetic over
+  movements that are not in it, so a budget that holds only this and the month
+  before it must disagree with the bank — and must say by exactly how much
+  rather than adjusting anything to make the disagreement go away.
+
+  The IBAN is a test number, the shop does not exist and every amount is made
+  up. Real bank data never enter this repository.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-20260731-0001</MsgId>
+      <CreDtTm>2026-08-01T03:07:41</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0123456789.2026-07-31</Id>
+      <ElctrncSeqNb>212</ElctrncSeqNb>
+      <LglSeqNb>212</LglSeqNb>
+      <CreDtTm>2026-08-01T03:07:41</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-07-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-07-31T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL00TEST0123456789</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">1741.31</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-07-01</Dt></Dt>
+      </Bal>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">2000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-07-31</Dt></Dt>
+      </Bal>
+      <Ntry>
+        <Amt Ccy="EUR">10.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-07-15</Dt></BookgDt>
+        <ValDt><Dt>2026-07-15</Dt></ValDt>
+        <AcctSvcrRef>TESTGAP0000000001</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly>
+          </Domn>
+        </BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1201,PAS421 NR:00A001, 15.07.26/12:04   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

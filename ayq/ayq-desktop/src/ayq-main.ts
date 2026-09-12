@@ -962,6 +962,124 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
 const AYQ_REGISTER_BUDGET_MS = 5_000;
 
 /**
+ * Accounts, coverage and reconciliation on the screen (03 §8).
+ *
+ * `agrees` and `differs` are the two cases the rule turns on, and they are
+ * asked for by name rather than inferred: a run that read whatever the screen
+ * happened to say would pass on both.
+ */
+async function accountsShown(
+  window: BrowserWindow,
+  expect: string,
+): Promise<string> {
+  if (!(await openDestination(window, 'accounts'))) {
+    return 'the Accounts destination never opened';
+  }
+
+  const drawn = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-table=\"accounts\"] tbody tr')",
+    )) === true;
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await drawn())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await drawn())) return 'the Accounts screen drew no accounts';
+
+  await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-table=\"accounts\"] tbody tr').click(); true",
+  );
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const seen = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const row = document.querySelector('[data-ayq-table="accounts"] tbody tr');
+        const cell = name => {
+          const found = row.querySelector('[data-ayq-cell="' + name + '"]');
+          return found ? found.innerText.replace(/\s+/g, ' ').trim() : '';
+        };
+        const pane = document.querySelector('[data-ayq-account-detail]');
+        const boundary = document.querySelector('[data-ayq-reliable-to]');
+        const difference = pane
+          ? pane.querySelector('[data-ayq-difference]')
+          : null;
+        const actions = pane
+          ? [...pane.querySelectorAll('button')].map(one =>
+              (one.innerText || '').toLowerCase().trim())
+          : [];
+        return JSON.stringify({
+          statements: cell('statements'),
+          agrees: cell('agrees'),
+          balance: cell('balance'),
+          boundary: boundary ? boundary.dataset.ayqReliableTo : null,
+          pane: pane ? pane.innerText.replace(/\s+/g, ' ').trim() : '',
+          difference: difference
+            ? difference.getAttribute('data-ayq-difference')
+            : null,
+          actions,
+          totals: (document.querySelector('[data-ayq-account-totals]') || {})
+            .innerText || '',
+        });
+      })()`),
+    ),
+  ) as {
+    statements: string;
+    agrees: string;
+    balance: string;
+    boundary: string | null;
+    pane: string;
+    difference: string | null;
+    actions: string[];
+    totals: string;
+  };
+
+  process.stdout.write(
+    `[ayq-smoke] accounts: statements to ${seen.statements}, ${seen.agrees}, ` +
+      `balance ${seen.balance}, boundary ${seen.boundary || '(none)'}\n`,
+  );
+
+  if (seen.boundary === null) return 'the screen states no reliability boundary';
+
+  // 03 §8.3 and §8.5: nothing here may offer to close a difference by writing
+  // into the ledger, and nothing may be accepted or dismissed, because
+  // reconciliation is derived and is not a decision.
+  for (const forbidden of ['adjust', 'reconcile', 'accept', 'dismiss']) {
+    if (seen.actions.some(label => label.includes(forbidden))) {
+      return `the screen offers to ${forbidden} a difference`;
+    }
+  }
+
+  if (expect === 'agrees') {
+    if (!/Agrees/.test(seen.agrees)) {
+      return `the ledger matches the statement and the screen says ${seen.agrees}`;
+    }
+    if (seen.difference !== null) {
+      return 'a difference is shown where there is none';
+    }
+    return '';
+  }
+
+  if (expect === 'differs') {
+    if (!/Differs by/.test(seen.agrees)) {
+      return `the ledger does not match and the screen says ${seen.agrees}`;
+    }
+    if (seen.difference === null || seen.difference === '0') {
+      return 'the screen does not state the difference';
+    }
+    if (!/does not say which statement is missing/.test(seen.pane)) {
+      return 'the screen does not say what it is not claiming';
+    }
+    process.stdout.write(
+      `[ayq-smoke] accounts: the difference is ${seen.difference} cents, stated\n`,
+    );
+    return '';
+  }
+
+  return `--accounts was given ${expect}, which is not a case`;
+}
+
+/**
  * The Register, on a budget big enough for the question to be real.
  *
  * What is proved here: that the table draws, that what is being filtered is
@@ -1588,6 +1706,21 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     process.env.AYQ_SMOKE_SHOW_MORE !== '1' ||
     /^(\d+) rows, then (?!\1\b)/.test(paged);
 
+  // Accounts, coverage and reconciliation (03 §8).
+  const accountsAsked = process.env.AYQ_SMOKE_ACCOUNTS ?? '';
+  let accountsState = 'not asked';
+  let accountsOk = true;
+  if (accountsAsked !== '') {
+    const wrong = await accountsShown(window, accountsAsked);
+    accountsState = wrong === '' ? `held (${accountsAsked})` : wrong;
+    accountsOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] the Accounts screen: ${
+        accountsOk ? `held (${accountsAsked})` : `FAILED: ${wrong}`
+      }\n`,
+    );
+  }
+
   // The Register, on a budget big enough for the question to be real.
   const registerAsked = process.env.AYQ_SMOKE_REGISTER === '1';
   let register = 'not asked';
@@ -1685,6 +1818,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     groundsOk &&
     shellOk &&
     registerOk &&
+    accountsOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -1718,6 +1852,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           shellOk,
           register,
           registerOk,
+          accounts: accountsState,
+          accountsOk,
           pagedOk,
           imports: importRounds,
           dataDir,
@@ -1752,7 +1888,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is

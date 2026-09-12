@@ -18,7 +18,7 @@ difference is recorded below.
 | S1 | Fluent UI React v9 and the token module, alone | done |
 | S2 | The shell — rail, grounds, status bar, screen frame | done |
 | S3 | Register: table and detail pane | done |
-| S4 | Accounts, coverage and reconciliation (03 §8) | not started |
+| S4 | Accounts, coverage and reconciliation (03 §8) | done |
 | S5 | Today (04 A21) | not started |
 | S6 | Upcoming and Plan | not started |
 | S7 | Review and Settings | not started |
@@ -36,6 +36,60 @@ has always drawn, and a screen that has been brought over to Fluent is mounted
 into the same element as a React root. S2 turns the shell itself over, and the
 screens that are still the old ones are drawn inside the new frame until their
 own stage arrives. By S8 there is no seam left and the file goes.
+
+## S4 — Accounts, coverage and reconciliation (03 §8)
+
+Per account: the balance, whether it counts toward available funds, how far its
+statements reach, and whether AYQ agrees with the closing balance the bank
+stated there. Then a detail pane that says the difference in figures and says,
+in words, what AYQ is *not* claiming.
+
+Everything about reconciliation is derived on read (§8.5). There is no
+reconciliation record in the store, no provenance, and nothing on the screen to
+accept, dismiss, adjust or mark as done — which is checked rather than
+promised: the acceptance run and the renderer test both fail if a button with
+any of those words appears in the pane.
+
+A difference is stated and left standing (§8.3). AYQ does not adjust a balance,
+create a balancing transaction or write anything into the ledger, and the
+engine test proves it by counting the ledger before and after a statement whose
+closing balance assumes movements AYQ has never been given: the budget gains
+exactly the one entry that statement carried, and the account's balance moves
+by that entry and by nothing else.
+
+AYQ also asserts nothing beyond the comparison (§8.2). The pane says the two
+disagree by this much; it does not say which statement is missing, and it says
+so out loud.
+
+### The reliability boundary (§8.4)
+
+The *earliest* coverage date among the accounts that count, never the latest —
+and a counted account with no statement at all leaves no date to rely on rather
+than borrowing another account's. Both are tested, in the engine and on the
+screen, because taking the latest is the mistake that looks right.
+
+### The store
+
+Version 7 keeps, per account, the date its statements reach to and the closing
+balance the bank stated there, with the file it came from. Only a statement
+that moves the boundary forward is recorded: importing 2021 after 2026 must not
+make AYQ know less. An older store gains an empty one, which is the truth about
+it — nothing was recorded at import time, and deriving it from the ledger now
+would be AYQ agreeing with itself.
+
+### Settings
+
+Settings → Accounts keeps the "counts toward available funds" switch and
+nothing else, and points at this screen for the rest. The renderer test asserts
+the column list, so a balance or a coverage date creeping back into Settings
+fails rather than passing unnoticed.
+
+### PROVISIONAL in S4
+
+11. **Coverage is per account and per import**, taken from the furthest
+    statement seen. 03 §8.1 says an account records how far its statements
+    reach; it does not say what to do when one import carries several accounts,
+    and the importer does not yet produce that case.
 
 ## S3 — Register: table and detail pane
 

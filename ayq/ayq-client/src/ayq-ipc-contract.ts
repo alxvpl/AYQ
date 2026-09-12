@@ -47,6 +47,57 @@ export type AyqSettings = {
   ground: AyqGround;
 };
 
+/**
+ * How far one account's statements reach, and whether AYQ agrees with them
+ * (03 §8).
+ *
+ * Every field here is read, not decided. Reconciliation is derived from the
+ * statements held and the ledger, recomputed each time it is asked for, and it
+ * is never stored as a decision and carries no provenance of its own (§8.5).
+ */
+export type AyqAccountCoverage = {
+  accountId: string;
+  /** The date the last imported statement reaches to. Null: none imported. */
+  toDate: string | null;
+  /** The closing balance that statement stated. */
+  statementBalanceCents: number | null;
+  /** The balance AYQ holds for the account. */
+  ledgerBalanceCents: number;
+  /**
+   * What the statement says minus what AYQ holds.
+   *
+   * Zero means they agree. A difference means the two disagree — not that a
+   * particular statement is missing, and AYQ never invents the movements that
+   * would close it (§8.2). Null when there is no statement to compare with.
+   */
+  differenceCents: number | null;
+  /** Null when nothing has been imported for this account. */
+  agrees: boolean | null;
+  /** The statement the closing balance came from, so the screen can say. */
+  file: string | null;
+  /** When AYQ read it. */
+  readAt: string | null;
+};
+
+/** The Accounts screen's whole answer. */
+export type AyqAccountsView = {
+  accounts: AyqAccountSummary[];
+  coverage: AyqAccountCoverage[];
+  /** Only the accounts flagged as counting (03 §7.6). */
+  availableFundsCents: number;
+  /** Every account, counted or not. */
+  totalBalanceCents: number;
+  /**
+   * The reliability boundary of everything computed from these accounts
+   * (03 §8.4): the *earliest* coverage date among the accounts that count,
+   * never the latest. Null when a counted account has no statement at all,
+   * because then nothing about the position can be relied on to any date.
+   */
+  reliableTo: string | null;
+  /** How many counted accounts have no statement at all. */
+  countedWithoutCoverage: number;
+};
+
 /** Proof of life from the engine, computed from a real budget. */
 export type AyqEngineStatus = {
   /** The version of `@actual-app/api` the host actually loaded. */
@@ -882,6 +933,7 @@ export type AyqResults = {
   'settings.get': AyqSettings;
   'settings.set': AyqSettings;
   'accounts.list': AyqAccountSummary[];
+  'accounts.view': AyqAccountsView;
   'accounts.setFlag': AyqAccountSummary[];
   'transactions.list': AyqLedger;
   'transaction.detail': AyqTransactionDetail;
@@ -933,6 +985,7 @@ export type AyqRequestBody =
   | { kind: 'settings.get' }
   | { kind: 'settings.set'; settings: AyqSettings }
   | { kind: 'accounts.list' }
+  | { kind: 'accounts.view' }
   | {
       /**
        * Says whether one account's balance counts toward available funds.

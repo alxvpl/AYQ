@@ -14,6 +14,7 @@ import { AyqLegacyScreen } from '../ayq-ui/ayq-legacy-screen.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqAppearanceScreen } from './ayq-appearance.tsx';
 import { AyqNotBuilt } from './ayq-not-built.tsx';
+import { AyqSettingsAccounts } from './ayq-settings-accounts.tsx';
 
 export type AyqSettingsTab = 'accounts' | 'categories' | 'rules' | 'appearance';
 
@@ -30,11 +31,25 @@ export const AYQ_SETTINGS_TABS: readonly {
 export function AyqSettingsScreen({
   tab,
   onFailure,
+  onChanged,
+  onOpenAccounts,
 }: {
   tab: AyqSettingsTab;
   onFailure(message: string): void;
+  onChanged(): void;
+  onOpenAccounts(): void;
 }): ReactNode {
   if (tab === 'appearance') return <AyqAppearanceScreen />;
+
+  if (tab === 'accounts') {
+    return (
+      <AyqSettingsAccounts
+        onFailure={onFailure}
+        onChanged={onChanged}
+        onOpenAccounts={onOpenAccounts}
+      />
+    );
+  }
 
   if (tab === 'rules') {
     return (
@@ -46,13 +61,5 @@ export function AyqSettingsScreen({
     );
   }
 
-  return (
-    <AyqNotBuilt
-      what={ayqText(
-        tab === 'accounts'
-          ? 'notBuilt.settingsAccounts'
-          : 'notBuilt.settingsCategories',
-      )}
-    />
-  );
+  return <AyqNotBuilt what={ayqText('notBuilt.settingsCategories')} />;
 }

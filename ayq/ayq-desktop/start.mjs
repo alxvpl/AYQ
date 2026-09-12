@@ -93,6 +93,12 @@ if (seedStore) {
   process.stdout.write(`[ayq-start] seeded ${join(target, 'ayq-store.json')}\n`);
 }
 
+// `--accounts agrees` / `--accounts differs` opens the Accounts screen and
+// requires it to state the case named — 03 §8's two, asked for by name so that
+// a run reading whatever the screen happened to say cannot pass on both.
+const accounts = flag('accounts');
+if (accounts) env.AYQ_SMOKE_ACCOUNTS = accounts;
+
 // `--register` opens the Register and requires it to draw, to show what is
 // being filtered and let it be cleared in one action, to state which set its
 // totals describe, and to open the evidence behind a row. It prints how long

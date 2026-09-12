@@ -234,6 +234,44 @@ jobs:
           }
           Write-Host "AYQ Register: $held transactions, first draw $($Matches[2])ms, filtered $($Matches[3])ms"
 
+      # Accounts, coverage and reconciliation (03 §8), in both of the cases the
+      # rule turns on, over one budget.
+      #
+      # First a month whose closing balance is the bank's arithmetic over
+      # exactly the entries in it: AYQ must agree. Then a later month whose
+      # closing balance assumes movements that are not in it: AYQ must say by
+      # how much they differ, and must still be holding only what the two
+      # statements carried.
+      - name: Coverage and reconciliation, both ways
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-accounts-budget
+        run: |
+          $agreed = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml `
+            --accounts agrees 2>&1 | Out-String
+          Write-Host $agreed
+          if ($LASTEXITCODE -ne 0) { throw 'AYQ did not agree with a statement it holds in full' }
+          if ($agreed -notmatch 'the Accounts screen: held \(agrees\)') {
+            throw 'the run did not check that AYQ agrees'
+          }
+
+          $differs = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-coverage-gap.xml `
+            --accounts differs `
+            --screenshot "${{ runner.temp }}\ayq-desktop-accounts.png" 2>&1 | Out-String
+          Write-Host $differs
+          if ($LASTEXITCODE -ne 0) { throw 'AYQ did not state the difference' }
+          if ($differs -notmatch 'the Accounts screen: held \(differs\)') {
+            throw 'the run did not check that AYQ says so when it differs'
+          }
+          if ($differs -notmatch 'the difference is (-?\d+) cents, stated') {
+            throw 'the difference was not stated as a figure'
+          }
+          Write-Host "AYQ and the bank differ by $($Matches[1]) cents, and AYQ says so"
+
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
       - name: An unusable file is refused, and nothing is damaged
@@ -849,6 +887,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-grounds.png
             ${{ runner.temp }}\ayq-desktop-shell.png
             ${{ runner.temp }}\ayq-desktop-register.png
+            ${{ runner.temp }}\ayq-desktop-accounts.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json

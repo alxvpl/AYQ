@@ -31,6 +31,7 @@ import type {
   AyqSummary,
 } from './ayq-ipc-contract.ts';
 import { ayqOnOpenRegister, type AyqLegacyView } from './ayq-legacy-views.ts';
+import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
 import { AyqImportScreen } from './ayq-screens/ayq-import.tsx';
 import { AyqRegisterScreen } from './ayq-screens/ayq-register.tsx';
 import { AyqNotBuilt } from './ayq-screens/ayq-not-built.tsx';
@@ -192,7 +193,14 @@ export function AyqApplication(): ReactNode {
   } else if (destination === 'import') {
     body = <AyqImportScreen onImported={reload} onFailure={say} />;
   } else if (destination === 'settings') {
-    body = <AyqSettingsScreen tab={settingsTab} onFailure={say} />;
+    body = (
+      <AyqSettingsScreen
+        tab={settingsTab}
+        onFailure={say}
+        onChanged={reload}
+        onOpenAccounts={() => setDestination('accounts')}
+      />
+    );
   } else if (destination === 'review') {
     body = (
       <>
@@ -214,10 +222,10 @@ export function AyqApplication(): ReactNode {
         onLoaded={redrew}
       />
     );
+  } else if (destination === 'accounts') {
+    body = <AyqAccountsScreen onFailure={say} round={round} />;
   } else if (destination === 'today') {
     body = <AyqNotBuilt what={ayqText('notBuilt.today')} />;
-  } else if (destination === 'accounts') {
-    body = <AyqNotBuilt what={ayqText('notBuilt.accounts')} />;
   } else {
     body = <AyqNotBuilt what={ayqText('notBuilt.reports')} />;
   }

@@ -60,6 +60,23 @@ export type AyqPlanOccurrenceRecord = {
   rejected: string[];
 };
 
+/**
+ * How far one account's statements reach (03 §8.1).
+ *
+ * The bank's own closing balance and the date it applies to, kept per account
+ * so that AYQ can say what it agrees with rather than asserting a balance and
+ * hoping. Only the statement that reaches furthest is kept: importing an older
+ * one after a newer one must not move the boundary backwards.
+ */
+export type AyqStatementCoverage = {
+  /** The date the statement reaches to, YYYY-MM-DD. */
+  toDate: string;
+  closingBalanceCents: number;
+  /** The file it came from. The base name only; paths are never recorded. */
+  file: string | null;
+  readAt: string;
+};
+
 /** What AYQ knows about an account that Actual has no field for. */
 export type AyqAccountFlags = {
   /**
@@ -131,8 +148,13 @@ const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
  *   6  a transaction's category decisions become a history rather than one
  *      current value. The single decision an older store holds becomes a
  *      history of one, which is exactly what it is.
+ *   7  statement coverage: the date each account's statements reach to and
+ *      the closing balance the bank stated there (03 §8.1). An older store
+ *      gains an empty one — which is the truth about it, because nothing was
+ *      recorded at import time and inventing it from the ledger would be
+ *      AYQ agreeing with itself.
  */
-export const AYQ_STORE_VERSION = 6;
+export const AYQ_STORE_VERSION = 7;
 
 export type AyqStore = {
   version: number;
@@ -161,6 +183,8 @@ export type AyqStore = {
   accountFlags: Record<string, AyqAccountFlags>;
   /** What the owner chose about the interface, since version 5. */
   settings: AyqSettings;
+  /** How far each account's statements reach, since version 7 (03 §8.1). */
+  coverage: Record<string, AyqStatementCoverage>;
 };
 
 /**
@@ -191,6 +215,7 @@ function empty(): AyqStore {
     occurrences: [],
     accountFlags: {},
     settings: { ...AYQ_DEFAULT_SETTINGS },
+    coverage: {},
   };
 }
 
@@ -304,6 +329,13 @@ function migrate(raw: unknown): AyqStore {
     // default, which is to follow the system — the same as never having been
     // asked, which is exactly what happened.
     settings: ayqNormaliseSettings(value.settings),
+    // Versions 1 to 6 recorded no coverage. An empty one is the truth about
+    // such a store: what the bank said at the end of a statement was not kept,
+    // and deriving it from the ledger now would be AYQ agreeing with itself.
+    coverage:
+      typeof value.coverage === 'object' && value.coverage !== null
+        ? (value.coverage as Record<string, AyqStatementCoverage>)
+        : {},
   };
 }
 

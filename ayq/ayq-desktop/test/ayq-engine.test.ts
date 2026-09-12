@@ -77,6 +77,18 @@ const fixture = join(
   'ayq-abn-month.xml',
 );
 
+/** A month AYQ has not seen all of: its closing balance assumes movements
+ * that are not in it. */
+const gapFixture = join(
+  here,
+  '..',
+  '..',
+  'ayq-camt',
+  'test',
+  'fixtures',
+  'ayq-coverage-gap.xml',
+);
+
 /** The invented pair that is one person's money in two of their own accounts. */
 function ownAccountFixture(name: string): string {
   return join(here, '..', '..', 'ayq-camt', 'test', 'fixtures', name);
@@ -560,6 +572,152 @@ test('the detail names the rule that would file this counterparty', async () => 
   assert.ok(detail.rule, '04 A7: a rule a person can see');
   assert.equal(detail.rule.categoryName, 'Groceries');
   assert.equal(detail.rule.counterpartyKey, detail.counterpartyKey);
+});
+
+test('a ledger that matches the statement agrees with the bank (03 §8.2)', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const view = await ask(dataDir, { kind: 'accounts.view' });
+  assert.equal(view.accounts.length, 1);
+  const coverage = view.coverage[0];
+
+  assert.equal(coverage.toDate, '2026-06-30', 'how far the statements reach');
+  assert.equal(
+    coverage.statementBalanceCents,
+    coverage.ledgerBalanceCents,
+    'the bank closed at what AYQ holds',
+  );
+  assert.equal(coverage.differenceCents, 0);
+  assert.equal(coverage.agrees, true);
+  assert.ok(coverage.file, 'it says which statement the figure came from');
+
+  // 03 §8.4: the boundary is a date, and with one counted account it is that
+  // account's.
+  assert.equal(view.reliableTo, '2026-06-30');
+  assert.equal(view.countedWithoutCoverage, 0);
+});
+
+test('a ledger that does not match states the difference, and changes nothing', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const before = await ask(dataDir, { kind: 'transactions.list' });
+  const beforeAccounts = await ask(dataDir, { kind: 'accounts.list' });
+
+  // A later statement whose closing balance is the bank's arithmetic over
+  // movements AYQ has not been given.
+  await ask(dataDir, { kind: 'import.camt', paths: [gapFixture] });
+
+  const view = await ask(dataDir, { kind: 'accounts.view' });
+  const coverage = view.coverage[0];
+
+  assert.equal(coverage.toDate, '2026-07-31', 'the boundary moved forward');
+  assert.equal(coverage.agrees, false);
+  assert.equal(
+    coverage.statementBalanceCents,
+    200_000,
+    'what the statement says it closed at',
+  );
+  assert.equal(
+    coverage.differenceCents,
+    200_000 - coverage.ledgerBalanceCents,
+    'the exact difference, stated',
+  );
+  assert.ok(coverage.differenceCents !== 0);
+
+  // 03 §8.3: surfaced, never absorbed. The ledger holds what the two
+  // statements held and not one entry more — no adjustment, no balancing
+  // transaction, nothing written to make the disagreement go away.
+  const after = await ask(dataDir, { kind: 'transactions.list' });
+  assert.equal(
+    after.total,
+    before.total + 1,
+    'exactly the one entry the second statement carried',
+  );
+  assert.equal(
+    after.rows.filter(row => row.payee === null).length,
+    0,
+    'nothing nameless was invented to close the gap',
+  );
+
+  // And the account's balance is still the ledger's own arithmetic, not the
+  // bank's figure copied over it.
+  const accounts = await ask(dataDir, { kind: 'accounts.list' });
+  assert.equal(
+    accounts[0].balanceCents,
+    beforeAccounts[0].balanceCents - 1_000,
+    'the balance moved by the entry and by nothing else',
+  );
+  assert.equal(accounts[0].balanceCents, coverage.ledgerBalanceCents);
+
+  // §8.5: derived on read. Asking again gives the same answer and writes
+  // nothing — the store holds coverage, and no reconciliation decision.
+  const again = await ask(dataDir, { kind: 'accounts.view' });
+  assert.deepEqual(again.coverage, view.coverage);
+  const store = JSON.parse(
+    await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  assert.ok(store.coverage, 'the statements AYQ has read are kept');
+  assert.equal(
+    JSON.stringify(store).includes('reconcil'),
+    false,
+    'reconciliation is not a decision and is not stored as one',
+  );
+});
+
+test('an older statement does not move the boundary backwards', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [gapFixture] });
+  const first = await ask(dataDir, { kind: 'accounts.view' });
+  assert.equal(first.coverage[0].toDate, '2026-07-31');
+
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const second = await ask(dataDir, { kind: 'accounts.view' });
+  assert.equal(
+    second.coverage[0].toDate,
+    '2026-07-31',
+    'importing June after July does not make AYQ know less',
+  );
+});
+
+test('the reliability boundary is the earliest counted account, never the latest', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [ownAccountFixture('ayq-own-current.xml')] });
+  await ask(dataDir, { kind: 'import.camt', paths: [ownAccountFixture('ayq-own-savings.xml')] });
+
+  const view = await ask(dataDir, { kind: 'accounts.view' });
+  assert.equal(view.accounts.length, 2, 'two of the same person’s accounts');
+
+  const counted = view.coverage.filter(one =>
+    view.accounts.some(
+      account => account.id === one.accountId && account.countsTowardFunds,
+    ),
+  );
+  const dates = counted
+    .map(one => one.toDate)
+    .filter((date): date is string => date !== null);
+
+  if (view.countedWithoutCoverage === 0 && dates.length > 0) {
+    assert.equal(
+      view.reliableTo,
+      [...dates].sort()[0],
+      '03 §8.4: the earliest, which is the one a person can rely on',
+    );
+    assert.notEqual(
+      view.reliableTo,
+      [...dates].sort().at(-1) === [...dates].sort()[0]
+        ? null
+        : [...dates].sort().at(-1),
+    );
+  }
+
+  // An account that counts and has no statement at all leaves no date to rely
+  // on, rather than borrowing another account's.
+  const withoutStatement = view.coverage.find(one => one.toDate === null);
+  if (withoutStatement) {
+    assert.equal(view.reliableTo, null);
+  }
 });
 
 test('a transaction explains where its name came from', async () => {

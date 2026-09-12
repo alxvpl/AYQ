@@ -34,7 +34,12 @@ import { ayqTransactionCount } from './ayq-ledger.ts';
 import { ayqRunMatching } from './ayq-plan.ts';
 import { ayqApplyRules } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
-import { ayqId, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
+import {
+  ayqId,
+  ayqReadStore,
+  ayqWriteStore,
+  type AyqStatementCoverage,
+} from './ayq-store.ts';
 
 /** The name the imported account gets: the statement's own IBAN, masked. */
 export function ayqMaskAccount(entries: AyqBankEntry[]): string {
@@ -70,6 +75,38 @@ function earliestOpening(
     if (date === null) continue;
     if (found === null || date < found.date) {
       found = { cents: Math.round(opening.value * 100), date };
+    }
+  }
+
+  return found;
+}
+
+/**
+ * The statement that reaches furthest, and what the bank said it closed at.
+ *
+ * 03 §8.1: an account records how far its statements reach and the closing
+ * balance stated there. The furthest is the one that matters — importing 2021
+ * after 2026 must not move the boundary backwards — and a statement with no
+ * closing balance is not coverage at all, because there is nothing to agree
+ * or disagree with.
+ */
+function furthestClosing(
+  entries: AyqBankEntry[],
+): AyqStatementCoverage | null {
+  let found: AyqStatementCoverage | null = null;
+
+  for (const entry of entries) {
+    const closing = entry.statement.closingBalance;
+    if (!closing || closing.value === null) continue;
+    const date = entry.statement.toDate?.slice(0, 10) ?? entry.bookingDate.date;
+    if (date === null) continue;
+    if (found === null || date > found.toDate) {
+      found = {
+        toDate: date,
+        closingBalanceCents: Math.round(closing.value * 100),
+        file: entry.statement.file,
+        readAt: new Date().toISOString(),
+      };
     }
   }
 
@@ -275,6 +312,17 @@ export async function ayqImportCamt(
 
   const after = ayqReadStore(dataDir);
   after.imports.push(record);
+
+  // How far this account's statements now reach (03 §8.1). Recorded only when
+  // it moves the boundary forward: a person importing an old statement to fill
+  // a gap has not made AYQ's knowledge of the account older.
+  const closing = furthestClosing(records);
+  if (closing !== null) {
+    const held = after.coverage[accountId];
+    if (!held || closing.toDate > held.toDate) {
+      after.coverage[accountId] = closing;
+    }
+  }
   ayqWriteStore(dataDir, after);
 
   return {
