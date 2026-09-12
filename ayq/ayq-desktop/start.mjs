@@ -93,6 +93,12 @@ if (seedStore) {
   process.stdout.write(`[ayq-start] seeded ${join(target, 'ayq-store.json')}\n`);
 }
 
+// `--register` opens the Register and requires it to draw, to show what is
+// being filtered and let it be cleared in one action, to state which set its
+// totals describe, and to open the evidence behind a row. It prints how long
+// the table took, measured by the screen itself.
+if (has('register')) env.AYQ_SMOKE_REGISTER = '1';
+
 // `--shell` measures the shell on the real window: the rail's width and order,
 // one scroller at the window's right edge, and the table header and the detail
 // pane staying put while the rows move (04 A20, A22).

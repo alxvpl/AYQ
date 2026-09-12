@@ -79,18 +79,30 @@ jobs:
         timeout-minutes: 15
         run: node setup.mjs
 
+      # Every line's exit code is checked, and that is not belt and braces.
+      # PowerShell is the default shell here, and it does not stop a script
+      # when an external command fails: only the last command's code reaches
+      # the runner. So a step of two commands has been a step that checks the
+      # second one — which is how a failing engine suite passed for two
+      # store versions.
       - name: Typecheck
         working-directory: ayq/ayq-desktop
+        shell: pwsh
         run: |
           npm run typecheck
+          if ($LASTEXITCODE -ne 0) { throw 'the engine does not typecheck' }
           npm --prefix ../ayq-client run typecheck
+          if ($LASTEXITCODE -ne 0) { throw 'the renderer does not typecheck' }
 
       - name: Tests
         working-directory: ayq/ayq-desktop
-        timeout-minutes: 20
+        shell: pwsh
+        timeout-minutes: 25
         run: |
           npm test
+          if ($LASTEXITCODE -ne 0) { throw 'the engine tests did not pass' }
           npm --prefix ../ayq-client test
+          if ($LASTEXITCODE -ne 0) { throw 'the renderer tests did not pass' }
 
       # The acceptance test. `--require-host` makes the development Node
       # fallback unable to satisfy it: if anything but the Electron utility
@@ -158,6 +170,7 @@ jobs:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-shell-budget
         run: |
           node make-scale-fixture.mjs "${{ runner.temp }}\ayq-shell.xml" 900
+          if ($LASTEXITCODE -ne 0) { throw 'the invented fixture could not be made' }
           $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
             --import "${{ runner.temp }}\ayq-shell.xml" `
             --shell `
@@ -256,9 +269,12 @@ jobs:
         timeout-minutes: 10
         env:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-category-budget
+        shell: pwsh
         run: |
           node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --categorise Utilities
-          node start.mjs --smoke --require-host "electron utilityProcess" --expect-category Utilities --spending --screenshot "${{ runner.temp }}\ayq-desktop-categories.png"
+          if ($LASTEXITCODE -ne 0) { throw 'the newest transaction could not be filed' }
+          node start.mjs --smoke --require-host "electron utilityProcess" --expect-category Utilities --screenshot "${{ runner.temp }}\ayq-desktop-categories.png"
+          if ($LASTEXITCODE -ne 0) { throw 'the category did not survive the restart' }
 
       # The forecast, through the screen a person uses: the Upcoming tab, the
       # "New planned payment" button, the fields, the save. Then a second launch
@@ -272,9 +288,12 @@ jobs:
         timeout-minutes: 10
         env:
           AYQ_DATA_DIR: ${{ runner.temp }}\ayq-plan-budget
+        shell: pwsh
         run: |
           node start.mjs --smoke --require-host "electron utilityProcess" --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --plan "Rent|1200.00|monthly|2026-10-01"
+          if ($LASTEXITCODE -ne 0) { throw 'the planned payment could not be added' }
           node start.mjs --smoke --require-host "electron utilityProcess" --expect-plan Rent --screenshot "${{ runner.temp }}\ayq-desktop-upcoming.png"
+          if ($LASTEXITCODE -ne 0) { throw 'the planned payment did not outlive the process' }
 
       # The worksheet: categories down, one month across. A plan set through the
       # sheet has to come back in the row's own Left column, which the engine
@@ -309,6 +328,7 @@ jobs:
           $today = (Get-Date).ToString('yyyy-MM-dd')
           node make-conformance-fixture.mjs `
             "${{ runner.temp }}\ayq-conf-store.json" "${{ runner.temp }}\ayq-conf.xml"
+          if ($LASTEXITCODE -ne 0) { throw 'the invented fixture could not be made' }
           node start.mjs --smoke --require-host "electron utilityProcess" `
             --import "${{ runner.temp }}\ayq-conf.xml" `
             --plan "Energy|61.90|monthly|$today" --match `
@@ -326,8 +346,9 @@ jobs:
       #          one week. Either could be the one expected, so neither is
       #          applied and a person is asked.
       #
-      # The store is seeded as version 3, so the upgrade to version 4 is part of
-      # what has to work rather than something only the engine tests see. Every
+      # The store is seeded as version 3, so upgrading it to the current
+      # version is part of what has to work rather than something only the
+      # engine tests see. Every
       # value in both files is invented and both are generated on the day.
       - name: What 03 r004 changed, proved on the screen
         working-directory: ayq/ayq-desktop
@@ -338,6 +359,7 @@ jobs:
         run: |
           node make-conformance-fixture.mjs `
             "${{ runner.temp }}\ayq-r004-store.json" "${{ runner.temp }}\ayq-r004.xml"
+          if ($LASTEXITCODE -ne 0) { throw 'the invented fixture could not be made' }
           $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
             --seed-store "${{ runner.temp }}\ayq-r004-store.json" `
             --import "${{ runner.temp }}\ayq-r004.xml" `

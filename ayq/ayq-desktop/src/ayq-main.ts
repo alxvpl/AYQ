@@ -928,6 +928,175 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
 }
 
 /**
+ * What counts as responsive, for the Register.
+ *
+ * Deliberately generous: this runs on a shared CI runner against a budget of
+ * fifty thousand invented transactions, and the number worth reading is the
+ * measured one, which the run prints. The gate is here to catch the day the
+ * screen stops being usable at all rather than to police a hundred
+ * milliseconds either way.
+ */
+const AYQ_REGISTER_BUDGET_MS = 5_000;
+
+/**
+ * The Register, on a budget big enough for the question to be real.
+ *
+ * What is proved here: that the table draws, that what is being filtered is
+ * visible and can be taken off in one action, that the totals say which set
+ * they describe, that uncategorised is a state rather than a gap, that the
+ * detail pane carries the evidence behind a row — and how long any of it
+ * takes, measured by the screen itself rather than by a poll from outside.
+ */
+async function registerShown(window: BrowserWindow): Promise<string> {
+  await window.webContents.executeJavaScript(
+    'document.body.dataset.ayqRegisterMs = ""; true',
+  );
+  if (!(await openDestination(window, 'register'))) {
+    return 'the Register never opened';
+  }
+
+  const drawn = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "document.body.dataset.ayqRegisterMs !== ''",
+    )) === true;
+
+  let deadline = Date.now() + 120_000;
+  while (Date.now() < deadline && !(await drawn())) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (!(await drawn())) return 'the Register never drew';
+
+  const opening = Number(await dataset(window, 'ayqRegisterMs'));
+  const seen = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rows = document.querySelectorAll('[data-ayq-table="register"] tbody tr');
+        const totals = document.querySelector('[data-ayq-totals]');
+        return JSON.stringify({
+          rows: rows.length,
+          totals: totals ? totals.innerText.replace(/\s+/g, ' ').trim() : null,
+          uncategorised: document.querySelectorAll(
+            '[data-ayq-table="register"] [data-ayq-state="uncategorised"]').length,
+          held: Number(document.body.dataset.ayqLedgerTotal || 0),
+        });
+      })()`),
+    ),
+  ) as {
+    rows: number;
+    totals: string | null;
+    uncategorised: number;
+    held: number;
+  };
+
+  if (seen.rows === 0) return 'the Register drew no rows';
+  if (seen.totals === null) return 'the Register states no totals';
+  // 04 D2.1: a total that silently describes a filtered set misleads, so it
+  // says which set it is describing.
+  if (!/totals describe/.test(seen.totals)) {
+    return `the totals do not say what they describe: ${seen.totals}`;
+  }
+  process.stdout.write(
+    `[ayq-smoke] register: ${seen.rows} rows of ${seen.held} drawn in ${opening}ms\n`,
+  );
+  process.stdout.write(`[ayq-smoke] register totals: ${seen.totals}\n`);
+
+  // A filter, put on through the control a person uses, and the chip that says
+  // it is on. Uncategorised, because 03 §4.5 makes it a state and a state is
+  // the one thing a filter must be able to name.
+  await window.webContents.executeJavaScript(
+    'document.body.dataset.ayqRegisterMs = ""; ' +
+      "document.querySelector('[data-ayq-filter-uncategorised] input').click(); true",
+  );
+  deadline = Date.now() + 120_000;
+  while (Date.now() < deadline && !(await drawn())) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (!(await drawn())) return 'filtering the Register never came back';
+  const filtering = Number(await dataset(window, 'ayqRegisterMs'));
+
+  const filtered = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const chip = document.querySelector('[data-ayq-filter="uncategorised"]');
+        const totals = document.querySelector('[data-ayq-totals]');
+        return JSON.stringify({
+          chip: chip ? chip.innerText.replace(/\s+/g, ' ').trim() : null,
+          clearAll: !!document.querySelector('[data-ayq-action="clear-filters"]'),
+          totals: totals ? totals.innerText.replace(/\s+/g, ' ').trim() : null,
+          rows: document.querySelectorAll('[data-ayq-table="register"] tbody tr').length,
+          empty: !!document.querySelector('[data-ayq-table="register"][data-ayq-empty]'),
+        });
+      })()`),
+    ),
+  ) as {
+    chip: string | null;
+    clearAll: boolean;
+    totals: string | null;
+    rows: number;
+    empty: boolean;
+  };
+
+  if (filtered.chip === null) return 'the filter that is on is not shown';
+  if (!filtered.clearAll) return 'there is no way to clear the filters at once';
+  if (filtered.totals !== null && !/this filter matched/.test(filtered.totals)) {
+    return `the filtered totals do not say so: ${filtered.totals}`;
+  }
+  process.stdout.write(
+    `[ayq-smoke] register filtered in ${filtering}ms: ${filtered.chip} -> ` +
+      `${filtered.rows} rows${filtered.empty ? ' (none matched)' : ''}\n`,
+  );
+
+  // Taken off again, in one action.
+  await window.webContents.executeJavaScript(
+    'document.body.dataset.ayqRegisterMs = ""; ' +
+      "document.querySelector('[data-ayq-action=\"clear-filters\"]').click(); true",
+  );
+  deadline = Date.now() + 120_000;
+  while (Date.now() < deadline && !(await drawn())) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  const cleared = await window.webContents.executeJavaScript(
+    "!document.querySelector('[data-ayq-filter=\"uncategorised\"]')",
+  );
+  if (cleared !== true) return 'clearing the filters left one on';
+
+  // And the pane beside the table (04 A4): the evidence behind the row.
+  await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-table=\"register\"] tbody tr').click(); true",
+  );
+  deadline = Date.now() + 30_000;
+  let pane = '';
+  while (Date.now() < deadline) {
+    pane = String(
+      await window.webContents.executeJavaScript(`(() => {
+        const node = document.querySelector('[data-ayq-detail]');
+        return node ? node.innerText.replace(/\s+/g, ' ').trim() : '';
+      })()`),
+    );
+    if (pane !== '') break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (pane === '') return 'choosing a row opened no detail pane';
+  if (!/How AYQ decided who this is/.test(pane)) {
+    return 'the detail pane carries no evidence';
+  }
+  if (!/Decisions/.test(pane)) return 'the detail pane carries no decisions';
+  process.stdout.write(`[ayq-smoke] register detail: ${pane.slice(0, 320)}\n`);
+
+  // The number the task asked to be measured and recorded, said once, plainly.
+  process.stdout.write(
+    `[ayq-smoke] register performance: ${seen.held} transactions held, ` +
+      `first draw ${opening}ms, filtered ${filtering}ms\n`,
+  );
+
+  const slowest = Math.max(opening, filtering);
+  if (slowest > AYQ_REGISTER_BUDGET_MS) {
+    return `the Register took ${slowest}ms, and ${AYQ_REGISTER_BUDGET_MS}ms is the gate`;
+  }
+  return '';
+}
+
+/**
  * The shell, measured on the real window (04 A20, A22).
  *
  * Not a screenshot and not a list of classes: the rail's width, the order of
@@ -1041,23 +1210,47 @@ async function shellShown(window: BrowserWindow): Promise<string> {
   // And the two things A22 asks for that only a scroll can answer: the table
   // header staying while the rows move, and the detail pane staying with the
   // row it describes.
+  //
+  // The row is chosen first and the pane waited for, because choosing one asks
+  // the engine and redraws — measuring in the same breath as the click measures
+  // the screen as it was before it.
   await openRegister(window);
+  const chosen = await window.webContents.executeJavaScript(`(() => {
+    const row = document.querySelector('[data-ayq-scroller] table tbody tr');
+    if (!row) return false;
+    row.click();
+    return true;
+  })()`);
+  if (chosen !== true) return 'there are no rows to scroll';
+
+  const paneThere = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!(document.querySelector('[data-ayq-split] > div:nth-child(2)') || " +
+        "document.querySelector('[data-ayq-scroller] .workbench-pane'))",
+    )) === true;
+  const paneBy = Date.now() + 60_000;
+  while (Date.now() < paneBy && !(await paneThere())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await paneThere())) return 'choosing a row opened no detail pane';
+
   const held = JSON.parse(
     String(
       await window.webContents.executeJavaScript(`(() => {
         const scroller = document.querySelector('[data-ayq-scroller]');
-        const row = document.querySelector('[data-ayq-legacy="register"] .grid tbody tr');
+        const row = document.querySelector('[data-ayq-scroller] table tbody tr');
         if (!scroller) return JSON.stringify({ why: 'no scroller' });
         if (!row) return JSON.stringify({ why: 'no rows to scroll' });
-        row.click();
-        const head = document.querySelector('[data-ayq-legacy="register"] .grid thead th');
-        const pane = document.querySelector('[data-ayq-legacy="register"] .workbench-pane');
-        const rowsBefore = row.getBoundingClientRect().top;
+        const head = document.querySelector('[data-ayq-scroller] table thead th');
+        const pane =
+          document.querySelector('[data-ayq-split] > div:nth-child(2)') ||
+          document.querySelector('[data-ayq-scroller] .workbench-pane');
+        const before = row.getBoundingClientRect().top;
         scroller.scrollTop = scroller.scrollHeight;
         const box = scroller.getBoundingClientRect();
         return JSON.stringify({
           scrolled: scroller.scrollTop,
-          moved: Math.round(rowsBefore - row.getBoundingClientRect().top),
+          moved: Math.round(before - row.getBoundingClientRect().top),
           headerTop: head ? Math.round(head.getBoundingClientRect().top - box.top) : null,
           paneTop: pane ? Math.round(pane.getBoundingClientRect().top - box.top) : null,
           rowTabIndex: row.tabIndex,
@@ -1372,6 +1565,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     process.env.AYQ_SMOKE_SHOW_MORE !== '1' ||
     /^(\d+) rows, then (?!\1\b)/.test(paged);
 
+  // The Register, on a budget big enough for the question to be real.
+  const registerAsked = process.env.AYQ_SMOKE_REGISTER === '1';
+  let register = 'not asked';
+  let registerOk = true;
+  if (registerAsked) {
+    const wrong = await registerShown(window);
+    register = wrong === '' ? 'held' : wrong;
+    registerOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] the Register: ${registerOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // The shell: the rail, its order, one scroller, and what stays put while the
   // rows move (04 A20, A22).
   const shellAsked = process.env.AYQ_SMOKE_SHELL === '1';
@@ -1455,6 +1661,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     planOk &&
     groundsOk &&
     shellOk &&
+    registerOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -1486,6 +1693,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           groundsOk,
           shell,
           shellOk,
+          register,
+          registerOk,
           pagedOk,
           imports: importRounds,
           dataDir,
@@ -1509,6 +1718,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   if (said !== '')
     process.stdout.write(`[ayq-smoke] the screen says: ${said}\n`);
   process.stdout.write(`[ayq-smoke] ledger:\n${body}\n`);
+
+  // The verdicts again, at the very end. The ledger dump above is five hundred
+  // lines long, and a failure whose reason is printed before it is a reason
+  // nobody reading the tail of a log will ever see.
+  process.stdout.write(
+    `[ayq-smoke] verdicts: state=${state || 'timeout'} host=${
+      hostOk ? 'ok' : 'wrong'
+    } import=${importOk ? 'ok' : 'failed'} category=${
+      categoryOk ? 'ok' : 'failed'
+    } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
+      planOk ? 'ok' : 'failed'
+    } grounds=${grounds} shell=${shell} register=${register}\n`,
+  );
 
   // Held open on request, so a second launch can be started while this one is
   // still running and the lock has something to stand aside for. Without it the

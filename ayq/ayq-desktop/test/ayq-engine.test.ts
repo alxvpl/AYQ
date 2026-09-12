@@ -35,6 +35,12 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildZip } from '../../ayq-camt/test/ayq-zip-writer.ts';
+// The version the code actually declares. Written as a number here once, this
+// file passed for two store versions without anybody noticing it was not being
+// run — a test that asserts a constant it does not read is a test that has to
+// be edited every time the constant moves, and one that is never edited is one
+// nobody is reading the result of.
+import { AYQ_STORE_VERSION } from '../src/ayq-store.ts';
 import type {
   AyqRequest,
   AyqRequestBody,
@@ -201,7 +207,11 @@ test('a fresh budget is created, and it is empty', async () => {
   assert.equal(status.engineHost, 'node child_process fork');
   assert.equal(status.budgetCreated, true, 'nothing existed in a fresh dir');
   assert.ok(status.budgetId.length > 0);
-  assert.equal(status.storeVersion, 4, 'the AYQ store declares its version');
+  assert.equal(
+    status.storeVersion,
+    AYQ_STORE_VERSION,
+    'the AYQ store declares its version',
+  );
   assert.equal(
     status.budgetType,
     'tracking',
@@ -681,7 +691,7 @@ test('what AYQ keeps survives a restart', async () => {
     aliases: unknown[];
   };
 
-  assert.equal(store.version, 4);
+  assert.equal(store.version, AYQ_STORE_VERSION);
   assert.equal(store.rules.length, 1);
   assert.deepEqual(store.aliases, [], 'nobody has aliased anything here');
   assert.equal(store.imports.length, 1);
@@ -817,7 +827,7 @@ test('a version 3 store is carried forward whole, with §7.14 s dates filled in'
   const store = JSON.parse(
     await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
   ) as { version: number; planned: unknown[] };
-  assert.equal(store.version, 4, 'and now the file says so');
+  assert.equal(store.version, AYQ_STORE_VERSION, 'and now the file says so');
   assert.equal(store.planned.length, 2, 'with both records still in it');
 });
 
@@ -1834,7 +1844,7 @@ test('an alias survives a restart, and the store carries it', async () => {
   const store = JSON.parse(
     await readFile(join(dataDir, 'ayq-store.json'), 'utf8'),
   ) as { version: number; aliases: Array<Record<string, string>> };
-  assert.equal(store.version, 4);
+  assert.equal(store.version, AYQ_STORE_VERSION);
   assert.equal(store.aliases.length, 1);
   assert.equal(store.aliases[0].variantKey, 'TEST FUEL STATION');
   assert.equal(store.aliases[0].counterpartyKey, 'TESTFUEL');
@@ -2056,7 +2066,11 @@ test('a damaged store loses the aliases and nothing else', async () => {
     /^ayq-store\.damaged-.+\.json$/,
     'the unreadable store was kept rather than overwritten',
   );
-  assert.equal(status.storeVersion, 4, 'and a fresh store took its place');
+  assert.equal(
+    status.storeVersion,
+    AYQ_STORE_VERSION,
+    'and a fresh store took its place',
+  );
 
   // The transactions are Actual's and none of this was theirs to lose. Without
   // the alias the resolver's own reading is what is left, which is the honest
