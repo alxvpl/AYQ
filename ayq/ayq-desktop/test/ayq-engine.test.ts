@@ -3462,3 +3462,144 @@ test('a month with no budget can be read and not planned in', async () => {
   assert.equal(far.totalPlanCents, 0);
   assert.ok(far.rows.length > 0);
 });
+
+/* ------------------------------------------------------------------ Today
+
+   04 A21. Three questions answered from one reading of the budget: what you
+   have, how long it lasts, what is waiting on you. What is checked here is
+   that the answer is the *same* answer the other screens give — a Today that
+   computes its own available funds is a Today that can disagree with Accounts,
+   and then a person has two numbers and no way to tell which is the money.  */
+
+test('Today answers from the same reading Accounts does (04 A21, 03 §8.4)', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const view = await ask(dataDir, { kind: 'accounts.view' });
+  const today = await ask(dataDir, { kind: 'today', today: '2026-07-01' });
+
+  assert.equal(today.today, '2026-07-01', 'the engine used the date it was given');
+
+  // Not "close to": the same figure, because it is the same computation.
+  assert.equal(
+    today.accounts.availableFundsCents,
+    view.availableFundsCents,
+    'Today and Accounts disagree about how much money there is',
+  );
+  assert.equal(today.accounts.totalBalanceCents, view.totalBalanceCents);
+  assert.ok(
+    today.accounts.availableFundsCents !== 0,
+    'the fixture leaves no money, so agreeing about it proves nothing',
+  );
+  assert.deepEqual(today.accounts.coverage, view.coverage);
+
+  // The boundary is stated on Today, and it is the earliest counted account's
+  // — the one a person can actually rely on.
+  assert.equal(today.accounts.reliableTo, view.reliableTo);
+  assert.equal(today.accounts.reliableTo, '2026-06-30');
+  assert.equal(today.accounts.countedWithoutCoverage, 0);
+
+  // How long it lasts is the forecast's own worst point, not a second one.
+  const forecast = await ask(dataDir, { kind: 'forecast', today: '2026-07-01' });
+  assert.deepEqual(today.lowest, forecast.lowest);
+  const month = forecast.months.find(one => one.month === '2026-07');
+  assert.ok(month, 'the forecast covers the month today is in');
+  assert.deepEqual(today.monthEnd, {
+    month: '2026-07',
+    closingCents: month.closingCents,
+  });
+});
+
+test('what is waiting is counted now, and moves when the queue does', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const before = await ask(dataDir, { kind: 'today', today: '2026-07-01' });
+
+  // Each count is the length of the thing it names, asked of the surface that
+  // owns it. A queue length that is stored is a queue length that can be wrong.
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const unfiled = ledger.rows.filter(row => row.categoryId === null).length;
+  assert.ok(unfiled > 0, 'a freshly imported statement has nothing filed yet');
+  assert.equal(
+    before.waiting.uncategorised,
+    unfiled,
+    'Today says a different number of unfiled transactions than the Register holds',
+  );
+
+  const unnamed = await ask(dataDir, { kind: 'counterparties.unfiled' });
+  assert.equal(before.waiting.counterparties, unnamed.length);
+
+  assert.equal(
+    before.waiting.total,
+    before.waiting.overdue +
+      before.waiting.matches +
+      before.waiting.uncategorised +
+      before.waiting.suggestions +
+      before.waiting.counterparties,
+    'the total is the queues, and only the queues',
+  );
+
+  // Filing one transaction takes exactly one off the queue. Nothing wrote the
+  // count down, so nothing has to be kept in step with it.
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const target = categories.find(one => !one.isIncome);
+  assert.ok(target, 'the budget has a category to file into');
+  const row = ledger.rows.find(one => one.categoryId === null);
+  assert.ok(row);
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: row.id,
+    categoryId: target.id,
+    createRule: false,
+  });
+
+  const after = await ask(dataDir, { kind: 'today', today: '2026-07-01' });
+  assert.equal(
+    after.waiting.uncategorised,
+    before.waiting.uncategorised - 1,
+    'filing a transaction did not shorten the queue Today reports',
+  );
+});
+
+test('an expected payment past its date is waiting, and says what it comes to', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const quiet = await ask(dataDir, { kind: 'today', today: '2026-07-01' });
+  assert.equal(quiet.waiting.overdue, 0, 'nothing is expected yet');
+  assert.equal(quiet.waiting.overdueCents, 0);
+
+  await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-07-01',
+    record: {
+      name: 'Invented standing charge',
+      kind: 'expense',
+      amountCents: 4_250,
+      categoryName: 'Housing',
+      startDate: '2026-07-05',
+      recurrence: { frequency: 'once', interval: 1 },
+    },
+  });
+
+  // On the day it is due, it is expected, not late.
+  const due = await ask(dataDir, { kind: 'today', today: '2026-07-05' });
+  assert.equal(due.waiting.overdue, 0, 'a payment due today is not yet overdue');
+
+  // A month later nothing has matched it, so it is still counted and it is
+  // flagged (03 §7.13) — AYQ does not quietly drop what it expected.
+  const late = await ask(dataDir, { kind: 'today', today: '2026-08-05' });
+  assert.equal(late.waiting.overdue, 1);
+  assert.equal(
+    late.waiting.overdueCents,
+    4_250,
+    'what is late is stated as a figure, positive',
+  );
+  assert.ok(late.waiting.total >= 1);
+
+  // And it is the forecast's own flag, so Upcoming and Today cannot come to
+  // disagree about which payments are late.
+  const forecast = await ask(dataDir, { kind: 'forecast', today: '2026-08-05' });
+  assert.equal(forecast.events.filter(one => one.flagged).length, 1);
+});

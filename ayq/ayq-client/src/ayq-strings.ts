@@ -144,6 +144,39 @@ const EN = {
     'this table.',
   'register.emptyFiltered': 'No transaction matches this filter.',
 
+  'today.funds': 'Available funds',
+  'today.funds.counted': '{counted} of {total} accounts counted',
+  'today.coverage.to':
+    'Reliable to {date} — the earliest date the counted accounts’ statements ' +
+    'reach.',
+  'today.coverage.unknown':
+    'One of the counted accounts has no statement, so there is no date this ' +
+    'position can be relied on to.',
+  'today.coverage.nothing':
+    'Nothing has been imported yet, so there is nothing to be reliable to.',
+  'today.lasts': 'How long it lasts',
+  'today.lowest': 'Lowest point',
+  'today.lowest.on': 'on {date}',
+  'today.monthEnd': 'Expected at the end of {month}',
+  'today.monthEnd.note': 'after everything planned and expected',
+  'today.noForecast':
+    'Nothing is planned or expected yet, so there is no position to project.',
+  'today.waiting': 'Waiting on you',
+  'today.waiting.overdue': 'overdue, {amount}',
+  'today.waiting.matches': 'matches to confirm',
+  'today.waiting.uncategorised': 'transactions with no category',
+  'today.waiting.suggestions': 'suggested records to confirm',
+  'today.waiting.counterparties': 'counterparties with nothing filed',
+  'today.waiting.none': 'Nothing is waiting on you.',
+  'today.movements': 'Latest movements',
+  'today.movements.all': 'all accounts',
+  'today.movements.none': 'Nothing has been imported yet.',
+  'today.open.upcoming': 'Open Upcoming',
+  'today.open.review': 'Open Review',
+  'today.open.register': 'Open Register',
+  'today.open.accounts': 'See accounts',
+  'today.open.import': 'Import statements',
+
   'accounts.column.name': 'Account',
   'accounts.column.counts': 'In available funds',
   'accounts.column.statements': 'Statements to',

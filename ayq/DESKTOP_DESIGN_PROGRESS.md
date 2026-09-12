@@ -19,7 +19,7 @@ difference is recorded below.
 | S2 | The shell — rail, grounds, status bar, screen frame | done |
 | S3 | Register: table and detail pane | done |
 | S4 | Accounts, coverage and reconciliation (03 §8) | done |
-| S5 | Today (04 A21) | not started |
+| S5 | Today (04 A21) | done |
 | S6 | Upcoming and Plan | not started |
 | S7 | Review and Settings | not started |
 | S8 | Reports destination | not started |
@@ -36,6 +36,115 @@ has always drawn, and a screen that has been brought over to Fluent is mounted
 into the same element as a React root. S2 turns the shell itself over, and the
 screens that are still the old ones are drawn inside the new frame until their
 own stage arrives. By S8 there is no seam left and the file goes.
+
+## S5 — Today (04 A21)
+
+Three questions answered from one reading of the budget: what you have, how
+long it lasts, and what is waiting on you. One engine request, `today`, answers
+all three — because a screen that asks four questions is a screen whose four
+answers can disagree, and then a person has two numbers for the money and no
+way to tell which one it is.
+
+Available funds come first and are the largest figure on the screen, with the
+accounts beside them — every account, with the ones that do not count toward
+funds drawn as not counting rather than left out. Under the money, and not on
+another screen, the reliability boundary: the earliest date the counted
+accounts' statements reach (03 §8.4), in words, with Accounts and Import both
+reachable from that line (A20).
+
+Then how long it lasts — the forecast's own lowest point and its own figure for
+the end of this month, taken from the forecast rather than computed again here
+— and then what is waiting on you: overdue expected payments and what they come
+to, matches offered, transactions with no category, suggested records, and
+counterparties with nothing filed. A queue with nothing in it is not drawn as a
+line saying zero (A5); it is simply not there, and when none of them has
+anything in it the panel says so.
+
+Last, the latest movements, drawn by the same ledger pane the Register uses —
+extracted into `ayq-screens/ayq-ledger-pane.tsx` for this stage, so the two
+screens share one table rather than two that drift apart.
+
+### Counted, never stored
+
+Every figure on Today is the engine's, and every count is counted when it is
+asked for. Nothing about the queues is written down: a queue length that is
+stored is a queue length that can be wrong, and being wrong about how many
+decisions are waiting is the one thing a screen of pending decisions must not
+do. The overdue count is taken off the forecast's own `flagged` events (03
+§7.13), so Today and Upcoming cannot come to disagree about which payments are
+late.
+
+The engine tests prove that rather than assert it: Today's available funds,
+total, coverage and boundary are compared against what `accounts.view` answers
+for the same budget, its lowest point and month end against what `forecast`
+answers, and its uncategorised count against the rows the Register holds — and
+then one transaction is filed and Today's count is required to have dropped by
+exactly one. A planned payment is saved, is *not* overdue on the day it is due,
+and is overdue a month later with its amount stated.
+
+### Measured on the window, not read off the stylesheet
+
+The Windows acceptance step (`--today`) opens Today on the packaged
+application and measures the drawn page: the computed font size of the
+available-funds figure against every other figure on the screen, and its
+position against the first of the panels below it. "First, and the largest
+figure" is a rule about what a person sees, and a stylesheet that was meant to
+carry it is not evidence that it did. The step also fails if the boundary line
+is absent, if Import cannot be reached from Today, if a queue with nothing in
+it is drawn anyway, or if the waiting total and the lines drawn do not come to
+the same number.
+
+### Two defects in the acceptance driver, found by running it
+
+Run 64's `Tests` step was green — the engine suite passes on Windows — and the
+very first smoke step then spent its whole ten minutes and failed, having
+produced no screenshot and no verdict. Both defects behind that are in the
+driver, not in the application.
+
+**An injected script that did not parse.** `executeJavaScript` takes a string,
+and the driver writes those strings as template literals — so `\n` and `\s`
+inside one are read by TypeScript and not by the browser. `rows.join('\n')`
+compiled to a single-quoted string with a real newline inside it, which is a
+SyntaxError in the window; seven other places wrote `replace(/\s+/g, ' ')`,
+which compiled to `/s+/g` and silently deleted the letter s from whatever the
+screen had said. Ten sequences are escaped properly now, and
+`test/ayq-smoke-scripts.test.ts` reads the built driver back, hands every
+injected script to the parser, and separately refuses `/s+/`. It is shown the
+mistake it exists for and required to fail on it.
+
+**A run that failed by hanging.** The injected script threw, the promise
+rejected with nothing awaiting it, `runSmoke` stopped where it stood, and the
+window stayed open until the CI step's own limit killed it — ten minutes to
+learn nothing. It is caught now: the reason is printed and the run exits
+non-zero, which is what a failure is for.
+
+### What A22 costs when a pane is taller than the window
+
+The shell acceptance step measured the detail pane 49px above the top of the
+scroller and called it scrolled away. It had not: the pane is 758px tall in a
+729px scrollport, and a `position: sticky` element taller than the scrollport
+has nowhere to stick — the browser holds it by the foot of its own column
+instead, which is exactly 49px up.
+
+Nothing is changed to make that go away, because both ways out are worse than
+the fact. Giving the pane its own scrollbar is what A22 forbids; capping its
+height would need a threshold Canon does not give. So the step now requires
+what is true in both cases — that the pane never grows a scrollbar of its own,
+and that when it is too tall it sits precisely where the foot of its column
+leaves it and not a pixel higher — and prints which case it measured. On a
+taller window the strict case applies and the pane is required to be at the top
+of the scroller.
+
+### PROVISIONAL in S5
+
+12. **The waiting list's order** — overdue, matches, uncategorised, suggested
+    records, counterparties. A21 names what is waiting on you and does not
+    order it. This is most-urgent first, and "overdue" is the only one of the
+    five that is late rather than merely pending.
+13. **Today shows the latest movements at the bottom.** A21 names the three
+    questions and not a fourth panel. It is the Register's own pane, drawn
+    unfiltered and reachable in one action, and it is here because a person who
+    has just imported wants to see that the rows arrived.
 
 ## S4 — Accounts, coverage and reconciliation (03 §8)
 

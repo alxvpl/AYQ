@@ -102,7 +102,8 @@ async function rowsToConsider(): Promise<AyqCategorisableRow[]> {
   return answer.data ?? [];
 }
 
-async function uncategorisedCount(): Promise<number> {
+/** How many transactions nobody has filed. Counted, never remembered. */
+export async function ayqUncategorisedCount(): Promise<number> {
   const answer = (await api.aqlQuery(
     api
       .q('transactions')
@@ -194,7 +195,7 @@ export async function ayqApplyRules(
     // The writes land after the calls that queued them return, so the next
     // read is only trusted once it shows them.
     await ayqSettle(
-      uncategorisedCount,
+      ayqUncategorisedCount,
       remaining => remaining <= before - filled,
       'the categories',
     );

@@ -105,6 +105,12 @@ if (accounts) env.AYQ_SMOKE_ACCOUNTS = accounts;
 // the table took, measured by the screen itself.
 if (has('register')) env.AYQ_SMOKE_REGISTER = '1';
 
+// `--today` opens Today and requires available funds to be first and the
+// largest figure on the screen — both measured on the drawn window — the
+// reliability boundary stated beside them, Import reachable from there, and
+// the waiting list to hold only queues that have something in them (04 A21).
+if (has('today')) env.AYQ_SMOKE_TODAY = '1';
+
 // `--shell` measures the shell on the real window: the rail's width and order,
 // one scroller at the window's right edge, and the table header and the detail
 // pane staying put while the rows move (04 A20, A22).

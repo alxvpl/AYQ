@@ -34,6 +34,7 @@ import {
 } from './ayq-budget.ts';
 import { ayqImportCamt, ayqImports } from './ayq-camt-import.ts';
 import { ayqAccountsView } from './ayq-coverage.ts';
+import { ayqTodayView } from './ayq-today.ts';
 import {
   ayqCategories,
   ayqCreateCategory,
@@ -334,6 +335,18 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'accounts.list',
         result: await ayqAccounts(dataDir),
+      };
+
+    case 'today':
+      return {
+        id,
+        ok: true,
+        kind: 'today',
+        result: await ayqTodayView(
+          dataDir,
+          ayqToday(request.today),
+          new Date().toISOString(),
+        ),
       };
 
     case 'accounts.view':

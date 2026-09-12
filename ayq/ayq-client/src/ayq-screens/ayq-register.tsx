@@ -25,31 +25,18 @@ import { ayqAsk } from '../ayq-bridge.ts';
 import type {
   AyqAccountSummary,
   AyqCategory,
-  AyqCounterparty,
   AyqLedger,
   AyqLedgerFilter,
-  AyqLedgerRow,
-  AyqTransactionDetail,
 } from '../ayq-ipc-contract.ts';
-import {
-  ayqAmount,
-  ayqCount,
-  ayqDate,
-  ayqMoney,
-  ayqText,
-} from '../ayq-strings.ts';
+import { ayqAmount, ayqCount, ayqMoney, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorder } from '../ayq-ui/ayq-css.ts';
-import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import {
   AyqFilterChips,
   type AyqAppliedFilter,
 } from '../ayq-ui/ayq-filter-chips.tsx';
-import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
-import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
-import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
-import { AyqTransactionDetailPane } from './ayq-transaction-detail.tsx';
+import { AyqLedgerPane } from './ayq-ledger-pane.tsx';
 
 const useStyles = makeStyles({
   filters: {
@@ -128,80 +115,31 @@ export function AyqRegisterScreen({
   const styles = useStyles();
   const [ledger, setLedger] = useState<AyqLedger | null>(null);
   const [categories, setCategories] = useState<readonly AyqCategory[]>([]);
-  const [counterparties, setCounterparties] = useState<
-    readonly AyqCounterparty[] | null
-  >(null);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<AyqTransactionDetail | null>(null);
   const [period, setPeriod] = useState<AyqPeriod>('allTime');
   // How far back the table has been asked to reach. The engine answers with a
   // page; this is how a person asks for the next one, and it is the Register's
   // own rather than the shell's, because it is about this table and not about
   // what is being looked at.
   const [limit, setLimit] = useState<number | undefined>(undefined);
-  const [round, setRound] = useState(0);
 
-  const reload = useCallback(() => setRound(one => one + 1), []);
-
-  // How long the table took, from asking to being on the screen.
-  //
-  // Published rather than timed from outside, because what a person feels is
-  // the whole of it — the engine's query, the answer crossing the boundary and
-  // the rows being drawn — and a stopwatch held by the acceptance run can only
-  // see the last of those to within a poll.
+  // The categories the filter offers. The pane beside the table reads its own
+  // — this one is the filter bar's, and it is asked for once.
   useEffect(() => {
     let live = true;
-    const startedAt = performance.now();
     void (async () => {
-      const listed = await ayqAsk({
-        kind: 'transactions.list',
-        filter: limit === undefined ? filter : { ...filter, limit },
-      });
-      if (!listed.ok) throw new Error(listed.message);
       const filed = await ayqAsk({ kind: 'categories.list' });
       if (!filed.ok) throw new Error(filed.message);
-      if (!live) return;
-      setLedger(listed.result as AyqLedger);
-      setCategories(filed.result as AyqCategory[]);
-      onLoaded(listed.result as AyqLedger);
-      // After the frame that draws them, not before it.
-      requestAnimationFrame(() => {
-        document.body.dataset.ayqRegisterMs = String(
-          Math.round(performance.now() - startedAt),
-        );
-      });
+      if (live) setCategories(filed.result as AyqCategory[]);
     })().catch((error: unknown) => {
       if (live) onFailure(error instanceof Error ? error.message : String(error));
     });
     return () => {
       live = false;
     };
-  }, [filter, limit, round, onFailure, onLoaded]);
-
-  useEffect(() => {
-    if (openId === null) {
-      setDetail(null);
-      return;
-    }
-    let live = true;
-    void (async () => {
-      const answered = await ayqAsk({
-        kind: 'transaction.detail',
-        transactionId: openId,
-      });
-      if (!answered.ok) throw new Error(answered.message);
-      if (live) setDetail(answered.result as AyqTransactionDetail);
-    })().catch((error: unknown) => {
-      if (live) onFailure(error instanceof Error ? error.message : String(error));
-    });
-    return () => {
-      live = false;
-    };
-  }, [openId, round, onFailure]);
+  }, [onFailure]);
 
   const change = useCallback(
     (next: AyqLedgerFilter) => {
-      setOpenId(null);
       // A different question deserves its first page, not the page depth the
       // last question had been read to.
       setLimit(undefined);
@@ -210,44 +148,19 @@ export function AyqRegisterScreen({
     [onFilter],
   );
 
-  const columns: readonly AyqColumn<AyqLedgerRow>[] = useMemo(
-    () => [
-      {
-        id: 'date',
-        header: ayqText('register.column.date'),
-        cell: row => ayqDate(row.date),
-      },
-      {
-        id: 'payee',
-        header: ayqText('register.column.counterparty'),
-        cell: row => row.payee ?? '',
-      },
-      {
-        id: 'category',
-        header: ayqText('register.column.category'),
-        cell: row =>
-          row.category === null ? (
-            <AyqStateChip
-              state="uncategorised"
-              label={ayqText('register.category.none')}
-            />
-          ) : (
-            row.category
-          ),
-      },
-      {
-        id: 'account',
-        header: ayqText('register.column.account'),
-        cell: row => row.account,
-      },
-      {
-        id: 'amount',
-        header: ayqText('register.column.amount'),
-        figures: true,
-        cell: row => <AyqFigure cents={row.amountCents} />,
-      },
-    ],
-    [],
+  // One object per question, so the pane reads the engine when the question
+  // changes and not on every keystroke that redraws the bar.
+  const asked = useMemo(
+    () => (limit === undefined ? filter : { ...filter, limit }),
+    [filter, limit],
+  );
+
+  const loaded = useCallback(
+    (answer: AyqLedger) => {
+      setLedger(answer);
+      onLoaded(answer);
+    },
+    [onLoaded],
   );
 
   const applied: AyqAppliedFilter[] = [];
@@ -439,115 +352,49 @@ export function AyqRegisterScreen({
         }}
       />
 
-      <AyqSplit
-        table={
-          <AyqPane mark="register">
-            <AyqTable
-              mark="register"
-              columns={columns}
-              rows={ledger?.rows ?? []}
-              keyOf={row => row.id}
-              selected={openId}
-              onSelect={row => setOpenId(row.id)}
-              empty={
-                applied.length === 0
-                  ? ayqText('register.empty')
-                  : ayqText('register.emptyFiltered')
-              }
-              footer={
-                ledger === null ? null : (
-                  <span className={styles.totals} data-ayq-totals="">
-                    {totals}
-                    {ledger.uncategorised === 0 ? null : (
-                      <>
-                        {' '}
-                        {ayqText('register.totals.uncategorised', {
-                          count: ayqCount(ledger.uncategorised),
-                        })}
-                      </>
-                    )}
-                    {ledger.shown >= ledger.total ? null : (
-                      <>
-                        {' '}
-                        <span className={styles.quiet}>
-                          {ayqText('register.showing', {
-                            shown: ayqCount(ledger.shown),
-                            total: ayqCount(ledger.total),
-                          })}
-                        </span>{' '}
-                        <AyqButton
-                          size="small"
-                          mark="show-more"
-                          onClick={() => setLimit(ledger.shown + 500)}
-                        >
-                          {ayqText('register.showMore')}
-                        </AyqButton>
-                      </>
-                    )}
-                  </span>
-                )
-              }
-            />
-          </AyqPane>
+      <AyqLedgerPane
+        mark="register"
+        filter={asked}
+        onFailure={onFailure}
+        onShowTheRule={onShowTheRule}
+        onLoaded={loaded}
+        empty={
+          applied.length === 0
+            ? ayqText('register.empty')
+            : ayqText('register.emptyFiltered')
         }
-        detail={
-          <AyqPane mark="register-detail">
-            <AyqTransactionDetailPane
-              detail={detail}
-              categories={categories}
-              counterparties={counterparties}
-              onCategory={categoryId => {
-                void (async () => {
-                  if (openId === null) return;
-                  const done = await ayqAsk({
-                    kind: 'transaction.categorise',
-                    transactionId: openId,
-                    categoryId,
-                  });
-                  if (!done.ok) {
-                    onFailure(done.message);
-                    return;
-                  }
-                  reload();
-                })();
-              }}
-              onNeedCounterparties={() => {
-                if (counterparties !== null) return;
-                void (async () => {
-                  const listed = await ayqAsk({ kind: 'counterparties.list' });
-                  if (!listed.ok) {
-                    onFailure(listed.message);
-                    return;
-                  }
-                  setCounterparties(
-                    (listed.result as { rows: AyqCounterparty[] }).rows,
-                  );
-                })();
-              }}
-              onCorrectCounterparty={counterpartyKey => {
-                const variantKey = detail?.provenance?.counterpartyKey ?? null;
-                const variant =
-                  detail?.provenance?.counterpartyName ??
-                  detail?.importedPayee ??
-                  null;
-                if (variantKey === null || variant === null) return;
-                void (async () => {
-                  const done = await ayqAsk({
-                    kind: 'alias.create',
-                    variantKey,
-                    variant,
-                    counterpartyKey,
-                  });
-                  if (!done.ok) {
-                    onFailure(done.message);
-                    return;
-                  }
-                  reload();
-                })();
-              }}
-              onShowTheRule={onShowTheRule}
-            />
-          </AyqPane>
+        footer={
+          ledger === null ? null : (
+            <span className={styles.totals} data-ayq-totals="">
+              {totals}
+              {ledger.uncategorised === 0 ? null : (
+                <>
+                  {' '}
+                  {ayqText('register.totals.uncategorised', {
+                    count: ayqCount(ledger.uncategorised),
+                  })}
+                </>
+              )}
+              {ledger.shown >= ledger.total ? null : (
+                <>
+                  {' '}
+                  <span className={styles.quiet}>
+                    {ayqText('register.showing', {
+                      shown: ayqCount(ledger.shown),
+                      total: ayqCount(ledger.total),
+                    })}
+                  </span>{' '}
+                  <AyqButton
+                    size="small"
+                    mark="show-more"
+                    onClick={() => setLimit(ledger.shown + 500)}
+                  >
+                    {ayqText('register.showMore')}
+                  </AyqButton>
+                </>
+              )}
+            </span>
+          )
         }
       />
     </>

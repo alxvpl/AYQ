@@ -272,6 +272,32 @@ jobs:
           }
           Write-Host "AYQ and the bank differ by $($Matches[1]) cents, and AYQ says so"
 
+      # Today (04 A21): what you have, how long it lasts, what is waiting on
+      # you. Both halves of "available funds first, as the largest figure" are
+      # measured on the drawn window — the position of the figure and its
+      # computed font size — because a rule about what a person sees first is
+      # not proved by reading the stylesheet that was meant to carry it.
+      - name: Today, measured on the window
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-today-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml `
+            --today `
+            --screenshot "${{ runner.temp }}\ayq-desktop-today.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'Today did not hold on the window' }
+          if ($said -notmatch 'Today: held') {
+            throw 'the run did not measure Today at all'
+          }
+          if ($said -notmatch 'today: funds (-?\d+) cents at ([\d.]+)px \(next largest ([\d.]+)px\)') {
+            throw 'the run did not measure the figures on Today'
+          }
+          Write-Host "available funds: $($Matches[1]) cents, at $($Matches[2])px against $($Matches[3])px"
+
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
       - name: An unusable file is refused, and nothing is damaged
@@ -888,6 +914,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-shell.png
             ${{ runner.temp }}\ayq-desktop-register.png
             ${{ runner.temp }}\ayq-desktop-accounts.png
+            ${{ runner.temp }}\ayq-desktop-today.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json

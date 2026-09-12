@@ -98,6 +98,43 @@ export type AyqAccountsView = {
   countedWithoutCoverage: number;
 };
 
+/**
+ * What is waiting on a person, counted from current state (04 A21, A5).
+ *
+ * Every one of these is counted when it is asked for and written nowhere. A
+ * queue length that is stored is a queue length that can be wrong, and the one
+ * thing a screen of pending decisions must not do is be wrong about how many
+ * there are.
+ */
+export type AyqWaiting = {
+  /** Expected payments past their date and unmatched (03 §7.13). */
+  overdue: number;
+  /** What they come to, positive. */
+  overdueCents: number;
+  /** Matches AYQ will not make on its own (03 §7.16). */
+  matches: number;
+  /** Transactions nobody has filed (03 §4.5). */
+  uncategorised: number;
+  /** Rhythms AYQ found and will not act on until they are confirmed. */
+  suggestions: number;
+  /** Counterparties that have been resolved but never filed. */
+  counterparties: number;
+  total: number;
+};
+
+/** Today (04 A21): what you have, how long it lasts, what is waiting on you. */
+export type AyqToday = {
+  /** The day the answer is about. */
+  today: string;
+  /** Available funds, the accounts beside them, and the boundary (03 §8.4). */
+  accounts: AyqAccountsView;
+  /** The worst the position gets over the forecast, and when. */
+  lowest: { date: string; balanceCents: number } | null;
+  /** Where this month ends. */
+  monthEnd: { month: string; closingCents: number } | null;
+  waiting: AyqWaiting;
+};
+
 /** Proof of life from the engine, computed from a real budget. */
 export type AyqEngineStatus = {
   /** The version of `@actual-app/api` the host actually loaded. */
@@ -934,6 +971,7 @@ export type AyqResults = {
   'settings.set': AyqSettings;
   'accounts.list': AyqAccountSummary[];
   'accounts.view': AyqAccountsView;
+  today: AyqToday;
   'accounts.setFlag': AyqAccountSummary[];
   'transactions.list': AyqLedger;
   'transaction.detail': AyqTransactionDetail;
@@ -986,6 +1024,7 @@ export type AyqRequestBody =
   | { kind: 'settings.set'; settings: AyqSettings }
   | { kind: 'accounts.list' }
   | { kind: 'accounts.view' }
+  | { kind: 'today'; today?: string }
   | {
       /**
        * Says whether one account's balance counts toward available funds.

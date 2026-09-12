@@ -866,11 +866,11 @@ async function ledgerDump(window: BrowserWindow): Promise<string> {
           .join(' | '),
       );
       const totals = document.querySelector('[data-ayq-totals]');
-      if (totals) rows.push(totals.innerText.replace(/\s+/g, ' ').trim());
+      if (totals) rows.push(totals.innerText.replace(/\\s+/g, ' ').trim());
       const empty = document.querySelector(
         '[data-ayq-table="register"][data-ayq-empty]');
-      if (empty) rows.push(empty.innerText.replace(/\s+/g, ' ').trim());
-      return rows.join('\n');
+      if (empty) rows.push(empty.innerText.replace(/\\s+/g, ' ').trim());
+      return rows.join('\\n');
     })()`),
   );
 }
@@ -997,7 +997,7 @@ async function accountsShown(
         const row = document.querySelector('[data-ayq-table="accounts"] tbody tr');
         const cell = name => {
           const found = row.querySelector('[data-ayq-cell="' + name + '"]');
-          return found ? found.innerText.replace(/\s+/g, ' ').trim() : '';
+          return found ? found.innerText.replace(/\\s+/g, ' ').trim() : '';
         };
         const pane = document.querySelector('[data-ayq-account-detail]');
         const boundary = document.querySelector('[data-ayq-reliable-to]');
@@ -1013,7 +1013,7 @@ async function accountsShown(
           agrees: cell('agrees'),
           balance: cell('balance'),
           boundary: boundary ? boundary.dataset.ayqReliableTo : null,
-          pane: pane ? pane.innerText.replace(/\s+/g, ' ').trim() : '',
+          pane: pane ? pane.innerText.replace(/\\s+/g, ' ').trim() : '',
           difference: difference
             ? difference.getAttribute('data-ayq-difference')
             : null,
@@ -1080,6 +1080,124 @@ async function accountsShown(
 }
 
 /**
+ * Today, on the packaged application (04 A21).
+ *
+ * What is proved here: that available funds are first and are the largest
+ * figure on the screen — measured, not asserted from the stylesheet; that the
+ * reliability boundary is stated beside them rather than left to be inferred;
+ * that every queue drawn has something in it and the total is the lines; and
+ * that Import is reachable from here, where a person looks for it (A20).
+ */
+async function todayShown(window: BrowserWindow): Promise<string> {
+  if (!(await openDestination(window, 'today'))) {
+    return 'the Today destination never opened';
+  }
+
+  const drawn = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-available-funds]')",
+    )) === true;
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await drawn())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await drawn())) return 'Today drew no available funds';
+
+  const seen = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const screen = document.querySelector('[data-ayq-screen="today"]');
+        const funds = screen.querySelector('[data-ayq-available-funds]');
+        const figure = funds.querySelector('[data-ayq-figure]');
+        const size = one => parseFloat(getComputedStyle(one).fontSize) || 0;
+        const others = [...screen.querySelectorAll('[data-ayq-figure]')]
+          .filter(one => one !== figure)
+          .map(one => size(one));
+        const coverage = screen.querySelector('[data-ayq-today-coverage]');
+        const waiting = screen.querySelector('[data-ayq-waiting]');
+        const lines = waiting
+          ? [...waiting.querySelectorAll('li')].map(one =>
+              (one.innerText || '').replace(/\\s+/g, ' ').trim())
+          : [];
+        const box = figure.getBoundingClientRect();
+        const later = [...screen.querySelectorAll('[data-ayq-lowest], [data-ayq-month-end], [data-ayq-waiting]')]
+          .map(one => one.getBoundingClientRect().top);
+        return JSON.stringify({
+          cents: funds.getAttribute('data-ayq-available-funds'),
+          fundsSize: size(figure),
+          largestOther: others.length === 0 ? 0 : Math.max(...others),
+          fundsTop: box.top,
+          laterTop: later.length === 0 ? null : Math.min(...later),
+          coverage: coverage
+            ? coverage.innerText.replace(/\\s+/g, ' ').trim()
+            : null,
+          imports: !!screen.querySelector('[data-ayq-action="today-import"]'),
+          total: waiting ? waiting.dataset.ayqWaiting : null,
+          lines,
+        });
+      })()`),
+    ),
+  ) as {
+    cents: string;
+    fundsSize: number;
+    largestOther: number;
+    fundsTop: number;
+    laterTop: number | null;
+    coverage: string | null;
+    imports: boolean;
+    total: string | null;
+    lines: string[];
+  };
+
+  process.stdout.write(
+    `[ayq-smoke] today: funds ${seen.cents} cents at ${seen.fundsSize}px ` +
+      `(next largest ${seen.largestOther}px), waiting ${seen.total ?? '(none)'}, ` +
+      `boundary: ${seen.coverage ?? '(none)'}\n`,
+  );
+
+  // A21: available funds first, as the largest figure. Both halves are
+  // measured on the drawn screen, because a rule about what a person sees
+  // first is not proved by reading the stylesheet that was meant to do it.
+  if (!(seen.fundsSize > seen.largestOther)) {
+    return `available funds are ${seen.fundsSize}px and something else is ${seen.largestOther}px`;
+  }
+  if (seen.laterTop !== null && seen.fundsTop >= seen.laterTop) {
+    return 'available funds are not the first thing on the screen';
+  }
+
+  // 03 §8.4: the boundary is stated here, in words, beside the money it
+  // qualifies — not left for a person to go and find on another screen.
+  if (seen.coverage === null || seen.coverage === '') {
+    return 'Today states no reliability boundary';
+  }
+  if (!/Reliable to|has no statement|Nothing has been imported/i.test(seen.coverage)) {
+    return `the line beside the money does not state coverage: ${seen.coverage}`;
+  }
+
+  // A20: Import is reachable from here.
+  if (!seen.imports) return 'Import cannot be reached from Today';
+
+  // A5: a queue with nothing in it is not drawn as a line saying zero.
+  if (seen.total === null) return 'Today draws no waiting list at all';
+  if (seen.lines.some(line => /^0\b/.test(line))) {
+    return `a queue with nothing in it was drawn anyway: ${seen.lines.join(' | ')}`;
+  }
+  const counts = seen.lines
+    .map(line => Number(/^(\d+)\b/.exec(line)?.[1] ?? NaN))
+    .filter(one => Number.isFinite(one));
+  if (Number(seen.total) > 0) {
+    const summed = counts.reduce((sum, one) => sum + one, 0);
+    if (summed !== Number(seen.total)) {
+      return `the waiting total says ${seen.total} and the lines come to ${summed}`;
+    }
+  } else if (!seen.lines.some(line => /Nothing is waiting/i.test(line))) {
+    return 'an empty queue did not say that nothing is waiting';
+  }
+
+  return '';
+}
+
+/**
  * The Register, on a budget big enough for the question to be real.
  *
  * What is proved here: that the table draws, that what is being filtered is
@@ -1115,7 +1233,7 @@ async function registerShown(window: BrowserWindow): Promise<string> {
         const totals = document.querySelector('[data-ayq-totals]');
         return JSON.stringify({
           rows: rows.length,
-          totals: totals ? totals.innerText.replace(/\s+/g, ' ').trim() : null,
+          totals: totals ? totals.innerText.replace(/\\s+/g, ' ').trim() : null,
           uncategorised: document.querySelectorAll(
             '[data-ayq-table="register"] [data-ayq-state="uncategorised"]').length,
           held: Number(document.body.dataset.ayqLedgerTotal || 0),
@@ -1161,9 +1279,9 @@ async function registerShown(window: BrowserWindow): Promise<string> {
         const chip = document.querySelector('[data-ayq-filter="uncategorised"]');
         const totals = document.querySelector('[data-ayq-totals]');
         return JSON.stringify({
-          chip: chip ? chip.innerText.replace(/\s+/g, ' ').trim() : null,
+          chip: chip ? chip.innerText.replace(/\\s+/g, ' ').trim() : null,
           clearAll: !!document.querySelector('[data-ayq-action="clear-filters"]'),
-          totals: totals ? totals.innerText.replace(/\s+/g, ' ').trim() : null,
+          totals: totals ? totals.innerText.replace(/\\s+/g, ' ').trim() : null,
           rows: document.querySelectorAll('[data-ayq-table="register"] tbody tr').length,
           empty: !!document.querySelector('[data-ayq-table="register"][data-ayq-empty]'),
         });
@@ -1211,7 +1329,7 @@ async function registerShown(window: BrowserWindow): Promise<string> {
     pane = String(
       await window.webContents.executeJavaScript(`(() => {
         const node = document.querySelector('[data-ayq-detail]');
-        return node ? node.innerText.replace(/\s+/g, ' ').trim() : '';
+        return node ? node.innerText.replace(/\\s+/g, ' ').trim() : '';
       })()`),
     );
     if (pane !== '') break;
@@ -1281,7 +1399,7 @@ async function shellShown(window: BrowserWindow): Promise<string> {
           scrollers: scrollers.length,
           scrollerRight: scrollerBox ? Math.round(scrollerBox.right) : -1,
           windowWidth: Math.round(document.documentElement.clientWidth),
-          status: status ? status.innerText.replace(/\s+/g, ' ').trim() : null,
+          status: status ? status.innerText.replace(/\\s+/g, ' ').trim() : null,
           panels: document.querySelectorAll('[data-ayq-window] header').length,
         });
       })()`),
@@ -1364,16 +1482,32 @@ async function shellShown(window: BrowserWindow): Promise<string> {
   })()`);
   if (chosen !== true) return 'there are no rows to scroll';
 
-  const paneThere = async (): Promise<boolean> =>
+  // A22's pane is a property of a screen, not of the frame: it is checked on
+  // whichever screen is open, and a screen that puts its table and its pane
+  // side by side says so with `data-ayq-split`. A screen that has not been
+  // brought over yet has no such pane to stay anywhere, and the run says that
+  // rather than failing the frame for it.
+  const splitThere = async (): Promise<boolean> =>
     (await window.webContents.executeJavaScript(
-      "!!(document.querySelector('[data-ayq-split] > div:nth-child(2)') || " +
-        "document.querySelector('[data-ayq-scroller] .workbench-pane'))",
+      "!!document.querySelector('[data-ayq-split]')",
     )) === true;
-  const paneBy = Date.now() + 60_000;
-  while (Date.now() < paneBy && !(await paneThere())) {
-    await new Promise(resolve => setTimeout(resolve, 200));
+
+  if (await splitThere()) {
+    const paneThere = async (): Promise<boolean> =>
+      (await window.webContents.executeJavaScript(
+        "!!document.querySelector('[data-ayq-split] > div:nth-child(2)')",
+      )) === true;
+    const paneBy = Date.now() + 60_000;
+    while (Date.now() < paneBy && !(await paneThere())) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    if (!(await paneThere())) return 'choosing a row opened no detail pane';
+  } else {
+    process.stdout.write(
+      '[ayq-smoke] the open screen puts no pane beside its table, so A22 has ' +
+        'nothing to hold in place here\n',
+    );
   }
-  if (!(await paneThere())) return 'choosing a row opened no detail pane';
 
   const held = JSON.parse(
     String(
@@ -1383,17 +1517,37 @@ async function shellShown(window: BrowserWindow): Promise<string> {
         if (!scroller) return JSON.stringify({ why: 'no scroller' });
         if (!row) return JSON.stringify({ why: 'no rows to scroll' });
         const head = document.querySelector('[data-ayq-scroller] table thead th');
-        const pane =
-          document.querySelector('[data-ayq-split] > div:nth-child(2)') ||
-          document.querySelector('[data-ayq-scroller] .workbench-pane');
+        const pane = document.querySelector('[data-ayq-split] > div:nth-child(2)');
+        const split = document.querySelector('[data-ayq-split]');
         const before = row.getBoundingClientRect().top;
         scroller.scrollTop = scroller.scrollHeight;
         const box = scroller.getBoundingClientRect();
+        const at = one =>
+          one ? Math.round(one.getBoundingClientRect().top - box.top) : null;
+        const to = one =>
+          one ? Math.round(one.getBoundingClientRect().bottom - box.top) : null;
         return JSON.stringify({
           scrolled: scroller.scrollTop,
           moved: Math.round(before - row.getBoundingClientRect().top),
-          headerTop: head ? Math.round(head.getBoundingClientRect().top - box.top) : null,
-          paneTop: pane ? Math.round(pane.getBoundingClientRect().top - box.top) : null,
+          headerTop: at(head),
+          paneTop: at(pane),
+          paneBottom: to(pane),
+          splitBottom: to(split),
+          rowsBottom: to(row.parentElement),
+          scrollerHeight: Math.round(box.height),
+          // A22 allows one scroller per screen. A pane with a scrollbar of its
+          // own is the thing that rule exists to forbid, so it is measured
+          // rather than assumed absent.
+          paneScrolls: pane
+            ? pane.scrollHeight > pane.clientHeight + 1 ||
+              [...pane.querySelectorAll('*')].some(one => {
+                const how = getComputedStyle(one).overflowY;
+                return (
+                  (how === 'auto' || how === 'scroll') &&
+                  one.scrollHeight > one.clientHeight + 1
+                );
+              })
+            : false,
           rowTabIndex: row.tabIndex,
         });
       })()`),
@@ -1404,6 +1558,11 @@ async function shellShown(window: BrowserWindow): Promise<string> {
     moved?: number;
     headerTop?: number | null;
     paneTop?: number | null;
+    paneBottom?: number | null;
+    splitBottom?: number | null;
+    rowsBottom?: number | null;
+    scrollerHeight?: number;
+    paneScrolls?: boolean;
     rowTabIndex?: number;
   };
 
@@ -1423,14 +1582,54 @@ async function shellShown(window: BrowserWindow): Promise<string> {
     return `the header moved to ${headerTop}px from the top of the scroller`;
   }
   const paneTop = held.paneTop ?? null;
-  if (paneTop === null) return 'the selected row opened no detail pane';
-  if (paneTop < -2) {
-    return `the detail pane scrolled away, to ${paneTop}px`;
+  process.stdout.write(
+    `[ayq-smoke] after scrolling ${held.scrolled}px: header at ${headerTop}px, ` +
+      `pane ${paneTop}px to ${held.paneBottom}px, rows end ${held.rowsBottom}px, ` +
+      `the split ends ${held.splitBottom}px, scroller ${held.scrollerHeight}px\n`,
+  );
+  // A22 allows the screen one scroller, and this is the half of that rule a
+  // scroll can actually answer: whatever the pane's height turns out to be, it
+  // must not have grown a scrollbar of its own.
+  if (held.paneScrolls === true) {
+    return 'the detail pane has a scrollbar of its own';
+  }
+
+  // The pane sticks to the top of the scroller — while there is anywhere for it
+  // to stick. A sticky element taller than the scrollport has nowhere: it is
+  // held by the bottom of its own column instead, and its top is then above the
+  // scroller by exactly the difference. That is the browser behaving correctly
+  // and it is what one scroller per screen costs, so it is reported rather than
+  // failed. What is never allowed is the pane drifting further than that.
+  const paneHeight =
+    paneTop === null || held.paneBottom === undefined || held.paneBottom === null
+      ? null
+      : held.paneBottom - paneTop;
+  const scrollport = held.scrollerHeight ?? 0;
+  if (paneTop !== null && paneTop < -2) {
+    if (paneHeight !== null && paneHeight > scrollport) {
+      // Where the foot of its own column leaves it, and not one pixel higher:
+      // the pane is pinned to the bottom of the split, which is the browser
+      // clamping a too-tall sticky element rather than the pane drifting.
+      const owed = (held.splitBottom ?? 0) - paneHeight;
+      if (paneTop < owed - 2) {
+        return `the pane is ${paneHeight}px in a ${scrollport}px scroller, so the ` +
+          `foot of its column leaves it at ${owed}px, and it reached ${paneTop}px`;
+      }
+      process.stdout.write(
+        `[ayq-smoke] the detail pane is ${paneHeight}px in a ${scrollport}px ` +
+          'scroller, so it is held by the foot of its own column rather than ' +
+          `by the top of the screen: ${paneTop}px\n`,
+      );
+    } else {
+      return `the detail pane scrolled away, to ${paneTop}px`;
+    }
   }
   if ((held.rowTabIndex ?? -1) !== 0) return 'a table row is not in the tab order';
   process.stdout.write(
     `[ayq-smoke] scrolled ${held.scrolled}px: rows moved ${held.moved}px, ` +
-      `the header stayed at ${headerTop}px and the pane at ${paneTop}px\n`,
+      `the header stayed at ${headerTop}px and the pane at ${
+        paneTop === null ? 'no pane' : `${paneTop}px`
+      }\n`,
   );
   return '';
 }
@@ -1734,6 +1933,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // Today: what you have, how long it lasts, what is waiting on you (04 A21).
+  const todayAsked = process.env.AYQ_SMOKE_TODAY === '1';
+  let today = 'not asked';
+  let todayOk = true;
+  if (todayAsked) {
+    const wrong = await todayShown(window);
+    today = wrong === '' ? 'held' : wrong;
+    todayOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] Today: ${todayOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // The shell: the rail, its order, one scroller, and what stays put while the
   // rows move (04 A20, A22).
   const shellAsked = process.env.AYQ_SMOKE_SHELL === '1';
@@ -1819,6 +2031,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     shellOk &&
     registerOk &&
     accountsOk &&
+    todayOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -1854,6 +2067,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           registerOk,
           accounts: accountsState,
           accountsOk,
+          today,
+          todayOk,
           pagedOk,
           imports: importRounds,
           dataDir,
@@ -1888,7 +2103,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is
@@ -1923,7 +2138,22 @@ void app.whenReady().then(() => {
   process.stdout.write(`[ayq] window created, budget data dir: ${dataDir}\n`);
 
   if (process.env.AYQ_SMOKE === '1') {
-    window.webContents.once('did-finish-load', () => void runSmoke(window));
+    // Caught, not left to become an unhandled rejection. A smoke run that
+    // throws halfway through used to stop where it stood and hold the window
+    // open until the CI step's own timeout killed it — ten minutes to learn
+    // nothing. The reason is printed and the run fails, which is what a
+    // failure is for.
+    window.webContents.once('did-finish-load', () => {
+      void runSmoke(window).catch((error: unknown) => {
+        process.stdout.write(
+          `[ayq-smoke] the run itself failed: ${
+            error instanceof Error ? (error.stack ?? error.message) : String(error)
+          }\n`,
+        );
+        engine?.stop();
+        app.exit(1);
+      });
+    });
   }
 });
 

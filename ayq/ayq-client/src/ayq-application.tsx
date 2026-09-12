@@ -32,6 +32,7 @@ import type {
 } from './ayq-ipc-contract.ts';
 import { ayqOnOpenRegister, type AyqLegacyView } from './ayq-legacy-views.ts';
 import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
+import { AyqTodayScreen } from './ayq-screens/ayq-today.tsx';
 import { AyqImportScreen } from './ayq-screens/ayq-import.tsx';
 import { AyqRegisterScreen } from './ayq-screens/ayq-register.tsx';
 import { AyqNotBuilt } from './ayq-screens/ayq-not-built.tsx';
@@ -225,7 +226,16 @@ export function AyqApplication(): ReactNode {
   } else if (destination === 'accounts') {
     body = <AyqAccountsScreen onFailure={say} round={round} />;
   } else if (destination === 'today') {
-    body = <AyqNotBuilt what={ayqText('notBuilt.today')} />;
+    body = (
+      <AyqTodayScreen
+        onFailure={say}
+        onOpen={next => {
+          setDestination(next);
+          reload();
+        }}
+        round={round}
+      />
+    );
   } else {
     body = <AyqNotBuilt what={ayqText('notBuilt.reports')} />;
   }
