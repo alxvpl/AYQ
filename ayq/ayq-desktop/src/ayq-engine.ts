@@ -74,6 +74,7 @@ import { ayqSaveSettings, ayqSettings } from './ayq-preferences.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import {
   ayqApplyRules,
+  ayqFileCounterparty,
   ayqForgetRule,
   ayqKeyOfTransaction,
   ayqPendingForCounterparty,
@@ -479,12 +480,29 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       );
       if (!chosen) throw new Error('no such category');
 
-      ayqRememberRule(dataDir, request.counterpartyKey, chosen.name);
+      // 03 §4.1's two decisions, and the caller had to say which. Learning a
+      // rule files what is there as a consequence of the rule; filing by hand
+      // files what is there and leaves the next import alone.
+      if (request.createRule) {
+        ayqRememberRule(dataDir, request.counterpartyKey, chosen.name);
+        const applied = await ayqApplyRules(dataDir);
+        return {
+          id,
+          ok: true,
+          kind: 'transaction.categoriseCounterparty',
+          result: { ...applied, keptByHand: 0, ruleWritten: true },
+        };
+      }
+
+      const filed = await ayqFileCounterparty(dataDir, request.counterpartyKey, {
+        id: chosen.id,
+        name: chosen.name,
+      });
       return {
         id,
         ok: true,
         kind: 'transaction.categoriseCounterparty',
-        result: await ayqApplyRules(dataDir),
+        result: { ...filed, ruleWritten: false },
       };
     }
 
@@ -869,9 +887,20 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
   }
 }
 
+/**
+ * Whether to say how long each answer took.
+ *
+ * Off by default and read once. It exists because "the Register took seven
+ * seconds" is not a fault anybody can act on: what is actionable is which
+ * request those seconds were in, and the only place that can be measured
+ * without guessing is here.
+ */
+const timing = process.env.AYQ_ENGINE_TIMING === '1';
+
 channel.onMessage(message => {
   void (async () => {
     const request = message as AyqRequest;
+    const began = Date.now();
     let response: AyqResponse;
     try {
       if (dataDir === '') {
@@ -885,6 +914,11 @@ channel.onMessage(message => {
         kind: 'error',
         message: explain(said(error)),
       };
+    }
+    if (timing) {
+      process.stderr.write(
+        `[ayq-engine] ${String(request?.kind ?? 'unknown')} ${Date.now() - began}ms\n`,
+      );
     }
     channel.send(response);
   })();

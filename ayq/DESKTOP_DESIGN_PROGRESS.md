@@ -21,7 +21,7 @@ difference is recorded below.
 | S4 | Accounts, coverage and reconciliation (03 §8) | done |
 | S5 | Today (04 A21) | done |
 | S6 | Upcoming and Plan | done |
-| S7 | Review and Settings | not started |
+| S7 | Review and Settings | done |
 | S8 | Reports destination | not started |
 
 ## How the interface is being replaced
@@ -31,11 +31,10 @@ is proved by twenty acceptance steps on real Windows; replacing its whole
 interface in one commit would take all of that down together and leave nothing
 able to say which part broke.
 
-So `ayq-fluent-mount.tsx` is a seam: the shell that exists draws the screens it
-has always drawn, and a screen that has been brought over to Fluent is mounted
-into the same element as a React root. S2 turns the shell itself over, and the
-screens that are still the old ones are drawn inside the new frame until their
-own stage arrives. By S8 there is no seam left and the file goes.
+So there was a seam: S2 turned the shell over and the screens that were still the
+old ones were drawn inside the new frame until their own stage arrived. As of S7
+there is no seam left — `ayq-legacy-views.ts` and every imperative renderer it
+hosted are deleted, and so is the legacy CSS in `ayq-client.html`.
 
 ## Canon read again, and what it changed
 
@@ -88,6 +87,153 @@ r009 shows. Canon governs: the order is now funds, how long it lasts, the
 transaction list, then the queues. It is pinned by a renderer test that reads the
 panes in document order, and by the Windows acceptance step, which reads the same
 order off the drawn window.
+
+## What fifty thousand transactions cost, and what was done about it
+
+Run 66 got as far as the Register and measured its first draw at **17,008 ms** on
+a budget of fifty thousand invented transactions, against a gate of 5,000 ms.
+That gate has never actually passed: it was written in S3 and runs 62 to 65 all
+failed before reaching it. So this is the first time the number has been read.
+
+Three things were wrong, and all three were AYQ's rather than the runner's.
+
+**The ledger fetched everything to draw a page.** An unfiltered Register asked
+the database for every transaction — fourteen fields, three of them joins — and
+then filtered, sorted and totalled fifty thousand rows in JavaScript to show five
+hundred. Everything the filter asks except the counterparty is now a condition
+the database can answer: account, dates, uncategorised, category, the size of an
+amount as a pair of ranges, and the search as a `$like` over the payee, what the
+bank printed, the notes and the category. The page comes back ordered and
+limited, and the totals — which 03 §4.5 requires to be over the whole filtered
+set and not over the page — come back as four aggregates. The counterparty is the
+one question that still reads rows, because a canonical key lives in the AYQ
+store and is not a column.
+
+**The status bar cost a full scan on every launch.** `ayqSummary` read every
+transaction to work out four numbers. Three of them are aggregates now. The
+fourth, the uncategorised count, has to exclude transfers between two of the
+owner's own accounts (03 §7.6) — which needs the store row by row — so the scan
+is kept for the one case that needs it: a budget holding two or more of the
+owner's accounts. A budget with one takes the cheap path. The counterparty count
+is now taken from the store's own record of what AYQ resolved, which is both free
+and a truer statement than counting a transaction AYQ never imported as a
+counterparty of its own.
+
+**Sixty seconds was the host's patience for any answer.** Importing fifty
+thousand records legitimately takes minutes, so the window reported the import as
+failed — twice — while the import carried on and succeeded. The timeout was there
+to notice an engine that had died; a dead engine is now noticed the moment it
+dies, because the host watches the child and fails every waiting request with the
+reason. What is left is a last resort for an engine that is neither answering nor
+dead, and it is fifteen minutes.
+
+Two smaller things in the acceptance driver. It measured the Register while
+already standing on it, so the screen never redrew and never published a
+measurement — it now arrives from Reports, which asks the engine nothing, so what
+is measured is the Register's own cost and not a queue behind another screen's
+reading. And the Register step imported the same fifty-thousand-record file
+twice, because importing twice is how duplicate protection is checked — a rule a
+step of its own already proves on a small fixture. `--import-once` says what the
+run actually wants.
+
+`AYQ_ENGINE_TIMING=1` makes the engine print how long each request took. "The
+Register took seven seconds" is not a fault anybody can act on; which request
+those seconds were in is.
+
+## S7 — Review and Settings (04 A6, A7; 03 §3.6, §4.1)
+
+### The two decisions, kept apart on the screen and in the request
+
+03 §4.1 draws a line this screen must not blur. "These are groceries" is a
+statement about the transactions in front of a person. "Everything from this
+shop is groceries" is a statement about every one that arrives from now on.
+
+The engine could not express the first. `transaction.categoriseCounterparty`
+wrote a rule and then applied it, so filing a counterparty and learning a rule
+were the same call. It now takes `createRule`, and takes it as a *required*
+field: a caller that did not have to say which would be choosing for the person,
+and the type system now refuses one that has not. Filing without a rule is
+`ayqFileCounterparty`, which sets the category on the counterparty's
+transactions, records a person's provenance against each, and writes no rule —
+so nothing about the next import changes.
+
+One thing that rule does not say, and this had to decide: a transaction somebody
+had already filed themselves, into something else. It is left exactly as it was
+and counted separately, and the screen says so — "7 filed. 2 left as they were,
+because you had filed them yourself into something else." Filing a counterparty
+is a decision about the ones nobody has decided; it is not a licence to
+overwrite decisions made one row at a time.
+
+The acceptance step proves the distinction by its *consequence* rather than its
+label: it files one counterparty and then reads Settings → Rules and requires it
+to hold nothing, then learns a rule for the next one and requires that rule to be
+there, keyed on that counterparty. A screen with one control doing both would
+pass a check that read labels and fail this one.
+
+### Review is transitional, and says so
+
+The backlog is the counterparties AYQ has resolved that nobody has filed,
+largest first — so one decision covers the most transactions it can, which is
+what makes a queue shrink rather than a list somebody works through for ever
+(A6). The screen states that in words.
+
+The pane carries what it takes to decide: the names the bank actually printed, so
+"AYQ thinks these are one shop" can be checked and corrected (03 §3.6), with each
+variant saying whether it is here because a person said so or because the
+statement did; the rhythm, when there is one; and the transactions themselves.
+
+### Settings owns the categories, and says what it will not do
+
+Settings → Categories is the only place a category is made or renamed. Two
+consequences are printed on it rather than left to be discovered: renaming moves
+the rules that file into it, because a rule keeps a category by name so that it
+outlives a budget (§4.2) — the engine already did this, and now the screen says
+it — and **AYQ does not archive or delete a category here**. Canon says nothing
+about what should become of the transactions filed under one, and an irreversible
+guess about somebody's history is the last thing this screen should offer. The
+acceptance step reads both sentences off the window and fails if either is gone.
+
+Settings → Rules is A7's four words, each one a test: visible (every rule, by the
+counterparty it is keyed on), verifiable (a rule naming a category this budget
+does not have files nothing, and is marked in the state colour that means
+something is wrong), correctable (the category is changed on the Categories tab
+and the rules move with it), reversible (a rule can be taken away, and the screen
+says that what it filed stays where it is).
+
+### The seam is gone
+
+`ayq-legacy-views.ts`, `ayq-counterparties.ts`, `ayq-other-views.ts`,
+`ayq-ui/ayq-legacy-screen.tsx`, `ayq-dom.ts` and `ayq-format.ts` are deleted, and
+so is the block of legacy CSS in `ayq-client.html` — 199 lines of it. Every screen
+is Fluent now; the page holds only the ground the window sits on before the first
+paint. The import history was the last thing still drawn imperatively and is now
+`ayq-screens/ayq-import-history.tsx`, which states what each import came to and
+nothing about what was in it.
+
+`ayq-counterparties.test.ts` went with its screen. What it proved is proved by
+`ayq-review.test.ts`, against the screen that replaced it.
+
+### No screen is keyed on the shell's reload count
+
+A found defect, and a small one with a visible cost: Review said "7 filed, 2 left
+as they were" and then discarded it, because filing bumped the shell's reload
+count and the shell keyed the screen on that count — so React remounted it
+mid-sentence. Every screen here reads the engine again by itself when its own work
+changes something; the reload count belongs to the status bar, which is the
+shell's.
+
+### PROVISIONAL in S7
+
+18. **Filing a counterparty leaves a hand-filed row alone.** §4.4 says a manual
+    decision outranks automation and does not say what one person's later
+    decision does to their earlier one. Leaving it, and saying how many were
+    left, is the cautious and reversible choice.
+19. **Settings → Categories does not archive or delete.** Stated on the screen
+    with its reason. The owner may want it; it needs a decision about the
+    transactions filed under an archived category first.
+20. **The backlog is `counterparties.unfiled`, unfiltered by period.** The engine
+    can take a period; Review asks for everything, because a backlog that hides
+    last year's unfiled shop is a backlog that lies about how much is left.
 
 ## S6 — Upcoming and Plan (03 §7, 04 A8, A9)
 

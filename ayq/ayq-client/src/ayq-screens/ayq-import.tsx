@@ -12,8 +12,8 @@ import type { AyqImportSummary } from '../ayq-ipc-contract.ts';
 import { ayqCount, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
-import { AyqLegacyScreen } from '../ayq-ui/ayq-legacy-screen.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
+import { AyqImportHistory } from './ayq-import-history.tsx';
 
 const useStyles = makeStyles({
   actions: {
@@ -129,7 +129,7 @@ export function AyqImportScreen({
 
       <AyqPane title={ayqText('import.history')} mark="import-history">
         <div className={styles.history}>
-          <AyqLegacyScreen key={round} view="imports" onFailure={onFailure} />
+          <AyqImportHistory round={round} onFailure={onFailure} />
         </div>
       </AyqPane>
     </>

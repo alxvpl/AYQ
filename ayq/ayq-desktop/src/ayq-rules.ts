@@ -237,3 +237,69 @@ export async function ayqPendingForCounterparty(
     );
   }).length;
 }
+
+/**
+ * Files every transaction of one counterparty, by hand, and learns nothing.
+ *
+ * The other half of 03 §4.1. "These are groceries" is a statement about the
+ * transactions in front of a person; "everything from this shop is groceries"
+ * is a statement about every one that arrives from now on. They are different
+ * decisions and this is the first of them — no rule is written, and nothing
+ * about a later import changes.
+ *
+ * A transaction somebody already filed themselves, into something else, is left
+ * exactly as it was and counted separately. 03 §4.4 says a manual decision
+ * outranks automation; this is not automation, but silently replacing a decision
+ * that was made one row at a time is not what a person choosing a counterparty
+ * asked for either. The caller is told how many were left, so it can say so.
+ */
+export async function ayqFileCounterparty(
+  dataDir: string,
+  counterpartyKey: string,
+  category: { id: string; name: string },
+): Promise<{ categorised: number; keptByHand: number }> {
+  const store = ayqReadStore(dataDir);
+  const rows = await rowsToConsider();
+  const before = rows.filter(row => !row.categoryId).length;
+
+  const updates: Array<{ id: string; category: string | null }> = [];
+  let keptByHand = 0;
+  let filled = 0;
+
+  for (const row of rows) {
+    const key = ayqRowKey(row);
+    if (
+      ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) !==
+      counterpartyKey
+    ) {
+      continue;
+    }
+    if (row.categoryId === category.id) continue;
+
+    const decision = ayqStandingDecision(store, key);
+    if (decision?.source === 'manual' && row.categoryId) {
+      keptByHand += 1;
+      continue;
+    }
+
+    updates.push({ id: row.id, category: category.id });
+    ayqAddDecision(store, key, {
+      source: 'manual',
+      categoryName: category.name,
+      at: new Date().toISOString(),
+    });
+    if (!row.categoryId) filled += 1;
+  }
+
+  if (updates.length > 0) {
+    await ayqSetCategories(updates);
+    ayqWriteStore(dataDir, store);
+    await ayqSettle(
+      ayqUncategorisedCount,
+      remaining => remaining <= before - filled,
+      'the categories',
+    );
+  }
+
+  return { categorised: updates.length, keptByHand };
+}

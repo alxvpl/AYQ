@@ -132,6 +132,18 @@ type EngineHandle = { send(request: AyqRequest): void; stop(): void };
  * The engine reports which one answered, so the interface never has to be
  * taken on trust about where its numbers came from.
  */
+/**
+ * How long the host waits for an answer before calling the engine wedged.
+ *
+ * This is not a patience budget for slow work: it is the last resort for an
+ * engine that is neither answering nor dead, and an engine that has died is
+ * noticed the moment it does. It used to be sixty seconds, which is a perfectly
+ * ordinary length of time for importing fifty thousand records — so the one
+ * operation in this product that legitimately takes minutes was reported to the
+ * owner as a failure, twice, while the import itself carried on and succeeded.
+ */
+const AYQ_ENGINE_PATIENCE = 15 * 60_000;
+
 function startEngine(): EngineHandle {
   const enginePath = join(here, 'ayq-engine.js');
   const env = { ...process.env, AYQ_DATA_DIR: dataDir };
@@ -145,6 +157,27 @@ function startEngine(): EngineHandle {
     }
   };
 
+  /**
+   * An engine that is gone answers every question at once, and says so.
+   *
+   * Without this, a crashed engine left every request waiting for the timeout —
+   * so the window sat saying nothing for as long as that timeout was, and the
+   * only way to keep the wait short was to keep the timeout short, which is why
+   * an import of fifty thousand records used to be reported as a failure.
+   */
+  const died = (why: string) => {
+    const waiting = [...pending.entries()];
+    pending.clear();
+    for (const [id, resolve] of waiting) {
+      resolve({
+        id,
+        ok: false,
+        kind: 'error',
+        message: `the AYQ engine stopped (${why}). Close the window and open AYQ again.`,
+      });
+    }
+  };
+
   if ((process.env.AYQ_ENGINE_HOST ?? 'utility') !== 'node') {
     const child = utilityProcess.fork(enginePath, [], {
       env,
@@ -152,6 +185,7 @@ function startEngine(): EngineHandle {
       serviceName: 'ayq-engine',
     });
     child.on('message', deliver);
+    child.on('exit', code => died(`exit code ${code}`));
     return {
       send: request => child.postMessage(request),
       stop: () => void child.kill(),
@@ -167,6 +201,8 @@ function startEngine(): EngineHandle {
     execPath: process.env.AYQ_NODE ?? 'node',
   });
   child.on('message', deliver);
+  child.on('exit', code => died(`exit code ${code ?? 'unknown'}`));
+  child.on('error', error => died(error.message));
   return {
     send: request => void child.send(request),
     stop: () => void child.kill(),
@@ -238,10 +274,12 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
           id: request.id,
           ok: false,
           kind: 'error',
-          message: 'the AYQ engine did not answer within 60s',
+          message: `the AYQ engine did not answer within ${
+            AYQ_ENGINE_PATIENCE / 60_000
+          } minutes`,
         });
       }
-    }, 60_000);
+    }, AYQ_ENGINE_PATIENCE);
 
     pending.set(request.id, response => {
       clearTimeout(timer);
@@ -396,7 +434,10 @@ async function importOnce(window: BrowserWindow): Promise<AyqImportSummary> {
       'document.querySelector(\'[data-ayq-action="import"]\').click(); true',
   );
 
-  const deadline = Date.now() + 240_000;
+  // As long as the host is prepared to wait for the engine. Importing fifty
+  // thousand records takes minutes, and a driver that gave up first would report
+  // the product as broken while it was working.
+  const deadline = Date.now() + AYQ_ENGINE_PATIENCE;
   let state = '';
   while (Date.now() < deadline) {
     state = await dataset(window, 'ayqImportState');
@@ -1071,10 +1112,15 @@ const importRounds: AyqImportSummary[] = [];
 let categoryShown = '';
 
 async function checkImport(window: BrowserWindow): Promise<boolean> {
+  // Once, when the run only wants a budget to work in. Importing the same
+  // statement twice is the duplicate-protection check, and that rule is proved
+  // on a small fixture by a step of its own — doing it again on fifty thousand
+  // records proves the same thing and doubles the slowest step in the workflow.
+  const once = process.env.AYQ_SMOKE_IMPORT_ONCE === '1';
   try {
     const first = await importOnce(window);
-    const second = await importOnce(window);
-    importRounds.push(first, second);
+    const second = once ? first : await importOnce(window);
+    importRounds.push(first, ...(once ? [] : [second]));
     // The ledger is read below, and it is a destination of its own now. The
     // count it publishes is the Register's, so it is waited for rather than
     // read off the frame the screen opened on.
@@ -1095,7 +1141,7 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
       );
     };
     report('1', first);
-    report('2', second);
+    if (!once) report('2', second);
 
     // The screen's own ledger, not the import's word for it: the rows on the
     // page have to be the engine's rows, or the import proved nothing a person
@@ -1110,9 +1156,10 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
     const held =
       first.imported > 0 &&
       first.failed === 0 &&
-      second.imported === 0 &&
-      second.duplicates === first.prepared &&
-      second.transactionCountAfter === first.transactionCountAfter &&
+      (once ||
+        (second.imported === 0 &&
+          second.duplicates === first.prepared &&
+          second.transactionCountAfter === first.transactionCountAfter)) &&
       ledgerTotal === second.transactionCountAfter &&
       // The rows drawn, not the rows there are: the ledger shows a page at a
       // time, so demanding it draw all of them was an assumption that held only
@@ -1121,7 +1168,11 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
       ledgerRows <= ledgerTotal;
 
     process.stdout.write(
-      `[ayq-smoke] duplicate protection: ${held ? 'HOLDS' : 'FAILED'}\n`,
+      once
+        ? `[ayq-smoke] one import, no duplicate check asked for: ${
+            held ? 'HOLDS' : 'FAILED'
+          }\n`
+        : `[ayq-smoke] duplicate protection: ${held ? 'HOLDS' : 'FAILED'}\n`,
     );
     return held;
   } catch (error) {
@@ -1259,6 +1310,287 @@ async function accountsShown(
   }
 
   return `--accounts was given ${expect}, which is not a case`;
+}
+
+/**
+ * Review and the two decisions of 03 §4.1, proved end to end on the window.
+ *
+ * The one thing a screen here must never do is make one decision look like the
+ * other. So this does both, in order, and checks the *consequence* rather than
+ * the button: filing a counterparty is followed by opening Settings → Rules and
+ * requiring it to hold nothing, and learning a rule for the next one is followed
+ * by requiring that rule to be there, keyed on that counterparty.
+ *
+ * Nothing about the wording decides any of it. A screen that had one control
+ * doing both would pass a check that read labels and fail this one.
+ */
+async function reviewShown(window: BrowserWindow): Promise<string> {
+  if (!(await openDestination(window, 'review'))) {
+    return 'the Review destination never opened';
+  }
+
+  const drawn = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-table=\"review\"] tbody tr')",
+    )) === true;
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await drawn())) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!(await drawn())) return 'Review drew no backlog to work through';
+
+  const backlog = Number(
+    await window.webContents.executeJavaScript(
+      "Number(document.querySelector('[data-ayq-backlog]')?.getAttribute('data-ayq-backlog') ?? -1)",
+    ),
+  );
+  if (backlog < 2) {
+    return `Review lists ${backlog} counterparties, and this check needs two`;
+  }
+
+  /** Back to Review, drawn. Reading the rules takes the window to Settings. */
+  const toReview = async (): Promise<boolean> => {
+    if (!(await openDestination(window, 'review'))) return false;
+    const by = Date.now() + 60_000;
+    while (Date.now() < by && !(await drawn())) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return drawn();
+  };
+
+  /** Opens the nth row of the backlog and waits for its pane. */
+  const open = async (nth: number): Promise<string> => {
+    if (!(await toReview())) return '';
+    const key = String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rows = [...document.querySelectorAll('[data-ayq-table="review"] tbody tr')];
+        const row = rows[${nth}];
+        if (!row) return '';
+        row.click();
+        return row.getAttribute('data-ayq-row') || '';
+      })()`),
+    );
+    if (key === '') return '';
+    const by = Date.now() + 30_000;
+    while (
+      Date.now() < by &&
+      (await window.webContents.executeJavaScript(
+        "!!document.querySelector('[data-ayq-file]')",
+      )) !== true
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return key;
+  };
+
+  /** Chooses a category and presses one of the two, then waits for the answer. */
+  const decide = async (action: string): Promise<string> => {
+    const chose = String(
+      await window.webContents.executeJavaScript(`(() => {
+        const select = document.querySelector('[data-ayq-review-category]');
+        if (!select) return 'no category picker';
+        const option = [...select.options].find(one => one.value !== '');
+        if (!option) return 'no category to file into';
+        const setter = Object.getOwnPropertyDescriptor(
+          Object.getPrototypeOf(select), 'value');
+        if (setter && setter.set) setter.set.call(select, option.value);
+        else select.value = option.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return option.textContent || 'chosen';
+      })()`),
+    );
+    if (chose === 'no category picker' || chose === 'no category to file into') {
+      return chose;
+    }
+
+    const pressed = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector('[data-ayq-action="${action}"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (pressed !== true) return `the pane has no ${action}`;
+
+    const by = Date.now() + 60_000;
+    let said = '';
+    while (Date.now() < by && said === '') {
+      said = String(
+        await window.webContents.executeJavaScript(
+          "(document.querySelector('[data-ayq-outcome]') || {}).innerText || ''",
+        ),
+      );
+      if (said === '') await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    if (said === '') {
+      const problem = await problemShown(window);
+      return `nothing came back${problem === '' ? '' : ` — the screen said: ${problem}`}`;
+    }
+    return said;
+  };
+
+  /** The rules Settings holds, by the counterparty each is keyed on. */
+  const rulesHeld = async (): Promise<string[]> => {
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-ayq-tab="settings"]\').click(); true',
+    );
+    const by = Date.now() + 30_000;
+    while (
+      Date.now() < by &&
+      (await window.webContents.executeJavaScript(
+        "!!document.querySelector('[data-ayq-screen-tab=\"rules\"]')",
+      )) !== true
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-ayq-screen-tab="rules"]\').click(); true',
+    );
+    const listed = Date.now() + 30_000;
+    while (
+      Date.now() < listed &&
+      (await window.webContents.executeJavaScript(
+        "!!document.querySelector('[data-ayq-rules]')",
+      )) !== true
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const rows = [...document.querySelectorAll('[data-ayq-table="rules"] tbody tr')];
+          return JSON.stringify(rows.map(row => {
+            const cell = row.querySelector('[data-ayq-cell="counterparty"]');
+            return cell ? cell.innerText.trim() : '';
+          }));
+        })()`),
+      ),
+    ) as string[];
+  };
+
+  const before = await rulesHeld();
+  if (before.length !== 0) {
+    return `Review starts with ${before.length} rules already learned, so this proves nothing`;
+  }
+
+  // Filing, which is a statement about the transactions in front of a person.
+  const firstKey = await open(0);
+  if (firstKey === '') return 'the backlog had no row to open';
+  const scopes = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const block = document.querySelector('[data-ayq-file]');
+        return JSON.stringify({
+          actions: block
+            ? [...block.querySelectorAll('[data-ayq-action]')].map(one =>
+                one.getAttribute('data-ayq-action'))
+            : [],
+          said: block ? block.innerText.replace(/\\s+/g, ' ').trim() : '',
+        });
+      })()`),
+    ),
+  ) as { actions: string[]; said: string };
+
+  if (!scopes.actions.includes('review-file')) {
+    return 'Review offers no way to file a counterparty without learning a rule';
+  }
+  if (!scopes.actions.includes('review-learn')) {
+    return 'Review offers no way to learn a rule';
+  }
+  if (!/from now on/.test(scopes.said)) {
+    return 'the screen does not say what learning a rule reaches (03 §4.1)';
+  }
+
+  const filed = await decide('review-file');
+  process.stdout.write(`[ayq-smoke] review filed ${firstKey}: ${filed}\n`);
+  if (/^no |^the pane has no|^nothing came back/.test(filed)) return filed;
+
+  // The assertion that the two are different decisions: nothing was learned.
+  const afterFiling = await rulesHeld();
+  if (afterFiling.length !== 0) {
+    return `filing a counterparty learned ${afterFiling.length} rules as well (03 §4.1)`;
+  }
+
+  // Learning, which is a statement about every one that arrives from now on.
+  const secondKey = await open(0);
+  if (secondKey === '') return 'nothing was left in the backlog to learn from';
+  const learned = await decide('review-learn');
+  process.stdout.write(`[ayq-smoke] review learned ${secondKey}: ${learned}\n`);
+  if (/^no |^the pane has no|^nothing came back/.test(learned)) return learned;
+
+  const afterLearning = await rulesHeld();
+  if (!afterLearning.includes(secondKey)) {
+    return `learning a rule for ${secondKey} left the rules holding ${
+      afterLearning.join(', ') || 'nothing'
+    }`;
+  }
+  process.stdout.write(
+    `[ayq-smoke] Settings holds the rule for ${afterLearning.join(', ')}\n`,
+  );
+
+  // 04 A7: visible, and reversible. Taking it away is offered and works.
+  const forgot = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-ayq-table="rules"] tbody tr [data-ayq-action]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (forgot !== true) return 'a rule cannot be taken away (04 A7)';
+  const gone = Date.now() + 30_000;
+  let left = afterLearning.length;
+  while (Date.now() < gone && left >= afterLearning.length) {
+    left = Number(
+      await window.webContents.executeJavaScript(
+        "document.querySelectorAll('[data-ayq-table=\"rules\"] tbody tr').length",
+      ),
+    );
+    if (left >= afterLearning.length) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  }
+  if (left >= afterLearning.length) return 'forgetting a rule changed nothing';
+
+  // Settings → Categories: the only surface, and it says what it will not do.
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-screen-tab="categories"]\').click(); true',
+  );
+  const cats = Date.now() + 30_000;
+  while (
+    Date.now() < cats &&
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-no-archive]')",
+    )) !== true
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const categories = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rows = document.querySelectorAll('[data-ayq-table="categories"] tbody tr');
+        const consequence = document.querySelector('[data-ayq-category-consequence]');
+        const archive = document.querySelector('[data-ayq-no-archive]');
+        return JSON.stringify({
+          rows: rows.length,
+          consequence: consequence
+            ? consequence.innerText.replace(/\\s+/g, ' ').trim()
+            : '',
+          archive: archive ? archive.innerText.replace(/\\s+/g, ' ').trim() : '',
+        });
+      })()`),
+    ),
+  ) as { rows: number; consequence: string; archive: string };
+
+  if (categories.rows < 1) return 'Settings shows no categories at all';
+  if (!/Renaming a category moves its rules/.test(categories.consequence)) {
+    return 'Settings does not say what renaming a category does to the rules';
+  }
+  if (!/does not archive or delete/.test(categories.archive)) {
+    return 'Settings does not say what it will not do to a category';
+  }
+  process.stdout.write(
+    `[ayq-smoke] Settings lists ${categories.rows} categories, and states both consequences\n`,
+  );
+
+  return '';
 }
 
 /**
@@ -1410,6 +1742,14 @@ async function todayShown(window: BrowserWindow): Promise<string> {
  * takes, measured by the screen itself rather than by a poll from outside.
  */
 async function registerShown(window: BrowserWindow): Promise<string> {
+  // Somewhere else first, and somewhere that asks the engine nothing. What is
+  // measured is opening the Register, and the Register measures its own draw —
+  // so arriving at a screen that is already open measures nothing and waits for
+  // a figure that will never be published. Reports is the right elsewhere: it
+  // is a destination in the rail, it is not this one, and it makes no request,
+  // so what is measured next is the Register's own cost and not a queue behind
+  // another screen's reading.
+  await openDestination(window, 'reports');
   await window.webContents.executeJavaScript(
     'document.body.dataset.ayqRegisterMs = ""; true',
   );
@@ -2137,6 +2477,20 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // Review and Settings: the two decisions of 03 §4.1, and what Settings owns.
+  const reviewAsked = process.env.AYQ_SMOKE_REVIEW === '1';
+  let review = 'not asked';
+  let reviewOk = true;
+  if (reviewAsked) {
+    const wrong = await reviewShown(window);
+    review = wrong === '' ? 'held' : wrong;
+    reviewOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] Review: ${reviewOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+    await openRegister(window);
+  }
+
   // Today: what you have, how long it lasts, what is waiting on you (04 A21).
   const todayAsked = process.env.AYQ_SMOKE_TODAY === '1';
   let today = 'not asked';
@@ -2236,6 +2590,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     registerOk &&
     accountsOk &&
     todayOk &&
+    reviewOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -2273,6 +2628,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           accountsOk,
           today,
           todayOk,
+          review,
+          reviewOk,
           pagedOk,
           imports: importRounds,
           dataDir,
@@ -2307,7 +2664,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is

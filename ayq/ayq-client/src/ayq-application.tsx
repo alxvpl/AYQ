@@ -30,9 +30,9 @@ import type {
   AyqLedgerFilter,
   AyqSummary,
 } from './ayq-ipc-contract.ts';
-import { ayqOnOpenRegister, type AyqLegacyView } from './ayq-legacy-views.ts';
 import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
 import { AyqPlanScreen } from './ayq-screens/ayq-plan.tsx';
+import { AyqReviewScreen } from './ayq-screens/ayq-review.tsx';
 import { AyqTodayScreen } from './ayq-screens/ayq-today.tsx';
 import { AyqUpcomingScreen } from './ayq-screens/ayq-upcoming.tsx';
 import { AyqImportScreen } from './ayq-screens/ayq-import.tsx';
@@ -45,7 +45,6 @@ import {
 } from './ayq-screens/ayq-settings.tsx';
 import { ayqText } from './ayq-strings.ts';
 import { AYQ_METRIC } from './ayq-tokens.ts';
-import { AyqLegacyScreen } from './ayq-ui/ayq-legacy-screen.tsx';
 import { AyqNotice } from './ayq-ui/ayq-notice.tsx';
 import { AyqRail } from './ayq-ui/ayq-rail.tsx';
 import { AyqScreen } from './ayq-ui/ayq-screen.tsx';
@@ -69,11 +68,6 @@ const useStyles = makeStyles({
   },
 });
 
-/** The legacy renderer a destination still uses, where it still uses one. */
-const LEGACY: Partial<Record<AyqDestination, AyqLegacyView>> = {
-  review: 'counterparties',
-};
-
 export function AyqApplication(): ReactNode {
   const styles = useStyles();
   const [destination, setDestination] = useState<AyqDestination>(
@@ -90,7 +84,6 @@ export function AyqApplication(): ReactNode {
   const [failure, setFailure] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [round, setRound] = useState(0);
-  const [drawn, setDrawn] = useState(0);
   const [damagedTold, setDamagedTold] = useState('');
   // The Register's filter lives here, not in the Register: arriving at it from
   // a counterparty is the shell moving a person somewhere, and the filter is
@@ -101,7 +94,6 @@ export function AyqApplication(): ReactNode {
   const reload = useCallback(() => setRound(one => one + 1), []);
   // A screen that has finished drawing has changed what the window is holding,
   // and the attributes below are read off that.
-  const redrew = useCallback(() => setDrawn(one => one + 1), []);
   const say = useCallback((message: string) => setNotice(message), []);
 
   // What is true of the window, whichever screen is open.
@@ -142,25 +134,17 @@ export function AyqApplication(): ReactNode {
     );
   }, [status, damagedTold]);
 
-  // The attributes the acceptance runs read, set from the answers. `drawn` is
-  // in the dependencies so that a screen finishing its own load republishes
-  // them: the row count belongs to the Register, and the Register is one
-  // screen among nine.
+  // The attributes the acceptance runs read, set from the answers. The row
+  // count is in the dependencies so that a screen finishing its own load
+  // republishes them: that count belongs to the Register, and the Register is
+  // one screen among nine.
   useEffect(() => {
     document.body.dataset.ayqState =
       failure !== null ? 'error' : status !== null ? 'ready' : '';
     if (status) document.body.dataset.ayqEngineHost = status.engineHost;
     document.body.dataset.ayqLedgerTotal = String(summary?.transactionCount ?? 0);
     document.body.dataset.ayqLedgerRows = String(rowsShown);
-  }, [status, summary, failure, drawn, rowsShown]);
-
-  // A screen asking for the Register on something is asking the shell to move.
-  useEffect(() => {
-    ayqOnOpenRegister((next: AyqLedgerFilter) => {
-      setFilter(next);
-      setDestination('register');
-    });
-  }, []);
+  }, [status, summary, failure, rowsShown]);
 
   // What the Register drew, published for the acceptance runs. Held as state
   // rather than read out of a module, because the shell finishes reading
@@ -175,7 +159,11 @@ export function AyqApplication(): ReactNode {
     [],
   );
 
-  const legacy = LEGACY[destination];
+  // No screen is keyed on the shell's reload count. A screen that is remounted
+  // loses what it was in the middle of saying — "7 filed, 2 left as they were"
+  // went out with the remount — and every screen here reads the engine again by
+  // itself when its own work changes something. The reload count belongs to the
+  // status bar, which is the shell's.
   let body: ReactNode;
   if (destination === 'register') {
     body = (
@@ -204,23 +192,13 @@ export function AyqApplication(): ReactNode {
     );
   } else if (destination === 'review') {
     body = (
-      <>
-        <AyqNotBuilt what={ayqText('notBuilt.review')} />
-        <AyqLegacyScreen
-          key={`review-${round}`}
-          view="counterparties"
-          onFailure={say}
-          onLoaded={redrew}
-        />
-      </>
-    );
-  } else if (legacy !== undefined) {
-    body = (
-      <AyqLegacyScreen
-        key={`${legacy}-${round}`}
-        view={legacy}
+      <AyqReviewScreen
         onFailure={say}
-        onLoaded={redrew}
+        onOpenRegister={counterpartyKey => {
+          setFilter({ counterpartyKey });
+          setDestination('register');
+        }}
+        onChanged={reload}
       />
     );
   } else if (destination === 'accounts') {
@@ -228,13 +206,12 @@ export function AyqApplication(): ReactNode {
   } else if (destination === 'upcoming') {
     body = (
       <AyqUpcomingScreen
-        key={`upcoming-${round}`}
         onFailure={say}
         onNotice={setNotice}
       />
     );
   } else if (destination === 'plan') {
-    body = <AyqPlanScreen key={`plan-${round}`} onFailure={say} />;
+    body = <AyqPlanScreen onFailure={say} />;
   } else if (destination === 'today') {
     body = (
       <AyqTodayScreen

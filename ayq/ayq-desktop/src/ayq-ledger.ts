@@ -82,28 +82,90 @@ function selection() {
 }
 
 /**
- * Every transaction the filter's cheap half admits.
+ * Everything the filter asks that the database can answer for itself.
  *
- * Account and dates are handed to the engine, which indexes them. Search,
- * category state and counterparty are decided here, because two of the three
- * need the AYQ store and none of them is a column.
+ * All of it except the counterparty, which is AYQ's own and is not a column:
+ * the canonical key lives in the store, so a question about a counterparty is
+ * decided here and a question about anything else is decided by the engine that
+ * has the indexes.
+ *
+ * This is the difference between opening the Register on a large budget and
+ * waiting for it. Answering an unfiltered question by fetching every row and
+ * sorting it in JavaScript cost seventeen seconds on fifty thousand
+ * transactions, measured on the window; the database answers the same question
+ * from an index and hands back the page.
  */
-async function queried(filter: AyqLedgerFilter): Promise<AyqQueriedRow[]> {
-  const conditions: Record<string, unknown>[] = [];
+function conditionsOf(filter: AyqLedgerFilter): Record<string, unknown>[] {
+  const conditions: Record<string, unknown>[] = [
+    // The opening balance is a transaction in Actual's model and is not one of
+    // the bank's: it is how the account's starting point is represented. It
+    // belongs in the balance and nowhere else, or a person who imported five
+    // hundred and sixty-seven entries is told they have five hundred and
+    // sixty-eight and can find only the ones the bank sent. Asked of the
+    // database in the same words `ayqTransactionCount` uses, so the ledger's
+    // total and the status bar's cannot come to disagree.
+    { starting_balance_flag: false },
+  ];
   if (filter.accountId) conditions.push({ account: filter.accountId });
   if (filter.from) conditions.push({ date: { $gte: filter.from } });
   if (filter.to) conditions.push({ date: { $lte: filter.to } });
+  // 03 §4.5: uncategorised is a state, and it is the absence of a category.
+  if (filter.uncategorised === true) conditions.push({ category: null });
+  if (filter.categoryId) conditions.push({ category: filter.categoryId });
 
+  // On the size, not the signed value: "the large ones" is a question about
+  // size, and a large payment in is one of them. At least this big is either
+  // direction; at most this big is both directions at once.
+  if (filter.minCents !== undefined) {
+    conditions.push({
+      $or: [
+        { amount: { $gte: filter.minCents } },
+        { amount: { $lte: -filter.minCents } },
+      ],
+    });
+  }
+  if (filter.maxCents !== undefined) {
+    conditions.push({ amount: { $gte: -filter.maxCents } });
+    conditions.push({ amount: { $lte: filter.maxCents } });
+  }
+
+  const needle = (filter.search ?? '').trim();
+  if (needle !== '') {
+    // The counterparty first, then what the bank said: a person searching for a
+    // shop should find it under either name.
+    conditions.push({
+      $or: [
+        { 'payee.name': { $like: `%${needle}%` } },
+        { imported_payee: { $like: `%${needle}%` } },
+        { notes: { $like: `%${needle}%` } },
+        { 'category.name': { $like: `%${needle}%` } },
+      ],
+    });
+  }
+  return conditions;
+}
+
+/** Newest first, and the order the screen draws. */
+function newestFirst<T>(query: T): T {
+  return (query as { orderBy(exprs: unknown): T }).orderBy([
+    { date: 'desc' },
+    { sort_order: 'desc' },
+    { id: 'desc' },
+  ]);
+}
+
+/**
+ * Every transaction the filter's database half admits.
+ *
+ * Used where the whole set is genuinely needed — a counterparty question, or a
+ * summary over the budget — and never to draw a page.
+ */
+async function queried(filter: AyqLedgerFilter): Promise<AyqQueriedRow[]> {
   let query = selection();
-  for (const condition of conditions) query = query.filter(condition);
+  for (const condition of conditionsOf(filter)) query = query.filter(condition);
 
   const answer = (await api.aqlQuery(query)) as { data?: AyqQueriedRow[] };
-  // The opening balance is a transaction in Actual's model, and it is not one
-  // of the bank's: it is how the account's starting point is represented. It
-  // belongs in the balance and nowhere else, or a person who imported five
-  // hundred and sixty-seven entries is told they have five hundred and
-  // sixty-eight and can find only the ones the bank sent.
-  return (answer.data ?? []).filter(row => row.starting_balance_flag !== true);
+  return answer.data ?? [];
 }
 
 function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
@@ -290,69 +352,102 @@ export async function ayqLedger(
   filter: AyqLedgerFilter = {},
 ): Promise<AyqLedger> {
   const store = ayqReadStore(dataDir);
-  const needle = (filter.search ?? '').trim().toLowerCase();
-
-  const matching = (await queried(filter)).filter(row => {
-    if (filter.uncategorised === true && row.categoryId) return false;
-    if (filter.categoryId && row.categoryId !== filter.categoryId) return false;
-
-    if (filter.counterpartyKey) {
-      // Canonical, so a counterparty opened from anywhere brings in every
-      // variant a person has said belongs to it.
-      const key = ayqCanonicalKey(
-        store,
-        store.provenance[ayqRowKey(row)]?.counterpartyKey,
-      );
-      if (key !== filter.counterpartyKey) return false;
-    }
-
-    if (filter.minCents !== undefined || filter.maxCents !== undefined) {
-      // On the size, not the signed value: "the large ones" is a question
-      // about size, and a large payment in is one of them.
-      const size = Math.abs(Number(row.amount ?? 0));
-      if (filter.minCents !== undefined && size < filter.minCents) return false;
-      if (filter.maxCents !== undefined && size > filter.maxCents) return false;
-    }
-
-    if (needle !== '') {
-      // The counterparty first, then what the bank said: a person searching
-      // for a shop should find it under either name.
-      const haystack = [row.payee, row.imported_payee, row.notes, row.category]
-        .filter(part => typeof part === 'string')
-        .join(' ')
-        .toLowerCase();
-      if (!haystack.includes(needle)) return false;
-    }
-
-    return true;
-  });
-
-  matching.sort(compareRows);
   const limit = filter.limit ?? AYQ_LEDGER_LIMIT;
-  const rows = matching
-    .slice(0, limit)
-    .map(row =>
-      toRow(row, ayqStandingDecision(store, ayqRowKey(row))?.source ?? null),
-    );
+  const conditions = conditionsOf(filter);
 
-  // Over everything that matched, not over the page. A screen showing the
-  // newest five hundred of fifty thousand still states the truth about the
-  // fifty thousand — and uncategorised transactions are counted in it, because
-  // 03 §4.5 says a total that drops them is wrong.
+  const source = (row: AyqQueriedRow): AyqCategorySource =>
+    ayqStandingDecision(store, ayqRowKey(row))?.source ?? null;
+
+  // A counterparty is AYQ's own and is not a column, so a question about one is
+  // the only question that still has to be decided here — and deciding it means
+  // reading what the conditions admit rather than a page of it.
+  if (filter.counterpartyKey) {
+    const matching = (await queried(filter)).filter(
+      row =>
+        ayqCanonicalKey(
+          store,
+          store.provenance[ayqRowKey(row)]?.counterpartyKey,
+        ) === filter.counterpartyKey,
+    );
+    matching.sort(compareRows);
+    return {
+      ...totalsOf(matching),
+      rows: matching.slice(0, limit).map(row => toRow(row, source(row))),
+      shown: Math.min(matching.length, limit),
+    };
+  }
+
+  // Everything else: the page from an index, and the totals from the database's
+  // own arithmetic over the whole set the conditions admit — never over the
+  // page. A screen showing the newest five hundred of fifty thousand still
+  // states the truth about the fifty thousand, and 03 §4.5 keeps the
+  // uncategorised in it.
+  const apply = <T>(query: T): T => {
+    let held = query;
+    for (const condition of conditions) {
+      held = (held as { filter(one: unknown): T }).filter(condition);
+    }
+    return held;
+  };
+
+  const [page, total, incoming, outgoing, uncategorised] = await Promise.all([
+    api.aqlQuery(newestFirst(apply(selection())).limit(limit)) as Promise<{
+      data?: AyqQueriedRow[];
+    }>,
+    api.aqlQuery(apply(api.q('transactions')).calculate({ $count: 'id' })) as Promise<{
+      data?: number;
+    }>,
+    api.aqlQuery(
+      apply(api.q('transactions'))
+        .filter({ amount: { $gte: 0 } })
+        .calculate({ $sum: '$amount' }),
+    ) as Promise<{ data?: number }>,
+    api.aqlQuery(
+      apply(api.q('transactions'))
+        .filter({ amount: { $lt: 0 } })
+        .calculate({ $sum: '$amount' }),
+    ) as Promise<{ data?: number }>,
+    api.aqlQuery(
+      apply(api.q('transactions'))
+        .filter({ category: null })
+        .calculate({ $count: 'id' }),
+    ) as Promise<{ data?: number }>,
+  ]);
+
+  const incomeCents = Number(incoming.data ?? 0);
+  // The database sums what it holds, which for money going out is negative.
+  const expenseCents = -Number(outgoing.data ?? 0);
+
+  return {
+    rows: (page.data ?? []).map(row => toRow(row, source(row))),
+    total: Number(total.data ?? 0),
+    shown: (page.data ?? []).length,
+    incomeCents,
+    expenseCents,
+    netCents: incomeCents - expenseCents,
+    uncategorised: Number(uncategorised.data ?? 0),
+  };
+}
+
+/** The totals over a set already in hand, for the one case that needs them. */
+function totalsOf(rows: readonly AyqQueriedRow[]): {
+  total: number;
+  incomeCents: number;
+  expenseCents: number;
+  netCents: number;
+  uncategorised: number;
+} {
   let incomeCents = 0;
   let expenseCents = 0;
   let uncategorised = 0;
-  for (const row of matching) {
+  for (const row of rows) {
     const cents = Number(row.amount ?? 0);
     if (cents >= 0) incomeCents += cents;
     else expenseCents += -cents;
     if (!row.categoryId) uncategorised += 1;
   }
-
   return {
-    rows,
-    total: matching.length,
-    shown: rows.length,
+    total: rows.length,
     incomeCents,
     expenseCents,
     netCents: incomeCents - expenseCents,
@@ -496,32 +591,88 @@ export async function ayqTransactionCount(): Promise<number> {
 export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
   const store = ayqReadStore(dataDir);
   const accounts = await ayqAccounts(dataDir);
-  const all = await queried({});
-  all.sort(compareRows);
   const isTransfer = await internalTransfers(dataDir, store);
 
-  const month = all[0]?.date?.slice(0, 7) ?? null;
-  let income = 0;
-  let expense = 0;
-  let uncategorised = 0;
-  const counterparties = new Set<string>();
+  // The newest transaction's month, asked for as one row rather than found by
+  // sorting every row there is.
+  const newest = (await api.aqlQuery(
+    newestFirst(
+      api.q('transactions').filter({ starting_balance_flag: false }).select(['date']),
+    ).limit(1),
+  )) as { data?: Array<{ date: string }> };
+  const month = newest.data?.[0]?.date?.slice(0, 7) ?? null;
 
-  for (const row of all) {
-    const transfer = isTransfer(row);
-    // A transfer is still a transaction and still has a counterparty — it is
-    // just not one that needs filing, and not money in or out (03 §7.6).
-    if (!row.categoryId && !transfer) uncategorised += 1;
-    const key = ayqCanonicalKey(
-      store,
-      store.provenance[ayqRowKey(row)]?.counterpartyKey,
+  const of = async (
+    query: Parameters<typeof api.aqlQuery>[0],
+  ): Promise<number> =>
+    Number(((await api.aqlQuery(query)) as { data?: number }).data ?? 0);
+
+  const transactionCount = await of(
+    api.q('transactions').filter({ starting_balance_flag: false }).calculate({
+      $count: 'id',
+    }),
+  );
+
+  // A transfer between two of the owner's own accounts is still a transaction
+  // and still has a counterparty — it is just not money in or out, and not
+  // something that needs filing (03 §7.6). Deciding which rows those are needs
+  // the AYQ store row by row, so when there is nothing to exclude the database
+  // answers on its own, and when there is something the rows are read.
+  //
+  // This is the difference between opening AYQ on a large budget and waiting for
+  // it: the status bar used to cost a full scan of every transaction on every
+  // launch, whether or not the budget had two of the owner's accounts in it.
+  const nothingIsATransfer = ayqOwnAccountNames(accounts).size < 2;
+
+  let monthIncomeCents = 0;
+  let monthExpenseCents = 0;
+  let uncategorisedCount = 0;
+
+  if (nothingIsATransfer) {
+    uncategorisedCount = await of(
+      api
+        .q('transactions')
+        .filter({ starting_balance_flag: false })
+        .filter({ category: null })
+        .calculate({ $count: 'id' }),
     );
-    counterparties.add(key ?? row.payee ?? row.id);
-
-    if (!transfer && month !== null && row.date.startsWith(month)) {
-      const amount = Number(row.amount ?? 0);
-      if (amount >= 0) income += amount;
-      else expense += amount;
+    if (month !== null) {
+      const inMonth = () =>
+        api
+          .q('transactions')
+          .filter({ starting_balance_flag: false })
+          .filter({ date: { $gte: `${month}-01` } })
+          .filter({ date: { $lte: `${month}-31` } });
+      monthIncomeCents = await of(
+        inMonth().filter({ amount: { $gte: 0 } }).calculate({ $sum: '$amount' }),
+      );
+      // Kept signed, as it always was: what went out is a negative number here.
+      monthExpenseCents = await of(
+        inMonth().filter({ amount: { $lt: 0 } }).calculate({ $sum: '$amount' }),
+      );
     }
+  } else {
+    const all = await queried({});
+    for (const row of all) {
+      const transfer = isTransfer(row);
+      if (!row.categoryId && !transfer) uncategorisedCount += 1;
+      if (!transfer && month !== null && row.date.startsWith(month)) {
+        const amount = Number(row.amount ?? 0);
+        if (amount >= 0) monthIncomeCents += amount;
+        else monthExpenseCents += amount;
+      }
+    }
+  }
+
+  // The counterparties AYQ has resolved, counted from the record of what it
+  // resolved rather than by reading every transaction to ask again. A
+  // transaction AYQ did not import has no counterparty it decided, and is not
+  // counted as one — which is a truer statement than counting it as whatever the
+  // payee field happens to say.
+  const counterparties = new Set<string>();
+  for (const key of Object.keys(store.provenance)) {
+    const canonical = ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey);
+    if (canonical) counterparties.add(canonical);
   }
 
   const lastImport = store.imports[store.imports.length - 1] ?? null;
@@ -537,10 +688,10 @@ export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
     // of the money that is actually there to be spent.
     availableFundsCents: ayqAvailableFunds(accounts),
     month,
-    monthIncomeCents: income,
-    monthExpenseCents: expense,
-    transactionCount: all.length,
-    uncategorisedCount: uncategorised,
+    monthIncomeCents,
+    monthExpenseCents,
+    transactionCount,
+    uncategorisedCount,
     counterpartyCount: counterparties.size,
     lastImportAt: lastImport?.at ?? null,
   };

@@ -105,6 +105,20 @@ if (accounts) env.AYQ_SMOKE_ACCOUNTS = accounts;
 // the table took, measured by the screen itself.
 if (has('register')) env.AYQ_SMOKE_REGISTER = '1';
 
+// `--import-once` imports the file once instead of twice. The second import is
+// the duplicate-protection check, which a step of its own proves on a small
+// fixture; a run that only wants a budget to work in should not pay for it
+// again on fifty thousand records.
+if (has('import-once')) env.AYQ_SMOKE_IMPORT_ONCE = '1';
+
+// `--review` opens Review, files one counterparty *without* learning a rule and
+// requires Settings to hold no rule afterwards, then learns a rule for the next
+// one and requires it to be there, keyed on that counterparty — 03 §4.1's two
+// decisions, proved by their consequences rather than by their labels. Then it
+// takes the rule away again (04 A7) and reads what Settings → Categories says it
+// will and will not do.
+if (has('review')) env.AYQ_SMOKE_REVIEW = '1';
+
 // `--today` opens Today and requires available funds to be first and the
 // largest figure on the screen — both measured on the drawn window — the
 // reliability boundary stated beside them, Import reachable from there, and

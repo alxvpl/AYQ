@@ -168,14 +168,20 @@ async function send(
       () => reject(new Error('the engine did not answer within 120s')),
       120_000,
     );
-    running.waiting.set(request.id, answer => {
-      clearTimeout(timer);
-      resolve(answer);
-    });
-    running.child.once('error', error => {
+    // Both listeners are taken off again. `once` only removes itself when it
+    // fires, so the error listener of every request that succeeded stayed on the
+    // child — eleven of them and Node starts warning about a leak, in the middle
+    // of a log somebody is reading to find out why a test failed.
+    const failed = (error: Error): void => {
       clearTimeout(timer);
       reject(error);
+    };
+    running.waiting.set(request.id, answer => {
+      clearTimeout(timer);
+      running.child.off('error', failed);
+      resolve(answer);
     });
+    running.child.once('error', failed);
     running.child.send(request);
   });
 }
@@ -1570,6 +1576,7 @@ test('the backlog is a list of shops, largest first, and shrinks by one decision
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: fuel.key,
     categoryId: transport.id,
+    createRule: true,
   });
   assert.equal(filed.categorised, 4, 'one decision, all four');
 
@@ -1744,6 +1751,7 @@ test('filing one transaction offers the rest of the counterparty', async () => {
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: 'ALBERT HEIJN',
     categoryId: groceries.id,
+    createRule: true,
   });
   assert.equal(accepted.categorised, 5);
 
@@ -1800,6 +1808,7 @@ test('a rule never overwrites a category filed by hand', async () => {
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: 'ALBERT HEIJN',
     categoryId: groceries.id,
+    createRule: true,
   });
 
   const after = await ask(dataDir, {
@@ -1840,6 +1849,7 @@ test('a changed rule re-files what it filed, and nothing else', async () => {
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: 'ALBERT HEIJN',
     categoryId: groceries.id,
+    createRule: true,
   });
   const first = await ask(dataDir, {
     kind: 'transactions.list',
@@ -1855,6 +1865,7 @@ test('a changed rule re-files what it filed, and nothing else', async () => {
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: 'ALBERT HEIJN',
     categoryId: eatingOut.id,
+    createRule: true,
   });
   assert.equal(again.categorised, 6, 'its own earlier work is revised');
 
@@ -1937,6 +1948,7 @@ test('the ledger can be narrowed to one category or one counterparty', async () 
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: 'ALBERT HEIJN',
     categoryId: groceries.id,
+    createRule: true,
   });
 
   const filed = await ask(dataDir, {
@@ -2293,6 +2305,7 @@ test('an alias does not overwrite a category a person filed by hand', async () =
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: 'TESTFUEL',
     categoryId: transport.id,
+    createRule: true,
   });
 
   await ask(dataDir, {
@@ -2971,6 +2984,7 @@ test('the plan is measured against what actually happened', async () => {
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: shop.key,
     categoryId: groceries.id,
+    createRule: true,
   });
 
   const under = await ask(dataDir, {
@@ -3426,6 +3440,7 @@ test('the sheet shows the plan, the actual, what is left and what is still expec
     kind: 'transaction.categoriseCounterparty',
     counterpartyKey: shop.key,
     categoryId: groceries.id,
+    createRule: true,
   });
   await ask(dataDir, {
     kind: 'budget.setPlan',
@@ -3653,4 +3668,155 @@ test('an expected payment past its date is waiting, and says what it comes to', 
   // disagree about which payments are late.
   const forecast = await ask(dataDir, { kind: 'forecast', today: '2026-08-05' });
   assert.equal(forecast.events.filter(one => one.flagged).length, 1);
+});
+
+/* ------------------------------------------------- filing versus learning
+
+   03 §4.1's two decisions, which a screen must not conflate. "These are
+   groceries" is a statement about the transactions in front of a person.
+   "Everything from this shop is groceries" is a statement about every one that
+   arrives from now on. The request makes the caller say which, and the engine
+   does one or the other and nothing in between.                             */
+
+test('filing a counterparty by hand files what is there and learns nothing', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const target = categories.find(one => !one.isIncome);
+  assert.ok(target);
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const row = ledger.rows.find(one => one.categoryId === null && one.payee !== null);
+  assert.ok(row);
+  const detail = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: row.id,
+  });
+  const key = detail.counterpartyKey;
+  assert.ok(key, 'the transaction has no counterparty to file');
+
+  const filed = await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: key,
+    categoryId: target.id,
+    createRule: false,
+  });
+
+  assert.equal(filed.ruleWritten, false, 'filing by hand wrote a rule');
+  assert.ok(filed.categorised >= 1, 'nothing was filed');
+
+  // No rule, so nothing about the next import changes — which is the whole
+  // difference between the two decisions.
+  assert.deepEqual(await ask(dataDir, { kind: 'rules.list' }), []);
+
+  // And what was filed is filed, with a person's provenance on it.
+  const after = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: row.id,
+  });
+  assert.equal(after.row.categoryId, target.id);
+  assert.equal(after.decisions.at(-1)?.source, 'manual');
+  assert.equal(after.rule, null, '04 A7: there is no rule to show, and none is shown');
+});
+
+test('learning a rule is the other decision, and says it wrote one', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const target = categories.find(one => !one.isIncome);
+  assert.ok(target);
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const row = ledger.rows.find(one => one.categoryId === null && one.payee !== null);
+  assert.ok(row);
+  const key = (
+    await ask(dataDir, { kind: 'transaction.detail', transactionId: row.id })
+  ).counterpartyKey;
+  assert.ok(key);
+
+  const learned = await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: key,
+    categoryId: target.id,
+    createRule: true,
+  });
+  assert.equal(learned.ruleWritten, true);
+
+  const rules = await ask(dataDir, { kind: 'rules.list' });
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].counterpartyKey, key);
+  // By name, so the rule outlives a budget (03 §4.2).
+  assert.equal(rules[0].categoryName, target.name);
+
+  // And what the rule filed carries the rule's provenance, not a person's.
+  const after = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: row.id,
+  });
+  assert.equal(after.decisions.at(-1)?.source, 'rule');
+  assert.ok(after.rule, '04 A7: a rule a person can see');
+});
+
+test('filing a counterparty leaves a row somebody filed themselves alone', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  const categories = await ask(dataDir, { kind: 'categories.list' });
+  const first = categories.find(one => !one.isIncome);
+  const second = categories.find(one => !one.isIncome && one.id !== first?.id);
+  assert.ok(first && second);
+
+  // A counterparty with more than one transaction, so there is something to
+  // leave alone and something to file.
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const keys = new Map<string, string[]>();
+  for (const row of ledger.rows) {
+    const detail = await ask(dataDir, {
+      kind: 'transaction.detail',
+      transactionId: row.id,
+    });
+    if (detail.counterpartyKey === null) continue;
+    keys.set(detail.counterpartyKey, [
+      ...(keys.get(detail.counterpartyKey) ?? []),
+      row.id,
+    ]);
+  }
+  const repeated = [...keys.entries()].find(([, ids]) => ids.length >= 2);
+  assert.ok(repeated, 'the fixture has no counterparty that appears twice');
+  const [key, ids] = repeated;
+
+  // One of them, by hand, into the other category.
+  await ask(dataDir, {
+    kind: 'transaction.categorise',
+    transactionId: ids[0],
+    categoryId: second.id,
+    createRule: false,
+  });
+
+  const filed = await ask(dataDir, {
+    kind: 'transaction.categoriseCounterparty',
+    counterpartyKey: key,
+    categoryId: first.id,
+    createRule: false,
+  });
+
+  assert.equal(filed.keptByHand, 1, 'the row filed by hand was not left alone');
+  assert.equal(filed.categorised, ids.length - 1);
+
+  // Read back: the hand-filed one still says what a person said about it.
+  const kept = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: ids[0],
+  });
+  assert.equal(
+    kept.row.categoryId,
+    second.id,
+    'a decision made one row at a time was overwritten',
+  );
+  const moved = await ask(dataDir, {
+    kind: 'transaction.detail',
+    transactionId: ids[1],
+  });
+  assert.equal(moved.row.categoryId, first.id);
 });

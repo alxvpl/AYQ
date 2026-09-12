@@ -244,6 +244,22 @@ export type AyqUnfiled = {
   lastDate: string;
 };
 
+/**
+ * What filing a whole counterparty came to.
+ *
+ * `keptByHand` is the number of its transactions somebody had already filed
+ * themselves, into something else, and which were left exactly as they were —
+ * 03 §4.4 in the one direction the rule does not spell out. Filing a
+ * counterparty is a decision about the ones nobody has decided; it is not a
+ * licence to overwrite decisions that were made one at a time.
+ */
+export type AyqCounterpartyFiled = {
+  categorised: number;
+  keptByHand: number;
+  /** Whether a rule was written, which is a different statement (03 §4.1). */
+  ruleWritten: boolean;
+};
+
 /** Which period, and which account, the spending question is being asked of. */
 export type AyqSpendingFilter = {
   /** Inclusive YYYY-MM-DD bounds; both absent means everything there is. */
@@ -976,7 +992,7 @@ export type AyqResults = {
   'transactions.list': AyqLedger;
   'transaction.detail': AyqTransactionDetail;
   'transaction.categorise': AyqCategorised;
-  'transaction.categoriseCounterparty': { categorised: number };
+  'transaction.categoriseCounterparty': AyqCounterpartyFiled;
   'categories.list': AyqCategory[];
   'categories.create': AyqCategory[];
   'categories.rename': AyqCategory[];
@@ -1048,14 +1064,20 @@ export type AyqRequestBody =
     }
   | {
       /**
-       * Files every transaction from one counterparty, and remembers it.
+       * Files every transaction from one counterparty — and, if asked, learns it.
        *
        * The offer a person gets after categorising one row by hand: the same
        * shop, the same category, the rest of the ledger.
+       *
+       * `createRule` is required, and required because 03 §4.1 keeps the two
+       * apart: filing what is there is a statement about these transactions, and
+       * learning a rule is a statement about every one that arrives from now on.
+       * A caller that did not have to say which would be choosing for the person.
        */
       kind: 'transaction.categoriseCounterparty';
       counterpartyKey: string;
       categoryId: string;
+      createRule: boolean;
     }
   | { kind: 'categories.list' }
   | { kind: 'categories.create'; name: string; groupId: string }

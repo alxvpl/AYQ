@@ -5,16 +5,15 @@
 // created, renamed, grouped or archived), the rules that will act from now on
 // (04 A7), and the ground the window is drawn in (A23).
 //
-// Two of them are later stages and say so rather than pretending.
+// All four are built.
 
 import type { ReactNode } from 'react';
 
-import { ayqText, type AyqStringKey } from '../ayq-strings.ts';
-import { AyqLegacyScreen } from '../ayq-ui/ayq-legacy-screen.tsx';
-import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
+import { type AyqStringKey } from '../ayq-strings.ts';
 import { AyqAppearanceScreen } from './ayq-appearance.tsx';
-import { AyqNotBuilt } from './ayq-not-built.tsx';
 import { AyqSettingsAccounts } from './ayq-settings-accounts.tsx';
+import { AyqSettingsCategories } from './ayq-settings-categories.tsx';
+import { AyqSettingsRules } from './ayq-settings-rules.tsx';
 
 export type AyqSettingsTab = 'accounts' | 'categories' | 'rules' | 'appearance';
 
@@ -52,14 +51,8 @@ export function AyqSettingsScreen({
   }
 
   if (tab === 'rules') {
-    return (
-      <AyqPane mark="rules">
-        <div style={{ padding: '14px' }}>
-          <AyqLegacyScreen view="rules" onFailure={onFailure} />
-        </div>
-      </AyqPane>
-    );
+    return <AyqSettingsRules onFailure={onFailure} onChanged={onChanged} />;
   }
 
-  return <AyqNotBuilt what={ayqText('notBuilt.settingsCategories')} />;
+  return <AyqSettingsCategories onFailure={onFailure} onChanged={onChanged} />;
 }

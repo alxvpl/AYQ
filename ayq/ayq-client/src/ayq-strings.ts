@@ -78,27 +78,26 @@ const EN = {
   'import.skipped': '{count} skipped',
   'import.problems': '{count} could not be read',
   'import.history': 'What AYQ has read',
+  'import.history.none': 'Nothing has been imported yet.',
+  'import.column.at': 'Read',
+  'import.column.file': 'File',
+  'import.column.account': 'Account',
+  'import.column.records': 'Records',
+  'import.column.imported': 'Imported',
+  'import.column.duplicates': 'Already held',
+  'import.column.outcome': 'And then',
+  'import.outcome.categorised': '{count} filed by a rule',
+  'import.outcome.matched': '{count} matched to what was expected',
+  'import.outcome.waiting': '{count} matches waiting on you',
+  'import.outcome.failed': '{count} could not be read',
+  'import.outcome.nothing': 'nothing else',
+  'import.files': '{count} files',
 
   'notBuilt.title': 'Not built yet',
-  'notBuilt.today':
-    'Available funds, how long they last and what is waiting on you are not ' +
-    'built yet. The Register below the rail holds every transaction AYQ has.',
-  'notBuilt.accounts':
-    'Balances, how far each account’s statements reach and whether AYQ agrees ' +
-    'with the bank are not built yet.',
-  'notBuilt.review':
-    'The full Review — matches, counterparties, categories, suggestions and ' +
-    'what you have rejected — is not built yet. What is here is the ' +
-    'counterparties AYQ has resolved and what it knows them by.',
   'notBuilt.reports':
     'Reports begin with spending by category and period. The screen is empty ' +
     'because that view has not been built, not because your data is ' +
     'insufficient.',
-  'notBuilt.settingsAccounts':
-    'The switch that decides which accounts count toward available funds is ' +
-    'not built yet.',
-  'notBuilt.settingsCategories':
-    'Creating, renaming, grouping and archiving categories is not built yet.',
 
   'settings.tab.accounts': 'Accounts',
   'settings.tab.categories': 'Categories',
@@ -176,6 +175,101 @@ const EN = {
   'today.open.register': 'Open Register',
   'today.open.accounts': 'See accounts',
   'today.open.import': 'Import statements',
+
+  // Review (04 A6): transitional by design, and it has to shrink.
+  'review.title': 'Review',
+  'review.blurb':
+    'Who these payments are, and where they belong. This queue shrinks as rules ' +
+    'and names accumulate — it is not a list AYQ expects you to keep working ' +
+    'through for ever.',
+  'review.backlog': 'Nothing filed yet',
+  'review.backlog.note':
+    'Counterparties AYQ has resolved and nobody has filed, the largest first.',
+  'review.backlog.none':
+    'Everything AYQ has resolved has been filed. Nothing is waiting here.',
+  'review.column.name': 'Counterparty',
+  'review.column.transactions': 'Transactions',
+  'review.column.spent': 'Out',
+  'review.column.seen': 'Seen',
+  'review.seen': '{first} to {last}',
+  'review.shrinking': '{filed} of {total} filed',
+
+  // The pane: who they are, and the two decisions.
+  'review.pane.none': 'Choose a counterparty to see what is behind it.',
+  'review.pane.evidence': 'What the bank printed',
+  'review.pane.evidence.note':
+    'The names these transactions arrived under. AYQ decided they are one ' +
+    'counterparty; if one of them is not, say so here.',
+  'review.pane.byHand': 'By hand',
+  'review.pane.byStatement': 'By the statement',
+  'review.pane.moveTo': 'This one is really',
+  'review.pane.moveTo.none': 'Leave it here',
+  'review.pane.recent': 'Recent transactions',
+  'review.pane.rhythm': 'Comes back {cadence}, about {amount}',
+  'review.pane.file': 'Where these belong',
+  'review.pane.file.note':
+    'Filing these is a statement about the transactions below. Learning a rule ' +
+    'is a statement about every one that arrives from now on — two decisions, ' +
+    'and AYQ will not make the second one for you (03 §4.1).',
+  'review.do.category': 'Category',
+  'review.do.file': 'File these',
+  'review.do.learn': 'File these and remember',
+  'review.filed': '{count} filed.',
+  'review.filed.kept':
+    '{count} filed. {kept} left as they were, because you had filed them ' +
+    'yourself into something else.',
+  'review.learned': '{count} filed, and AYQ will file this counterparty from now on.',
+  'review.moved': '{count} transactions now belong to {name}.',
+  'review.needsCategory': 'Choose a category first.',
+
+  // Settings → Categories: the only place a category is made or renamed.
+  'categories.title': 'Categories',
+  'categories.blurb':
+    'The only place categories are made or renamed. They are the budget’s own, ' +
+    'and every other screen reads them from here.',
+  'categories.column.name': 'Category',
+  'categories.column.group': 'Group',
+  'categories.column.kind': 'Kind',
+  'categories.kind.income': 'Money in',
+  'categories.kind.expense': 'Money out',
+  'categories.rename': 'Rename',
+  'categories.rename.save': 'Save the name',
+  'categories.rename.cancel': 'Cancel',
+  'categories.new': 'New category',
+  'categories.new.name': 'What to call it',
+  'categories.new.group': 'In which group',
+  'categories.new.save': 'Add it',
+  'categories.consequence':
+    'A rule keeps a category by name, not by number, so that it outlives a ' +
+    'budget (03 §4.2). Renaming a category moves its rules with it; the rules ' +
+    'are on the Rules tab.',
+  'categories.noArchive':
+    'AYQ does not archive or delete a category here. Nothing in Canon says what ' +
+    'should happen to the transactions filed under one, and guessing is worse ' +
+    'than not offering it.',
+  'categories.empty': 'This budget has no categories yet.',
+  'categories.needsName': 'A category needs a name.',
+  'categories.made': '{name} added.',
+  'categories.renamed': '{was} is now {name}.',
+
+  // Settings → Rules: what will happen from now on (04 A7).
+  'rules.title': 'Rules',
+  'rules.blurb':
+    'What AYQ will file by itself from now on. Every rule is keyed on a ' +
+    'counterparty, is visible here, and can be taken away.',
+  'rules.column.counterparty': 'Counterparty',
+  'rules.column.category': 'Files into',
+  'rules.column.since': 'Learned',
+  'rules.column.remove': 'Forget',
+  'rules.remove': 'Forget this rule',
+  'rules.apply': 'Apply the rules now',
+  'rules.applied': '{count} transactions filed.',
+  'rules.removed': 'That rule is gone. What it filed stays where it is.',
+  'rules.empty':
+    'AYQ has learned no rules yet. It learns one when you ask it to remember a ' +
+    'counterparty, on Review or in the Register.',
+  'rules.missingCategory':
+    'This rule names a category this budget does not have, so it files nothing.',
 
   // Upcoming (03 §7.2): what is coming, and what it does to the position.
   'upcoming.title': 'Upcoming',

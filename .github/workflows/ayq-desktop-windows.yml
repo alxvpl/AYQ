@@ -212,10 +212,19 @@ jobs:
           Write-Host ("fixture: {0:N1} MB of invented statement" -f ($file.Length / 1MB))
 
           $clock = [System.Diagnostics.Stopwatch]::StartNew()
+          # Once, not twice: importing the same file again is the
+          # duplicate-protection check, and the step above proves that rule on a
+          # small fixture. Doing it again here proved nothing new and doubled
+          # the slowest step in the workflow.
+          #
+          # AYQ_ENGINE_TIMING makes the engine say how long each request took,
+          # so a slow draw can be attributed rather than guessed at.
+          $env:AYQ_ENGINE_TIMING = '1'
           $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
-            --import "${{ runner.temp }}\ayq-50k.xml" `
+            --import "${{ runner.temp }}\ayq-50k.xml" --import-once `
             --register `
             --screenshot "${{ runner.temp }}\ayq-desktop-register.png" 2>&1 | Out-String
+          Remove-Item Env:AYQ_ENGINE_TIMING
           $clock.Stop()
           Write-Host $said
           Write-Host ("the whole launch, import included: {0:N0}s" -f $clock.Elapsed.TotalSeconds)
@@ -297,6 +306,37 @@ jobs:
             throw 'the run did not measure the figures on Today'
           }
           Write-Host "available funds: $($Matches[1]) cents, at $($Matches[2])px against $($Matches[3])px"
+
+      # Review, and the two decisions 03 §4.1 keeps apart. What is checked is the
+      # consequence and not the label: filing a counterparty is followed by
+      # reading Settings → Rules and requiring it to hold nothing, and learning a
+      # rule for the next one is followed by requiring that rule to be there,
+      # keyed on that counterparty. A screen with one control doing both would
+      # pass a check that read labels and fail this one.
+      - name: Review, and the two decisions of 03 §4.1
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-review-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml `
+            --review `
+            --screenshot "${{ runner.temp }}\ayq-desktop-review.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'Review did not hold on the window' }
+          if ($said -notmatch 'Review: held') {
+            throw 'the run did not check Review at all'
+          }
+          if ($said -notmatch 'review filed ([^:]+): (\d+) filed') {
+            throw 'the run did not file a counterparty without learning a rule'
+          }
+          Write-Host "filed $($Matches[1]): $($Matches[2]) transactions, and no rule"
+          if ($said -notmatch 'Settings holds the rule for (.+)') {
+            throw 'learning a rule did not put one in Settings'
+          }
+          Write-Host "and then learned one: $($Matches[1])"
 
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
@@ -915,6 +955,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-register.png
             ${{ runner.temp }}\ayq-desktop-accounts.png
             ${{ runner.temp }}\ayq-desktop-today.png
+            ${{ runner.temp }}\ayq-desktop-review.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json
