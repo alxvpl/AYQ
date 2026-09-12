@@ -21,7 +21,8 @@ export type AyqView =
   | 'counterparties'
   | 'recurring'
   | 'rules'
-  | 'imports';
+  | 'imports'
+  | 'appearance';
 
 /**
  * The primary sections, in the order they are offered.
@@ -73,6 +74,11 @@ export const AYQ_VIEWS: ReadonlyArray<{
     id: 'imports',
     label: 'Imports',
     blurb: 'Every statement AYQ has read, and what it did with it.',
+  },
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    blurb: 'The ground AYQ is drawn in, and the tokens everything is made of.',
   },
 ];
 

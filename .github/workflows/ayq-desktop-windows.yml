@@ -317,6 +317,46 @@ jobs:
             throw 'the run did not check 03 r004 at all'
           }
 
+      # AYQ's own interface, in Fluent UI React v9 (04 A15), drawn in each of
+      # the three grounds of A23 — and the ground outliving the process that
+      # chose it, which is the half a redraw cannot fake.
+      #
+      # Two launches over one directory. The first chooses each ground through
+      # the control a person uses and requires the window to come back drawn in
+      # that ground's own tokens; it leaves the window on dark, which is not
+      # the default, so the second launch finding dark means the setting was
+      # kept rather than defaulted.
+      - name: The three grounds, on the screen
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-ground-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --grounds `
+            --screenshot "${{ runner.temp }}\ayq-desktop-grounds.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'the three grounds did not hold on the screen' }
+          # Exiting zero is not the assertion: a run that was never asked to
+          # check the grounds exits zero just as happily.
+          if ($said -notmatch 'the three grounds: held') {
+            throw 'the run did not check the grounds at all'
+          }
+          foreach ($ground in @('light', 'dark', 'system')) {
+            if ($said -notmatch "ground $ground -> ") {
+              throw "the run never drew the $ground ground"
+            }
+          }
+
+          $kept = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --expect-ground dark 2>&1 | Out-String
+          Write-Host $kept
+          if ($LASTEXITCODE -ne 0) { throw 'the ground did not outlive the process' }
+          if ($kept -notmatch 'the ground reads dark -> KEPT') {
+            throw 'the second launch did not open in the ground that was chosen'
+          }
+
       # Two AYQs over one budget would be two writers on one SQLite file. The
       # second launch has to stand aside while the first still holds it, and it
       # has to do so before it opens anything.
@@ -631,6 +671,30 @@ jobs:
           Remove-Item Env:AYQ_SMOKE_CONFORMANCE
           $env:AYQ_DATA_DIR = $budgets
 
+          # And AYQ's own Fluent screen in all three grounds, on the build a
+          # person downloads. Its own directory again, and its own report, so
+          # that "held" here is the installed application's word rather than
+          # the working tree's.
+          $env:AYQ_DATA_DIR = "$env:RUNNER_TEMP\ayq-installed-grounds"
+          New-Item -ItemType Directory -Force -Path $env:AYQ_DATA_DIR | Out-Null
+          $env:AYQ_SMOKE_GROUNDS = '1'
+          $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-grounds-report.json"
+          Invoke-Installed 'the three grounds:'
+          $grounds = Get-Content $env:AYQ_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if ($grounds.grounds -ne 'held') {
+            throw "the installed application did not draw the three grounds: $($grounds.grounds)"
+          }
+          Remove-Item Env:AYQ_SMOKE_GROUNDS
+          $env:AYQ_SMOKE_EXPECT_GROUND = 'dark'
+          $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-grounds-kept.json"
+          Invoke-Installed 'the ground kept  :'
+          $kept = Get-Content $env:AYQ_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if ($kept.grounds -ne 'kept dark') {
+            throw "the installed application did not keep the ground: $($kept.grounds)"
+          }
+          Remove-Item Env:AYQ_SMOKE_EXPECT_GROUND
+          $env:AYQ_DATA_DIR = $budgets
+
           $env:AYQ_SMOKE_IMPORT = "$env:GITHUB_WORKSPACE\ayq\ayq-camt\test\fixtures\ayq-abn-month.xml"
           $env:AYQ_SMOKE_CATEGORISE = 'Utilities'
           # And a planned payment, added through the installed application's own
@@ -670,6 +734,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-match.png
             ${{ runner.temp }}\ayq-desktop-r004.png
             ${{ runner.temp }}\ayq-desktop-plan.png
+            ${{ runner.temp }}\ayq-desktop-grounds.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
             ${{ runner.temp }}\ayq-installed-report.json

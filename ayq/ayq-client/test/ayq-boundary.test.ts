@@ -16,6 +16,23 @@ const here = dirname(fileURLToPath(import.meta.url));
 const src = join(here, '..', 'src');
 const dist = join(here, '..', 'dist');
 
+/**
+ * The libraries the renderer is allowed to be built from.
+ *
+ * 04 A15 makes Fluent UI React v9 the single general component library, and no
+ * second general library is mixed in. That is a rule about what may be
+ * imported, so it is checked as one: anything not on this list and not one of
+ * the renderer's own files fails here.
+ */
+const ALLOWED_PACKAGES = [
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-dom/client',
+  '@fluentui/react-components',
+  '@fluentui/react-icons',
+];
+
 /** Anything that would put engine or host code inside the renderer. */
 const FORBIDDEN = [
   '@actual-app/api',
@@ -26,9 +43,18 @@ const FORBIDDEN = [
   'node:',
 ];
 
-async function sourceFiles(): Promise<string[]> {
-  const names = await readdir(src);
-  return names.filter(name => name.endsWith('.ts')).map(name => join(src, name));
+/** Every source file the renderer is built from, subdirectories included. */
+async function sourceFiles(directory: string = src): Promise<string[]> {
+  const found: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...(await sourceFiles(path)));
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+      found.push(path);
+    }
+  }
+  return found;
 }
 
 /** Every static import or dynamic import specifier in a source file. */
@@ -45,23 +71,50 @@ function specifiers(source: string): string[] {
   return found;
 }
 
-test('the renderer imports nothing but its own sources', async () => {
+test('the renderer imports its own sources and one component library', async () => {
   const files = await sourceFiles();
   assert.ok(files.length >= 3, 'the renderer has sources to check');
 
   for (const file of files) {
     const source = await readFile(file, 'utf8');
     for (const specifier of specifiers(source)) {
+      if (ALLOWED_PACKAGES.includes(specifier)) continue;
       assert.ok(
         specifier.startsWith('./') || specifier.startsWith('../'),
-        `${file} imports ${specifier}; the renderer may only import its own files`,
-      );
-      assert.ok(
-        !specifier.includes('..'),
-        `${file} imports ${specifier}; the renderer may not reach outside its package`,
+        `${file} imports ${specifier}, which is neither one of the renderer's ` +
+          'own files nor the one component library it is allowed',
       );
     }
   }
+});
+
+test('a file only reaches outside its own folder inside the package', async () => {
+  for (const file of await sourceFiles()) {
+    const source = await readFile(file, 'utf8');
+    for (const specifier of specifiers(source)) {
+      if (ALLOWED_PACKAGES.includes(specifier)) continue;
+      const resolved = join(dirname(file), specifier);
+      assert.ok(
+        resolved.startsWith(src),
+        `${file} imports ${specifier}, which lands outside the renderer`,
+      );
+    }
+  }
+});
+
+test('no second general component library is mixed in', async () => {
+  // 04 A15 in the one place it can be broken without anybody noticing: a
+  // second library arriving as a dependency of a screen nobody re-read.
+  const manifest = JSON.parse(
+    await readFile(join(here, '..', 'package.json'), 'utf8'),
+  ) as { dependencies?: Record<string, string> };
+  const declared = Object.keys(manifest.dependencies ?? {});
+  const known = ['react', 'react-dom', '@fluentui/react-components', '@fluentui/react-icons'];
+  assert.deepEqual(
+    declared.filter(name => !known.includes(name)),
+    [],
+    'the renderer has picked up a dependency that is not React or Fluent',
+  );
 });
 
 test('no engine or host module is named anywhere in the renderer', async () => {

@@ -95,6 +95,14 @@ if (seedStore) {
   process.stdout.write(`[ayq-start] seeded ${join(target, 'ayq-store.json')}\n`);
 }
 
+// `--grounds` opens AYQ's own Fluent screen and requires each of the three
+// grounds of 04 A23 to be applied when it is chosen; it leaves the window on
+// dark. `--expect-ground <name>` requires a later launch to open in that one,
+// which is the setting outliving the process rather than the window redrawing.
+if (has('grounds')) env.AYQ_SMOKE_GROUNDS = '1';
+const expectGround = flag('expect-ground');
+if (expectGround) env.AYQ_SMOKE_EXPECT_GROUND = expectGround;
+
 // `--conformance` requires the Upcoming screen to show what 03 r004 says it
 // must: arrears that do not expire, a suggestion that brings none with it, and
 // an ambiguous match that waits for a person.

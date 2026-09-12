@@ -68,6 +68,7 @@ import {
   ayqUnmatch,
 } from './ayq-plan.ts';
 import { ayqToday } from './ayq-plan-series.ts';
+import { ayqSaveSettings, ayqSettings } from './ayq-preferences.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import {
   ayqApplyRules,
@@ -304,6 +305,22 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       ok: true,
       kind: 'engine.status',
       result: await status(dataDir),
+    };
+  }
+
+  // The interface settings are answered before the budget is opened, and on
+  // purpose: the window asks which ground to draw in as the first thing it
+  // does, and waiting for a budget to open to find out would mean drawing the
+  // wrong one first and correcting it in front of the person.
+  if (request.kind === 'settings.get') {
+    return { id, ok: true, kind: 'settings.get', result: ayqSettings(dataDir) };
+  }
+  if (request.kind === 'settings.set') {
+    return {
+      id,
+      ok: true,
+      kind: 'settings.set',
+      result: ayqSaveSettings(dataDir, request.settings),
     };
   }
 

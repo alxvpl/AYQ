@@ -12,6 +12,7 @@
 // computes no money.
 
 import { ayqAsk } from './ayq-bridge.ts';
+import { ayqMountAppearance, ayqUnmountFluent } from './ayq-fluent-mount.tsx';
 import { ayqElement } from './ayq-dom.ts';
 import { ayqEuro, ayqMoment, ayqMonth } from './ayq-format.ts';
 import type {
@@ -505,6 +506,17 @@ function drawHeader(): void {
 function drawView(): void {
   const target = byId('ayq-body');
   if (!target) return;
+
+  // AYQ's own interface, in Fluent UI React v9 (04 A15), is being brought in
+  // one screen at a time. A screen that is React's keeps its root while it is
+  // open; every other screen takes it down first, because the shell draws by
+  // replacing this element's children and a root left behind would be a React
+  // tree rendering into a document that no longer holds it.
+  if (state.view === 'appearance') {
+    ayqMountAppearance(target);
+    return;
+  }
+  ayqUnmountFluent();
 
   // A load that failed must not leave the view sitting on "reading…". The bar
   // above carries the engine's own words; this says which part of the screen

@@ -23,9 +23,11 @@ import { join } from 'node:path';
 import type {
   AyqAliasRecord,
   AyqCategoryRule,
+  AyqGround,
   AyqImportRecord,
   AyqPlannedRecord,
   AyqProvenance,
+  AyqSettings,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 /**
@@ -82,6 +84,11 @@ export type AyqCategoryDecision = {
   at: string;
 };
 
+/** What the interface itself has been told to do (04 A23). */
+export const AYQ_DEFAULT_SETTINGS: AyqSettings = { ground: 'system' };
+
+const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
+
 /**
  * Bump this when the shape changes, and add a step to `migrate`.
  *
@@ -93,8 +100,12 @@ export type AyqCategoryDecision = {
  *      about individual occurrences of them — including the match to an actual
  *      transaction and the pairings a person has refused — and the per-account
  *      "counts toward available funds" flag. Older stores gain three empty ones.
+ *   4  `confirmedAt` and `suggestedAt` on a planned record, so that 03 §7.14
+ *      can date a record's expectations from the day it was decided.
+ *   5  the interface settings: which ground the owner chose (04 A23). An older
+ *      store gains the default, which is to follow the system.
  */
-export const AYQ_STORE_VERSION = 4;
+export const AYQ_STORE_VERSION = 5;
 
 export type AyqStore = {
   version: number;
@@ -117,6 +128,8 @@ export type AyqStore = {
   occurrences: AyqPlanOccurrenceRecord[];
   /** Keyed by Actual's account id, since version 3. */
   accountFlags: Record<string, AyqAccountFlags>;
+  /** What the owner chose about the interface, since version 5. */
+  settings: AyqSettings;
 };
 
 /**
@@ -146,6 +159,26 @@ function empty(): AyqStore {
     planned: [],
     occurrences: [],
     accountFlags: {},
+    settings: { ...AYQ_DEFAULT_SETTINGS },
+  };
+}
+
+/**
+ * The interface settings, defaulted one field at a time.
+ *
+ * A ground this AYQ has never heard of falls back to following the system
+ * rather than to a blank window: a value written by a newer AYQ, or by a hand
+ * in a text editor, is not a reason to fail to draw.
+ */
+export function ayqNormaliseSettings(value: unknown): AyqSettings {
+  const held =
+    typeof value === 'object' && value !== null
+      ? (value as Partial<AyqSettings>)
+      : {};
+  return {
+    ground: GROUNDS.includes(held.ground as AyqGround)
+      ? (held.ground as AyqGround)
+      : AYQ_DEFAULT_SETTINGS.ground,
   };
 }
 
@@ -236,6 +269,10 @@ function migrate(raw: unknown): AyqStore {
       typeof value.accountFlags === 'object' && value.accountFlags !== null
         ? value.accountFlags
         : {},
+    // Versions 1 to 4 had no interface settings. An older store gains the
+    // default, which is to follow the system — the same as never having been
+    // asked, which is exactly what happened.
+    settings: ayqNormaliseSettings(value.settings),
   };
 }
 

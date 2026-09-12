@@ -3,6 +3,7 @@
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
+    "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "types": [],
 
@@ -16,5 +17,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

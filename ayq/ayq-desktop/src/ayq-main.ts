@@ -33,6 +33,14 @@ import {
   type AyqRequest,
   type AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
+// The token module itself, so that the acceptance run compares the screen
+// against the product's own declared values rather than against a second copy
+// of them written into a test. It is data and arithmetic: no DOM, no engine.
+import {
+  AYQ_GROUNDS,
+  AYQ_TOKENS,
+  type AyqGroundResolved,
+} from '../../ayq-client/src/ayq-tokens.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -858,6 +866,127 @@ async function checkImport(window: BrowserWindow): Promise<boolean> {
 }
 
 /**
+ * The three grounds of 04 A23, on the screen rather than in the module.
+ *
+ * Opens AYQ's own Fluent screen, chooses each ground in turn through the
+ * control a person uses, and requires the window to come back drawn in that
+ * ground's own tokens. "Follow the system" is not asserted to be light or
+ * dark — it is asserted to be whichever the machine asked for, which is the
+ * only thing that makes it the third ground rather than a second copy of one
+ * of the other two.
+ *
+ * Finishes on dark, deliberately: the launch after this one asks what was
+ * kept, and a value equal to the default would prove nothing.
+ */
+async function groundsShown(window: BrowserWindow): Promise<string> {
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-tab="appearance"]\').click(); true',
+  );
+
+  const ready = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-screen=\"appearance\"]')",
+    )) === true;
+
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await ready())) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!(await ready())) return 'AYQ own Fluent screen never drew';
+
+  // Fluent actually rendered, rather than a div that says it did: the ground
+  // control is a Fluent radio group, so its inputs are on the page.
+  const controls = Number(
+    await window.webContents.executeJavaScript(
+      "document.querySelectorAll('[data-ayq-screen=\"appearance\"] input[type=radio]').length",
+    ),
+  );
+  if (controls < 3) {
+    return `the Fluent controls did not render (${controls} of 3)`;
+  }
+
+  for (const ground of [...AYQ_GROUNDS].sort()) {
+    await window.webContents.executeJavaScript(
+      `document.querySelector('[data-ayq-ground-option="${ground}"]').click(); true`,
+    );
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    const seen = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const node = document.querySelector('[data-ayq-ground]');
+          if (!node) return JSON.stringify({ chosen: '', resolved: '' });
+          const style = getComputedStyle(node);
+          return JSON.stringify({
+            chosen: node.dataset.ayqGround,
+            resolved: node.dataset.ayqGroundResolved,
+            pane: style.getPropertyValue('--ayq-pane').trim(),
+            accent: style.getPropertyValue('--ayq-accent').trim(),
+            painted: style.backgroundColor,
+          });
+        })()`),
+      ),
+    ) as {
+      chosen: string;
+      resolved: string;
+      pane?: string;
+      accent?: string;
+      painted?: string;
+    };
+
+    if (seen.chosen !== ground) {
+      return `choosing ${ground} left the window on ${seen.chosen || 'nothing'}`;
+    }
+    if (seen.resolved !== 'light' && seen.resolved !== 'dark') {
+      return `${ground} resolved to ${seen.resolved || 'nothing'}`;
+    }
+    if (ground !== 'system' && seen.resolved !== ground) {
+      return `${ground} resolved to ${seen.resolved}`;
+    }
+    const want = AYQ_TOKENS[seen.resolved as AyqGroundResolved];
+    if (seen.pane !== want.surface.pane) {
+      return `${ground} drew its panes ${seen.pane} rather than ${want.surface.pane}`;
+    }
+    if (seen.accent !== want.identity.accent) {
+      return `${ground} carries the accent ${seen.accent}`;
+    }
+    if (!seen.painted || seen.painted === 'rgba(0, 0, 0, 0)') {
+      return `${ground} painted nothing`;
+    }
+    process.stdout.write(
+      `[ayq-smoke] ground ${ground} -> ${seen.resolved}, panes ${seen.pane}, ` +
+        `accent ${seen.accent}, painted ${seen.painted}\n`,
+    );
+  }
+
+  // Left on dark for the launch that comes after.
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-ground-option="dark"]\').click(); true',
+  );
+  await new Promise(resolve => setTimeout(resolve, 600));
+  return '';
+}
+
+/** The ground the window opened in, on a later launch. */
+async function groundKept(window: BrowserWindow): Promise<string> {
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-tab="appearance"]\').click(); true',
+  );
+  const deadline = Date.now() + 60_000;
+  let seen = '';
+  while (Date.now() < deadline) {
+    seen = String(
+      await window.webContents.executeJavaScript(
+        "document.querySelector('[data-ayq-ground]')?.dataset.ayqGround || ''",
+      ),
+    );
+    if (seen !== '') break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return seen;
+}
+
+/**
  * A launch that verifies itself.
  *
  * With AYQ_SMOKE=1 the host waits for the renderer to report the outcome of its
@@ -1019,6 +1148,39 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     process.env.AYQ_SMOKE_SHOW_MORE !== '1' ||
     /^(\d+) rows, then (?!\1\b)/.test(paged);
 
+  // The three grounds, and the setting outliving the process that chose it.
+  // Asked for or not, and the report says which: an installed application
+  // writes nothing to a console, so "the step exited zero" would otherwise be
+  // the whole of the evidence, and it says nothing about this at all.
+  const groundsAsked = process.env.AYQ_SMOKE_GROUNDS === '1';
+  const expectGround = process.env.AYQ_SMOKE_EXPECT_GROUND ?? '';
+  let grounds = 'not asked';
+  let groundsOk = true;
+  if (groundsAsked) {
+    const wrong = await groundsShown(window);
+    grounds = wrong === '' ? 'held' : wrong;
+    groundsOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] the three grounds: ${groundsOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+  if (expectGround !== '') {
+    const kept = await groundKept(window);
+    const held = kept === expectGround;
+    grounds = held ? `kept ${kept}` : `kept ${kept || '(nothing)'}`;
+    groundsOk = groundsOk && held;
+    process.stdout.write(
+      `[ayq-smoke] after restart the ground reads ${kept || '(nothing)'} -> ` +
+        `${held ? 'KEPT' : 'LOST'}\n`,
+    );
+  }
+  if (groundsAsked || expectGround !== '') {
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-ayq-tab="transactions"]\').click(); true',
+    );
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+  }
+
   if (process.env.AYQ_SMOKE_GEOMETRY === '1') {
     const geometry = await window.webContents.executeJavaScript(`(() => {
       const bar = document.querySelector('.bar');
@@ -1057,6 +1219,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     spendingOk &&
     upcomingOk &&
     planOk &&
+    groundsOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -1085,6 +1248,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           conformance,
           planOk,
           planSheet,
+          grounds,
+          groundsOk,
           pagedOk,
           imports: importRounds,
           dataDir,

@@ -34,6 +34,19 @@ export type AyqAccountSummary = {
   countsTowardFunds: boolean;
 };
 
+/**
+ * What the owner has chosen about the interface itself (04 A23).
+ *
+ * It crosses the boundary because it outlives the window: the renderer has no
+ * disk, so what a person chose is kept beside the budget like everything else
+ * AYQ keeps, and asked for on the next launch.
+ */
+export type AyqGround = 'light' | 'dark' | 'system';
+
+export type AyqSettings = {
+  ground: AyqGround;
+};
+
 /** Proof of life from the engine, computed from a real budget. */
 export type AyqEngineStatus = {
   /** The version of `@actual-app/api` the host actually loaded. */
@@ -809,6 +822,8 @@ export type AyqPlanSuggested = {
 /** What the engine answers to each request kind. */
 export type AyqResults = {
   'engine.status': AyqEngineStatus;
+  'settings.get': AyqSettings;
+  'settings.set': AyqSettings;
   'accounts.list': AyqAccountSummary[];
   'accounts.setFlag': AyqAccountSummary[];
   'transactions.list': AyqLedger;
@@ -858,6 +873,8 @@ export type AyqResults = {
  */
 export type AyqRequestBody =
   | { kind: 'engine.status' }
+  | { kind: 'settings.get' }
+  | { kind: 'settings.set'; settings: AyqSettings }
   | { kind: 'accounts.list' }
   | {
       /**

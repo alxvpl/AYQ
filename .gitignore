@@ -135,6 +135,9 @@ budget-data/
 # AYQ desktop build output.
 ayq/*/dist/
 
+# The renderer's tests, compiled so that Node can run JSX. Build output.
+ayq/ayq-client/dist-test/
+
 # AYQ desktop packaging: the installer and the generated icon are build output.
 ayq/ayq-desktop/release/
 ayq/ayq-desktop/build/
