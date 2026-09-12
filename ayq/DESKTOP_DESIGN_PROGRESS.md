@@ -22,7 +22,7 @@ difference is recorded below.
 | S5 | Today (04 A21) | done |
 | S6 | Upcoming and Plan | done |
 | S7 | Review and Settings | done |
-| S8 | Reports destination | done |
+| S8 | Reports destination | done — run 69 green |
 
 ## How the interface is being replaced
 
@@ -207,6 +207,28 @@ verdicts and names what failed.
 `AYQ_ENGINE_TIMING=1` makes the host print how long each request took. "The
 Register took seven seconds" is not a fault anybody can act on; which request
 those seconds were in is.
+
+### Run 69: green, and what it delivered
+
+The first run in this work to finish. Every step held, on real Windows
+(build 26100), with Mica on the window:
+
+| | |
+|---|---|
+| run | [69](https://github.com/alxvpl/AYQ/actions/runs/34710635239) |
+| commit | `d50d84551` |
+| the Register, on fifty thousand | first draw **2,123 ms**, filtered **1,061 ms** (gate 5,000 ms) |
+| the whole launch, import included | 81 s |
+| Today | available funds at 38px against the next largest at 28px |
+| the shell | rail 64px, 9 destinations, 2 hairlines, one scroller |
+| installer | `AYQ-build-003-windows-x64-setup.exe`, 118 MB |
+| sha256 | `50cb89975a6f01104f17d00cba9d84c26ab1ec5b3ae70f02f46cac83b3db8e21` |
+| artifact | `ayq-build-003-windows-installer` |
+
+The installer was run silently, the installed application launched twice over one
+directory, and what the first launch filed and planned the second launch still
+had. The delivery number is a label on what was handed over: no tag, no release,
+no change to the version scheme.
 
 ### And run 68, on the step that damages the store
 
