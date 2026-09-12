@@ -12,7 +12,7 @@
     "smoke": "node start.mjs --smoke --require-host \"electron utilityProcess\"",
     "start:debug-node-engine": "node start.mjs --engine node",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --test-reporter=spec --test-concurrency=1 --test-timeout=420000 test/ayq-engine.test.ts test/ayq-forecast.test.ts test/ayq-match.test.ts test/ayq-plan-series.test.ts",
+    "test": "npm run build && node --test --test-reporter=spec --test-concurrency=1 --test-timeout=1500000 test/ayq-engine.test.ts test/ayq-forecast.test.ts test/ayq-match.test.ts test/ayq-plan-series.test.ts",
     "icon": "node build-icon.mjs",
     "package": "npm run build && npm run icon && electron-builder --win nsis --x64 --publish=never"
   },

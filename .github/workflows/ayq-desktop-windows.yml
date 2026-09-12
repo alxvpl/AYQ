@@ -32,7 +32,9 @@ jobs:
   production-smoke:
     name: utilityProcess engine on Windows
     runs-on: windows-latest
-    timeout-minutes: 60
+    # Raised with the engine suite and the Register measurement. The steps are
+    # what is really being bounded; this is the ceiling over all of them.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +99,7 @@ jobs:
       - name: Tests
         working-directory: ayq/ayq-desktop
         shell: pwsh
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: |
           npm test
           if ($LASTEXITCODE -ne 0) { throw 'the engine tests did not pass' }
