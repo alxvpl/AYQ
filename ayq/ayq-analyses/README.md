@@ -4,6 +4,8 @@ AYQ Analyses is the read-only analytical companion to AYQ Personal Finances.
 
 **Boundary:** AYQ owns the financial truth. AYQ Analyses interprets it.
 
+> **Mandatory before work:** every Product Owner support agent, design/review agent, Claude Chat session, Claude Code session, or future implementation/review agent must read [`docs/00_COLLABORATION_MODEL.md`](docs/00_COLLABORATION_MODEL.md) before doing project work. That file is the authoritative collaboration and review protocol; chat memory is not.
+
 This package is the first production-code bootstrap of the separate Windows application. It is implementation work, not a silent promotion of the working analytical contract or design notes into AYQ Canon.
 
 ## What this increment implements
