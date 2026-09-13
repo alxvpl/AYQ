@@ -124,8 +124,17 @@ better as the screen that has to say it.
 
 ### The delivery
 
-`artifactName` names the installer for **build 003**. A delivery label and
+`artifactName` names the installer, and that name is where the delivery number
+lives — the workflow reads the number back out of the file it just built rather
+than from a second place that could disagree with it. A delivery label and
 nothing else: no tag, no release, no change to the version scheme.
+
+**Build 003** was the accepted desktop design, on run 69 (commit `d50d84551`).
+**Build 004** is the same application with the reversal work on top of it (03
+§9, commits `5eb35b75c` and `716eb181c`): a confirmed reversal reduces the
+expense it reverses, is never income, and reads the same on Register, Reports
+and Plan. The number moved because what is handed over changed, not because
+anything about the version scheme did.
 
 ## What fifty thousand transactions cost, and what was done about it
 
