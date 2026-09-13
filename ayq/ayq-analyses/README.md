@@ -4,14 +4,14 @@ AYQ Analyses is the read-only analytical companion to AYQ Personal Finances.
 
 **Boundary:** AYQ owns the financial truth. AYQ Analyses interprets it.
 
-> **Mandatory before work:** AYQ Analyses is a governed AYQ subproject. Every Product Owner support agent, design/review agent, Claude Chat session, Claude Code session, or future implementation/review agent must first read the parent AYQ project instructions and Canon router, then the Analyses-specific governance and work instructions:
+> **Mandatory before work:** AYQ Analyses is a governed AYQ subproject. The local repository files below are bootstrap pointers only. Follow them to the current authoritative Drive governance, and read the current AYQ Canon before substantive work:
 >
 > 1. [`../docs/00_PROJECT_WORK_INSTRUCTIONS.md`](../docs/00_PROJECT_WORK_INSTRUCTIONS.md)
 > 2. [`../docs/01_CANON_INDEX.md`](../docs/01_CANON_INDEX.md)
 > 3. [`docs/00_COLLABORATION_MODEL.md`](docs/00_COLLABORATION_MODEL.md)
 > 4. [`docs/01_PROJECT_WORK_INSTRUCTIONS.md`](docs/01_PROJECT_WORK_INSTRUCTIONS.md)
 >
-> Parent AYQ rules and Canon govern AYQ-owned financial truth and cross-project boundaries. Analyses-specific documents supplement them for this subproject. Chat memory is not authority.
+> Drive governance and current AYQ Canon are authoritative according to their ownership rules. GitHub pointer files, chat memory, handoff notes, and cached text are not substitutes for the current Drive documents.
 
 This package is the first production-code bootstrap of the separate Windows application. It is implementation work, not a silent promotion of the working analytical contract or design notes into AYQ Canon.
 
