@@ -19,10 +19,14 @@ import api from '@actual-app/api';
 
 import type { AyqCategoryRule } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqAccounts } from './ayq-ledger.ts';
 import { ayqCanonicalKey } from './ayq-aliases.ts';
 import { ayqSetCategories } from './ayq-batch.ts';
 import { ayqCategories } from './ayq-categories.ts';
+import { ayqProposedCategory } from './ayq-filing.ts';
+import { ayqIsInternalTransfer, ayqOwnAccountNames } from './ayq-funds.ts';
 import { ayqSettle } from './ayq-settle.ts';
+import { ayqHasReversalEvidence } from './ayq-totals.ts';
 import {
   ayqAddDecision,
   ayqId,
@@ -167,6 +171,7 @@ export async function ayqApplyRules(
     const counterpartyKey = ayqCanonicalKey(
       store,
       store.provenance[key]?.counterpartyKey,
+      store.provenance[key]?.counterpartyName,
     );
     if (!counterpartyKey) continue;
 
@@ -174,8 +179,17 @@ export async function ayqApplyRules(
     if (!target) continue;
     if (row.categoryId === target.id) continue;
     // Anything already categorised without this automation's fingerprint on it
-    // arrived some other way, and is left alone.
-    if (row.categoryId && decision?.source !== 'rule') continue;
+    // arrived some other way, and is left alone — except AYQ's own
+    // classification, which a rule outranks (03 §11.11): a rule is the owner's
+    // generalisation about this counterparty and a guess from a shipped table
+    // is not.
+    if (
+      row.categoryId &&
+      decision?.source !== 'rule' &&
+      decision?.source !== 'auto'
+    ) {
+      continue;
+    }
 
     updates.push({ id: row.id, category: target.id });
     ayqAddDecision(store, key, {
@@ -211,7 +225,11 @@ export function ayqKeyOfTransaction(
 ): string | null {
   if (!importedId) return null;
   const store = ayqReadStore(dataDir);
-  return ayqCanonicalKey(store, store.provenance[importedId]?.counterpartyKey);
+  return ayqCanonicalKey(
+    store,
+    store.provenance[importedId]?.counterpartyKey,
+    store.provenance[importedId]?.counterpartyName,
+  );
 }
 
 /**
@@ -232,7 +250,11 @@ export async function ayqPendingForCounterparty(
     if (ayqStandingDecision(store, key)?.source === 'manual') return false;
     if (row.categoryId) return false;
     return (
-      ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) ===
+      ayqCanonicalKey(
+      store,
+      store.provenance[key]?.counterpartyKey,
+      store.provenance[key]?.counterpartyName,
+    ) ===
       counterpartyKey
     );
   }).length;
@@ -269,7 +291,11 @@ export async function ayqFileCounterparty(
   for (const row of rows) {
     const key = ayqRowKey(row);
     if (
-      ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) !==
+      ayqCanonicalKey(
+      store,
+      store.provenance[key]?.counterpartyKey,
+      store.provenance[key]?.counterpartyName,
+    ) !==
       counterpartyKey
     ) {
       continue;
@@ -302,4 +328,114 @@ export async function ayqFileCounterparty(
   }
 
   return { categorised: updates.length, keptByHand };
+}
+
+/** A row with everything the classification is allowed to look at. */
+type AyqFilableRow = AyqCategorisableRow & { amount?: number | null };
+
+/**
+ * Every transaction that could be filed, with its amount.
+ *
+ * Actual's technical starting-balance rows are excluded by the query itself,
+ * which is 03 §11.8 held at the point where it cannot be forgotten.
+ */
+async function rowsToFile(): Promise<AyqFilableRow[]> {
+  const answer = (await api.aqlQuery(
+    api
+      .q('transactions')
+      .filter({ starting_balance_flag: false })
+      .select(['id', 'imported_id', 'amount', { categoryId: 'category.id' }]),
+  )) as { data?: AyqFilableRow[] };
+  return answer.data ?? [];
+}
+
+/**
+ * Files what AYQ can work out on its own. 03 §11.10–§11.14.
+ *
+ * Runs after every import over the transactions that import brought in, and on
+ * demand over everything already held — §11.12 wants both, because a store
+ * filed before this existed has to be able to catch up without the owner
+ * refiling five hundred transactions by hand.
+ *
+ * ## The precedence, which is the whole of the safety of this
+ *
+ *   a person's decision   never touched, whatever it says
+ *   a rule                never touched; a rule outranks this
+ *   this, earlier         may be revised — it is the only thing that may
+ *   nothing yet           filed, if the evidence carries a category
+ *
+ * A row that is already categorised and carries no decision at all came from
+ * somewhere else — Actual itself, an import that pre-dates AYQ's provenance —
+ * and is left exactly as it is. AYQ did not file it and does not claim it.
+ *
+ * A category the classification wants but the budget does not have is not
+ * created: §11.9 says AYQ never recreates a starter category the owner removed
+ * or renamed, and that holds here too. The transaction stays unfiled.
+ */
+export async function ayqApplyFiling(
+  dataDir: string,
+): Promise<{ filed: number; revised: number }> {
+  const store = ayqReadStore(dataDir);
+
+  const categories = await ayqCategories();
+  const byName = new Map(
+    categories.map(category => [category.name.toLowerCase(), category]),
+  );
+  if (byName.size === 0) return { filed: 0, revised: 0 };
+
+  const ownNames = ayqOwnAccountNames(await ayqAccounts(dataDir));
+  const rows = await rowsToFile();
+  const before = rows.filter(row => !row.categoryId).length;
+
+  const updates: Array<{ id: string; category: string | null }> = [];
+  const at = new Date().toISOString();
+  let filed = 0;
+  let revised = 0;
+
+  for (const row of rows) {
+    const key = ayqRowKey(row);
+    const decision = ayqStandingDecision(store, key);
+    if (decision?.source === 'manual' || decision?.source === 'rule') continue;
+    if (row.categoryId && decision?.source !== 'auto') continue;
+
+    const provenance = store.provenance[key];
+    const filing = ayqProposedCategory({
+      kind: provenance?.kind ?? null,
+      counterpartyName: provenance?.counterpartyName ?? null,
+      amountCents: Number(row.amount ?? 0),
+      reversal: ayqHasReversalEvidence(provenance),
+      transfer:
+        ownNames.size >= 2 && ayqIsInternalTransfer(ownNames, provenance),
+      startingBalance: false,
+    });
+    if (filing === null) continue;
+
+    const target = byName.get(filing.categoryName.toLowerCase());
+    if (!target) continue;
+    if (row.categoryId === target.id) continue;
+
+    updates.push({ id: row.id, category: target.id });
+    ayqAddDecision(store, key, {
+      source: 'auto',
+      categoryName: target.name,
+      at,
+      because: filing.because,
+    });
+    if (row.categoryId) revised += 1;
+    else filed += 1;
+  }
+
+  if (updates.length > 0) {
+    await ayqSetCategories(updates);
+    ayqWriteStore(dataDir, store);
+    // The writes land after the calls that queued them return, so the next read
+    // is only trusted once it shows them.
+    await ayqSettle(
+      ayqUncategorisedCount,
+      remaining => remaining <= before - filed,
+      'the categories',
+    );
+  }
+
+  return { filed, revised };
 }

@@ -120,7 +120,9 @@ export function AyqTransactionDetailPane({
       ? ayqText('detail.by.rule')
       : row.categorySource === 'manual'
         ? ayqText('detail.by.you')
-        : ayqText('detail.by.nobody');
+        : row.categorySource === 'auto'
+          ? ayqText('detail.by.ayq')
+          : ayqText('detail.by.nobody');
 
   return (
     <div className={styles.pane} data-ayq-detail={row.id}>

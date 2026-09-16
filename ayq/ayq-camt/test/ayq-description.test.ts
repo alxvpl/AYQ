@@ -3,7 +3,9 @@ import { test } from 'node:test';
 
 import {
   ayqCanonicalName,
+  ayqLegacyNormaliseKey,
   ayqNormaliseKey,
+  ayqStripTransactionNoise,
   ayqParseCardDescription,
   ayqParseSepaDescription,
 } from '../src/counterparty/ayq-description.ts';
@@ -115,4 +117,64 @@ test('the canonical name keeps the shop and drops the branch', () => {
     ayqNormaliseKey(ayqCanonicalName('ALBERT HEIJN 1234')),
     ayqNormaliseKey(ayqCanonicalName('ALBERT HEIJN 9012')),
   );
+});
+
+test('a reference hiding behind a separator does not make a second shop', () => {
+  // 03 §3.9. The defect this pins was found by the owner on his own statements
+  // in build 005: one counterparty stood in the ledger under two names because
+  // the bank had appended a date to one of them.
+  assert.equal(ayqNormaliseKey('Maas'), 'MAAS');
+  assert.equal(ayqNormaliseKey('Maas - 220722 Royal Fl'), 'MAAS');
+  assert.equal(ayqCanonicalName('Maas - 220722 Royal Fl'), 'Maas');
+
+  // The same string, folded by the rule that shipped in build 005.
+  assert.equal(
+    ayqLegacyNormaliseKey('Maas - 220722 Royal Fl'),
+    'MAAS 220722 ROYAL FL',
+  );
+});
+
+test('a separator is not evidence by itself', () => {
+  // §3.10: textual similarity alone may not merge two counterparties. The tail
+  // is cut only where a run of four or more digits says it is a reference.
+  assert.equal(ayqNormaliseKey('Jan - de Vries'), 'JAN DE VRIES');
+  assert.equal(ayqCanonicalName('Jan - de Vries'), 'Jan - de Vries');
+  assert.equal(ayqNormaliseKey('Test - Winkel 12'), 'TEST WINKEL');
+});
+
+test('per-transaction material is removed, whole words never are', () => {
+  assert.equal(ayqStripTransactionNoise('Testfuel 14:07'), 'Testfuel');
+  assert.equal(
+    ayqStripTransactionNoise('Albert Heijn 1234 Amsterdam'),
+    'Albert Heijn Amsterdam',
+  );
+  // Two branches stay two keys: dropping the town would merge counterparties
+  // on a shared prefix, which §3.10 forbids. The owner may still say they are
+  // one, and an alias is how (§3.11).
+  assert.notEqual(
+    ayqNormaliseKey('Albert Heijn 1234 Amsterdam'),
+    ayqNormaliseKey('Albert Heijn 5678 Utrecht'),
+  );
+});
+
+test('folding a key that is already folded changes nothing', () => {
+  // The canonical key is read through this on every ledger read, so it has to
+  // be steady under repetition or a counterparty would drift between reads.
+  for (const value of [
+    'Maas - 220722 Royal Fl',
+    'ALBERT HEIJN 1234 AMSTERDAM',
+    'NL91ABNA0417164300',
+    'Odido Netherlands B.V.',
+    '12345',
+  ]) {
+    const once = ayqNormaliseKey(value);
+    assert.equal(ayqNormaliseKey(once), once, value);
+  }
+});
+
+test('an IBAN survives normalisation intact', () => {
+  // Some resolver layers key on the IBAN rather than on a name. Folding must
+  // not eat one, or a counterparty identified by its account number would lose
+  // its identity on the next read.
+  assert.equal(ayqNormaliseKey('NL91ABNA0417164300'), 'NL91ABNA0417164300');
 });

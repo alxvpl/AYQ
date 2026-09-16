@@ -249,16 +249,44 @@ export function ayqParseSepaDescription(
 }
 
 /**
- * The normalised grouping key.
+ * Per-transaction material, removed before anything is grouped. 03 §3.9.
  *
- * Upper case, no diacritics, no punctuation, no trailing run of numbers — so
- * "Albert Heijn 1234" and "ALBERT HEIJN 5678" fall together, and an order
- * number does not make every purchase its own counterparty.
+ * Three shapes, and only three, because each is evidence that a fragment
+ * belongs to *this* payment rather than to the counterparty:
  *
- * The cost is accepted knowingly: a name whose last word is a number loses it
- * in the key ("Testwinkel 24" -> "TESTWINKEL"). The key is only ever used for
- * grouping; the display name stays as the bank gave it.
+ *     a reference tail  "Maas - 220722 Royal Fl"       -> "Maas"
+ *     a bare number     "Albert Heijn 1234 Amsterdam"  -> "Albert Heijn Amsterdam"
+ *     a clock time      "Testfuel 14:07"               -> "Testfuel"
+ *
+ * The tail is cut only where what follows the separator carries a run of four
+ * or more digits. A dash proves nothing by itself, so "Jan - de Vries" keeps
+ * its second half.
+ *
+ * Words are never removed. Dropping "Amsterdam" would merge two counterparties
+ * on the strength of a shared prefix, and 03 §3.10 forbids precisely that where
+ * the evidence is ambiguous. A branch that still differs once the numbers are
+ * gone stays its own key until the owner says otherwise (§3.11).
+ *
+ * This runs on the string as the bank wrote it, before punctuation is folded
+ * away, because the separator and the colon are the evidence.
  */
+const REFERENCE_TAIL = /\s+[-\u2013\u2014/]\s*(?=[^]*\d{4})[^]*$/;
+const CLOCK_TIME = /(^|\s)\d{1,2}[:.]\d{2}(?=\s|$)/g;
+const BARE_NUMBER = /(^|\s)\d{4,8}(?=\s|$)/g;
+
+export function ayqStripTransactionNoise(value: string): string {
+  const stripped = value
+    .replace(REFERENCE_TAIL, '')
+    .replace(CLOCK_TIME, '$1')
+    .replace(BARE_NUMBER, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // A counterparty whose whole name is a number keeps it. Removing everything
+  // would leave no counterparty at all, and a reference is only noise when
+  // there is something else for it to be noise beside.
+  return stripped.length > 0 ? stripped : value.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * The counterparty's canonical display name.
  *
@@ -272,7 +300,7 @@ export function ayqParseSepaDescription(
  */
 export function ayqCanonicalName(value: string | null): string | null {
   if (!value) return null;
-  const cleaned = value.replace(/\s+/g, ' ').trim();
+  const cleaned = ayqStripTransactionNoise(value.replace(/\s+/g, ' ').trim());
   if (cleaned.length === 0) return null;
 
   let name = cleaned;
@@ -284,13 +312,42 @@ export function ayqCanonicalName(value: string | null): string | null {
   return name.length > 0 ? name : cleaned;
 }
 
+/**
+ * The normalised grouping key.
+ *
+ * Upper case, no diacritics, no punctuation, no per-transaction material — so
+ * "Albert Heijn 1234" and "ALBERT HEIJN 5678" fall together, and an order
+ * number does not make every purchase its own counterparty.
+ *
+ * The cost is accepted knowingly: a name whose last word is a number loses it
+ * in the key ("Testwinkel 24" -> "TESTWINKEL"). The key is only ever used for
+ * grouping; the display name stays as the bank gave it.
+ */
 export function ayqNormaliseKey(value: string | null): string | null {
   if (!value) return null;
+  return fold(ayqStripTransactionNoise(value));
+}
+
+/**
+ * What `ayqNormaliseKey` meant before 03 §3.9 was read properly.
+ *
+ * Kept, and only for this: a key written by an earlier AYQ is stored in
+ * provenance and is never rewritten (§3.8), so the only way to tell whether one
+ * came from a counterparty *name* — and may therefore be folded again by the
+ * current rule — is to ask whether the old rule would have produced it from
+ * that name. A key that came from an IBAN answers no, and is left alone.
+ */
+export function ayqLegacyNormaliseKey(value: string | null): string | null {
+  if (!value) return null;
+  return fold(value);
+}
+
+function fold(value: string): string | null {
   const folded = value
     .normalize('NFD')
     // Diacritics are stripped separately: otherwise the character class
     // below replaces them with a space and "CAFÉ" becomes "CAF E".
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase();
   const cleaned = folded
     .replace(/[^A-Z0-9&+ ]+/g, ' ')

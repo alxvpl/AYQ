@@ -21,8 +21,8 @@ test('a card entry is resolved from the description, not from an IBAN', () => {
   const resolved = ayqResolveCounterparty(entries[0]);
   assert.equal(resolved.kind, 'card-terminal');
   assert.equal(resolved.resolvedBy, 'description');
-  assert.equal(resolved.name, 'ALBERT HEIJN 1234');
-  assert.equal(resolved.key, 'ALBERT HEIJN');
+  assert.equal(resolved.name, 'TESTMARKT 1234');
+  assert.equal(resolved.key, 'TESTMARKT');
   assert.equal(resolved.iban, null);
 
   const structured = resolved.trail.find(step => step.layer === 'structured');
@@ -96,10 +96,10 @@ test('a card entry with RmtInf still finds the marker in AddtlNtryInf', async ()
 
 test('the alias has the last word and is recorded in the chain', () => {
   const byKey = ayqResolveCounterparty(entries[0], {
-    aliases: [{ key: 'ALBERT HEIJN', name: 'Albert Heijn' }],
+    aliases: [{ key: 'TESTMARKT', name: 'Testmarkt' }],
   });
   assert.equal(byKey.resolvedBy, 'alias');
-  assert.equal(byKey.name, 'Albert Heijn');
+  assert.equal(byKey.name, 'Testmarkt');
   assert.equal(byKey.trail.at(-1)?.layer, 'alias');
 
   const byMandate = ayqResolveCounterparty(entries[4], {

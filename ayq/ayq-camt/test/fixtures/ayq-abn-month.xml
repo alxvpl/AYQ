@@ -51,42 +51,42 @@
         <BookgDt><Dt>2026-06-02</Dt></BookgDt><ValDt><Dt>2026-06-02</Dt></ValDt>
         <AcctSvcrRef>2026060200000101</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A101, 02.06.26/17:41   AMSTERDAM</AddtlNtryInf>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1234,PAS421 NR:00A101, 02.06.26/17:41   AMSTERDAM</AddtlNtryInf>
       </Ntry>
       <Ntry>
         <Amt Ccy="EUR">7.15</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-05</Dt></BookgDt><ValDt><Dt>2026-06-05</Dt></ValDt>
         <AcctSvcrRef>2026060500000102</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 5678,PAS421 NR:00A102, 05.06.26/08:12   AMSTERDAM</AddtlNtryInf>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 5678,PAS421 NR:00A102, 05.06.26/08:12   AMSTERDAM</AddtlNtryInf>
       </Ntry>
       <Ntry>
         <Amt Ccy="EUR">42.30</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-09</Dt></BookgDt><ValDt><Dt>2026-06-09</Dt></ValDt>
         <AcctSvcrRef>2026060900000103</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <AddtlNtryInf>BEA, Apple Pay   ALBERT HEIJN 1234,PAS421 NR:00A103, 09.06.26/19:55   AMSTERDAM</AddtlNtryInf>
+        <AddtlNtryInf>BEA, Apple Pay   TESTMARKT 1234,PAS421 NR:00A103, 09.06.26/19:55   AMSTERDAM</AddtlNtryInf>
       </Ntry>
       <Ntry>
         <Amt Ccy="EUR">11.08</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-14</Dt></BookgDt><ValDt><Dt>2026-06-14</Dt></ValDt>
         <AcctSvcrRef>2026061400000104</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 9012,PAS421 NR:00A104, 14.06.26/12:03   HAARLEM</AddtlNtryInf>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 9012,PAS421 NR:00A104, 14.06.26/12:03   HAARLEM</AddtlNtryInf>
       </Ntry>
       <Ntry>
         <Amt Ccy="EUR">63.90</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-21</Dt></BookgDt><ValDt><Dt>2026-06-21</Dt></ValDt>
         <AcctSvcrRef>2026062100000105</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A105, 21.06.26/16:20   AMSTERDAM</AddtlNtryInf>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1234,PAS421 NR:00A105, 21.06.26/16:20   AMSTERDAM</AddtlNtryInf>
       </Ntry>
       <Ntry>
         <Amt Ccy="EUR">9.44</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-27</Dt></BookgDt><ValDt><Dt>2026-06-27</Dt></ValDt>
         <AcctSvcrRef>2026062700000106</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <AddtlNtryInf>BEA, Google Pay   ALBERT HEIJN 5678,PAS421 NR:00A106, 27.06.26/21:38   AMSTERDAM</AddtlNtryInf>
+        <AddtlNtryInf>BEA, Google Pay   TESTMARKT 5678,PAS421 NR:00A106, 27.06.26/21:38   AMSTERDAM</AddtlNtryInf>
       </Ntry>
 
       <!-- Four fuel stops, same brand, three different stations. -->

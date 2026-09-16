@@ -65,14 +65,14 @@ test('fourteen raw descriptions collapse into five counterparties', async () => 
 
     const keys = overview.groups.map(group => group.key).sort();
     assert.deepEqual(keys, [
-      'ALBERT HEIJN',
+      'TESTMARKT',
       'KOFFIEHUIS DE TEST',
       'TESTENERGIE NEDERLAND B V',
       'TESTFUEL',
       'TESTWERKGEVER B V',
     ]);
 
-    const supermarket = overview.groups.find(g => g.key === 'ALBERT HEIJN');
+    const supermarket = overview.groups.find(g => g.key === 'TESTMARKT');
     assert.equal(supermarket?.transactions, 6);
     assert.equal(supermarket?.rawVariants, 6);
     assert.deepEqual(supermarket?.resolvedBy, ['description']);
@@ -117,7 +117,7 @@ test('opening a counterparty lists its transactions with their evidence', async 
     const answer = await engine.ask({
       kind: 'transactions',
       ...ALL,
-      counterpartyKey: 'ALBERT HEIJN',
+      counterpartyKey: 'TESTMARKT',
     });
     assert.equal(answer.kind, 'transactions');
     if (answer.kind !== 'transactions') return;
@@ -128,7 +128,7 @@ test('opening a counterparty lists its transactions with their evidence', async 
     assert.equal(answer.rows.at(-1)?.date, '2026-06-02');
 
     for (const row of answer.rows) {
-      assert.equal(row.counterpartyKey, 'ALBERT HEIJN');
+      assert.equal(row.counterpartyKey, 'TESTMARKT');
       assert.equal(row.bankTransactionCode, 'PMNT/CCRD/POSD');
       assert.equal(row.resolvedBy, 'description');
       assert.equal(row.paymentKind, 'card-terminal');

@@ -515,7 +515,11 @@ export async function ayqHistoricalSeries(dataDir: string) {
   const occurrences: AyqSeriesOccurrence[] = [];
   for (const row of answer.data ?? []) {
     const provenance = store.provenance[ayqRowKey(row)];
-    const key = ayqCanonicalKey(store, provenance?.counterpartyKey);
+    const key = ayqCanonicalKey(
+      store,
+      provenance?.counterpartyKey,
+      provenance?.counterpartyName,
+    );
     // No canonical identity, no series: condition 1 of §9.1 is not "roughly the
     // same string", it is the same counterparty, and a row AYQ never resolved
     // has no counterparty to be the same as.
@@ -606,7 +610,11 @@ async function candidates(
       payee: row.payee ?? null,
       // The canonical key, aliases applied, because that is what a record
       // written against a counterparty is written against.
-      counterpartyKey: ayqCanonicalKey(store, provenance?.counterpartyKey),
+      counterpartyKey: ayqCanonicalKey(
+        store,
+        provenance?.counterpartyKey,
+        provenance?.counterpartyName,
+      ),
       mandateId: provenance?.mandateId ?? null,
     };
   });

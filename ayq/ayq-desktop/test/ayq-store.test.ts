@@ -498,8 +498,58 @@ test('the aliases, rules, plans, matches and rejections all reach version 8', ()
   assert.equal(after.settings.ground, 'dark');
 });
 
-test('a version 9 store is refused rather than read as version 8', () => {
-  const ahead = atVersion(8);
-  ahead.version = 9;
-  assert.throws(() => ayqMigrate(ahead), /version 9/);
+test('a store from the future is refused rather than read as the present', () => {
+  // Written against the current version rather than a number, so that bumping
+  // the version does not quietly turn this into a test of nothing (03 §5.6).
+  const ahead = atVersion(AYQ_STORE_VERSION);
+  ahead.version = AYQ_STORE_VERSION + 1;
+  assert.throws(
+    () => ayqMigrate(ahead),
+    new RegExp(`version ${AYQ_STORE_VERSION + 1}`),
+  );
+});
+
+test('version 8 becomes version 9 without a decision changing', () => {
+  // 03 §5.8: proved on a store of the previous version, counting the records
+  // before and after and showing that nothing the owner decided moved.
+  //
+  // Step 9 widens what a decision may say about who made it. It sets no
+  // category — §5.7 forbids a migration to — so the whole of the proof is that
+  // everything is still exactly where it was.
+  const before = atVersion(8);
+  before.decisions = {
+    'imp-1': [
+      { source: 'manual', categoryName: 'Housing', at: '2026-01-01T00:00:00Z' },
+    ],
+    'imp-2': [
+      { source: 'rule', categoryName: 'Groceries', at: '2026-01-02T00:00:00Z' },
+    ],
+  };
+  const decisionsBefore = Object.keys(
+    before.decisions as Record<string, unknown>,
+  ).length;
+  const provenanceBefore = Object.keys(
+    before.provenance as Record<string, unknown>,
+  ).length;
+
+  const after = ayqMigrate(structuredClone(before));
+
+  assert.equal(after.version, 9);
+  assert.equal(Object.keys(after.decisions).length, decisionsBefore);
+  assert.equal(Object.keys(after.provenance).length, provenanceBefore);
+  assert.deepEqual(after.decisions, before.decisions);
+
+  // And no transaction acquired a category on the way through.
+  for (const history of Object.values(after.decisions)) {
+    for (const decision of history) {
+      assert.notEqual(decision.source, 'auto');
+    }
+  }
+});
+
+test('migrating a version 9 store again changes nothing', () => {
+  // §5.5: a migration is resumable by being repeatable.
+  const once = ayqMigrate(atVersion(8));
+  const twice = ayqMigrate(structuredClone(once));
+  assert.deepEqual(twice, once);
 });

@@ -43,7 +43,7 @@ test('the encoding is read from the XML declaration', async () => {
   // in the name.
   const latinSource = day
     .replace('encoding="UTF-8"', 'encoding="ISO-8859-1"')
-    .replace('ALBERT HEIJN 1234', 'CAFÉ ZÜRICH');
+    .replace('TESTMARKT 1234', 'CAFÉ ZÜRICH');
   const latin = join(root, 'latin.xml');
   await writeFile(latin, Buffer.from(latinSource, 'latin1'));
 

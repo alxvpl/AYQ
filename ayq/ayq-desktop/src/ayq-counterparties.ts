@@ -80,6 +80,12 @@ type Bucket = {
  * the id breaking a same-day tie, so two reads of an unchanged budget name it
  * the same way. It is the newest rather than the commonest because a merchant
  * that renamed itself should be listed under the name it uses now.
+ *
+ * The payee is the budget's own spelling, and it is one spelling per
+ * counterparty rather than one per row: the importer writes it from the
+ * resolver's canonical name, so the reference a bank appends to one
+ * transaction never reaches it (03 §3.9, §3.13). A store written under an
+ * older folding rule is brought up to date once, on launch.
  */
 function gather(
   store: AyqStore,
@@ -93,7 +99,13 @@ function gather(
     // has no provenance, and the payee Actual holds is the only identity there
     // is for it. Line 4 — no name at all — is left out entirely.
     const key =
-      ayqCanonicalKey(store, provenance?.counterpartyKey) ?? row.payee ?? null;
+      ayqCanonicalKey(
+        store,
+        provenance?.counterpartyKey,
+        provenance?.counterpartyName,
+      ) ??
+      row.payee ??
+      null;
     if (!key) continue;
 
     const date = String(row.date);
@@ -253,7 +265,11 @@ export async function ayqCounterpartyDetail(
     const provenance = store.provenance[ayqRowKey(row)];
     const resolvedKey = provenance?.counterpartyKey ?? null;
     if (resolvedKey === null) continue;
-    if (ayqCanonicalKey(store, resolvedKey) !== key) continue;
+    if (
+      ayqCanonicalKey(store, resolvedKey, provenance?.counterpartyName) !== key
+    ) {
+      continue;
+    }
 
     const date = String(row.date);
     const name = provenance?.counterpartyName ?? null;

@@ -248,8 +248,14 @@ const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
  *      starter taxonomy has been provisioned. The version 7 coverage map is
  *      carried into the new evidence with its start date left **unknown**,
  *      because unknown is what it is: version 7 never recorded one.
+ *   9  a category decision may now say it was made by AYQ's own classification
+ *      of the evidence rather than by a rule or by a person (03 §11.11). No
+ *      stored decision changes: an older store holds none of the new kind, and
+ *      a migration that went looking for transactions to file would be setting
+ *      a category, which §5.7 forbids it to do. The shape widens; the filing
+ *      happens afterwards, when the application runs.
  */
-export const AYQ_STORE_VERSION = 8;
+export const AYQ_STORE_VERSION = 9;
 
 export type AyqStore = {
   version: number;
@@ -301,6 +307,21 @@ export type AyqStore = {
    * which is not the same as one that has had it and been pruned since.
    */
   starterTaxonomyVersion: number;
+  /**
+   * Which folding rule the payees in the budget were written under, since
+   * version 9.
+   *
+   * A transaction's payee is written at import from the resolver's canonical
+   * name, so every row of one counterparty carries one name and the screens can
+   * simply show it (03 §3.13). Widening what counts as per-transaction material
+   * (§3.9) changed that name for counterparties the bank prints with a
+   * reference — and the rows already imported still carry the old one.
+   *
+   * 0 says they were written before the widening and have not been brought up
+   * to date. It is a marker rather than a scan, so a store that is already
+   * current does not pay for a pass over every transaction on every launch.
+   */
+  counterpartyFoldVersion: number;
 };
 
 /**
@@ -338,6 +359,9 @@ function empty(): AyqStore {
     // creation path provisions the taxonomy and writes the marker itself. It
     // starts at nought here because nothing has been written yet.
     starterTaxonomyVersion: 0,
+    // A fresh store has no transactions, so there is nothing written under an
+    // older rule and nothing to bring up to date.
+    counterpartyFoldVersion: AYQ_COUNTERPARTY_FOLD,
   };
 }
 
@@ -510,6 +534,24 @@ const AYQ_MIGRATIONS: readonly AyqMigration[] = [
       starterTaxonomyVersion: 0,
     }),
   },
+  {
+    to: 9,
+    what: 'a third kind of category decision',
+    // 03 §11.11 gives an automatic assignment its own provenance, so that a
+    // rule and a person can both outrank it and it can be told apart from
+    // either when the owner asks why a transaction is where it is.
+    //
+    // Nothing in an older store is touched. There were no automatic decisions
+    // to record before there was automatic filing, so the widening is the whole
+    // of the step — and §5.7 is explicit that a migration never sets a
+    // category. AYQ files what it can once the store is open, not here.
+    //
+    // The fold marker goes in at nought for the same reason: a store written
+    // before §3.9 was read properly carries payees under the old rule, and
+    // saying so is a fact about the store. Rewriting them would be resolving
+    // counterparties, which §5.7 forbids a migration to do just as firmly.
+    change: store => ({ ...store, counterpartyFoldVersion: 0 }),
+  },
 ];
 
 /**
@@ -519,6 +561,15 @@ const AYQ_MIGRATIONS: readonly AyqMigration[] = [
  * says the row came from the old coverage map rather than from a file AYQ read.
  */
 export const AYQ_LEGACY_EVIDENCE = 'legacy-v7';
+
+/**
+ * The folding rule the payees in a current budget were written under.
+ *
+ * Bump this when `ayqNormaliseKey` changes what it treats as per-transaction
+ * material, and every store written under the older rule brings its payees up
+ * to date once, on the next launch.
+ */
+export const AYQ_COUNTERPARTY_FOLD = 1;
 
 function array(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -589,6 +640,7 @@ export function ayqMigrate(raw: unknown): AyqStore {
       AyqCounterpartyNameDecision
     >,
     starterTaxonomyVersion: taxonomyVersionOf(held.starterTaxonomyVersion),
+    counterpartyFoldVersion: taxonomyVersionOf(held.counterpartyFoldVersion),
   };
 }
 

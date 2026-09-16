@@ -101,7 +101,11 @@ export async function ayqRecurring(dataDir: string): Promise<AyqRecurring[]> {
     // is one rhythm the moment a person says the two names are one shop —
     // otherwise a monthly charge looks like two coincidences.
     const key =
-      ayqCanonicalKey(store, provenance?.counterpartyKey) ?? row.payee;
+      ayqCanonicalKey(
+        store,
+        provenance?.counterpartyKey,
+        provenance?.counterpartyName,
+      ) ?? row.payee;
     if (!key) continue;
 
     const bucket = series.get(key);

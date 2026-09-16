@@ -32,7 +32,7 @@ import { ayqAliasMap } from './ayq-aliases.ts';
 import { ayqMaskIban } from './ayq-mask.ts';
 import { ayqTransactionCount } from './ayq-ledger.ts';
 import { ayqRunMatching } from './ayq-plan.ts';
-import { ayqApplyRules } from './ayq-rules.ts';
+import { ayqApplyFiling, ayqApplyRules } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import { ayqActiveAnchor, ayqReapplyAnchor } from './ayq-anchors.ts';
 import { ayqAddDays } from './ayq-dates.ts';
@@ -353,6 +353,15 @@ export async function ayqImportCamt(
 
   const { categorised } = await ayqApplyRules(dataDir);
 
+  // Then whatever the owner has no rule for yet, filed from the evidence the
+  // import just wrote (03 §11.12). It runs on every import and it runs over the
+  // counterparties AYQ has never seen before, which is the point: a statement
+  // full of new shops should not land as a queue of five hundred decisions.
+  //
+  // After the rules, never before: a rule is the owner's own generalisation and
+  // outranks this, and running this first would only make work for it to undo.
+  const { filed } = await ayqApplyFiling(dataDir);
+
   // And the expected payments meet what actually arrived (03 §7.3). Only the
   // clear ones are applied; the rest wait on the Upcoming screen. It runs here
   // because this is the moment new evidence exists — a person should not have
@@ -381,6 +390,7 @@ export async function ayqImportCamt(
     accountId,
     accountName,
     categorised,
+    filed,
     matched: matched.applied,
     matchesWaiting: matched.proposals.length,
     // Filled in below, once the anchors this file carried have been written and

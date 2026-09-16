@@ -591,6 +591,9 @@ const EN = {
   'detail.category': 'Category',
   'detail.category.none': 'Uncategorised',
   'detail.by.rule': 'by rule',
+  // 03 §11.11: an automatic filing has to be visible as one. Falling through to
+  // "nobody has decided yet" would have been a plain untruth — AYQ decided.
+  'detail.by.ayq': 'filed by AYQ',
   'detail.by.you': 'by you',
   'detail.by.nobody': 'nobody has decided yet',
   'detail.match': 'Matched to',

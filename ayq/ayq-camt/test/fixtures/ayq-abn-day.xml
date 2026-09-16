@@ -51,7 +51,7 @@
             <Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly>
           </Domn>
         </BkTxCd>
-        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM</AddtlNtryInf>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM</AddtlNtryInf>
       </Ntry>
 
       <!-- 2. ATM withdrawal. -->

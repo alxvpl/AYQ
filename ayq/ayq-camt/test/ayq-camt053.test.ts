@@ -52,7 +52,7 @@ test('a card entry keeps its description character for character', async () => {
   assert.equal(card.status, 'BOOK');
   assert.equal(
     card.additionalEntryInformation,
-    'BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM',
+    'BEA, Betaalpas   TESTMARKT 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM',
   );
   assert.equal(card.rawDescription, card.additionalEntryInformation);
 });

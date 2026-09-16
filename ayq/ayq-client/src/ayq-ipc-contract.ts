@@ -251,7 +251,7 @@ export type AyqEngineStatus = {
  * overwrite it. `rule` is a standing decision about a counterparty, and a rule
  * may revise its own earlier work. `null` means nothing has decided yet.
  */
-export type AyqCategorySource = 'manual' | 'rule' | null;
+export type AyqCategorySource = 'manual' | 'rule' | 'auto' | null;
 
 export type AyqLedgerRow = {
   id: string;
@@ -425,10 +425,24 @@ export type AyqCategorised = {
  * thing a person needs to see when a category looks wrong.
  */
 export type AyqDecision = {
-  source: 'manual' | 'rule';
+  /**
+   * Who decided, and therefore what may revise it. 03 §4.3, §11.11.
+   *
+   * `manual` is a person and is never overwritten by anything. `rule` is the
+   * owner's own standing generalisation about a counterparty. `auto` is AYQ's
+   * classification of the evidence it holds, which both of the others outrank
+   * and which may only ever revise its own earlier work.
+   */
+  source: 'manual' | 'rule' | 'auto';
   /** Empty when a person deliberately cleared the category. */
   categoryName: string;
   at: string;
+  /**
+   * For `auto`, the evidence the classification matched on, in words (§11.11).
+   * Absent on a decision of any other kind, and on `auto` decisions written
+   * before the reason was recorded.
+   */
+  because?: string;
 };
 
 /** What an expected payment this transaction was matched to is (03 §7.16). */
@@ -610,6 +624,14 @@ export type AyqImportRecord = {
   accountName: string;
   /** Categories the rules assigned during this import. */
   categorised: number;
+  /**
+   * How many this import's own classification filed (03 §11.10).
+   *
+   * Kept apart from `categorised`, which counts what the owner's own rules did.
+   * A rule is his decision; this is AYQ reading the evidence, and a screen that
+   * presented the second as the first would be overstating what he had said.
+   */
+  filed: number;
   /** Expected payments this import turned out to be, matched automatically. */
   matched: number;
   /** Matches AYQ found but is not confident enough to apply on its own. */

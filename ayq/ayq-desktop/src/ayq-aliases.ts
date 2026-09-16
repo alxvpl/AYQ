@@ -48,6 +48,7 @@ import api from '@actual-app/api';
 
 import {
   ayqCanonicalName,
+  ayqLegacyNormaliseKey,
   ayqNormaliseKey,
 } from '../../ayq-camt/src/counterparty/ayq-description.ts';
 import type { AyqAliasRecord } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -84,12 +85,49 @@ export function ayqAliasMap(store: AyqStore): Map<string, AyqAliasRecord> {
 export function ayqCanonicalKey(
   store: AyqStore,
   resolvedKey: string | null | undefined,
+  resolvedName?: string | null,
 ): string | null {
   if (!resolvedKey) return null;
-  return (
-    store.aliases.find(alias => alias.variantKey === resolvedKey)
-      ?.counterpartyKey ?? resolvedKey
+
+  const onRecorded = store.aliases.find(
+    alias => alias.variantKey === resolvedKey,
   );
+  if (onRecorded) return onRecorded.counterpartyKey;
+
+  const refolded = refold(resolvedKey, resolvedName ?? null);
+  if (refolded === resolvedKey) return resolvedKey;
+
+  const onRefolded = store.aliases.find(
+    alias => alias.variantKey === refolded,
+  );
+  return onRefolded?.counterpartyKey ?? refolded;
+}
+
+/**
+ * A key written by an earlier AYQ, read under the rule that stands today.
+ *
+ * 03 §3.9 lets the resolver ignore per-transaction material when deciding
+ * whether two records are the same counterparty, and build 005's rule only
+ * reached material at the *end* of the string: a shop whose name the bank
+ * followed with a dash and a date became a second counterparty. Widening the
+ * rule has to reach the transactions already imported, or the owner would see
+ * the split forever on everything filed before the fix.
+ *
+ * Provenance is evidence and is never rewritten (§3.8), so nothing is migrated.
+ * The stored key is folded again when it is read, exactly as an alias is
+ * applied when it is read — which is what makes this hold for transactions
+ * imported long before the rule changed.
+ *
+ * Only a key that came from a *name* may be folded again, and the test for that
+ * is exact: the old rule, applied to the name provenance kept, produces the key
+ * that was stored. A key that came from an IBAN, a mandate or anything else
+ * fails that test and is returned untouched — folding one would dissolve an
+ * identity that was never made of words.
+ */
+function refold(resolvedKey: string, resolvedName: string | null): string {
+  if (resolvedName === null) return resolvedKey;
+  if (ayqLegacyNormaliseKey(resolvedName) !== resolvedKey) return resolvedKey;
+  return ayqNormaliseKey(resolvedName) ?? resolvedKey;
 }
 
 type AyqPayeeWanted = { id: string; payeeName: string };

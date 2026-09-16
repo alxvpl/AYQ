@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An invented month, built for the two things build 006 fixes.
+
+  ## One counterparty printed two ways (03 §3.9, §3.13)
+
+  Two payments to a shop the bank names "Maas" on one line and
+  "Maas - 220722 Royal Fl" on the next, because it appended a reference to the
+  second. Build 005 read those as two counterparties and drew two names. They
+  are one, the reference is per-transaction material, and §3.9 is explicit that
+  a resolver may ignore it when deciding whether two records are the same
+  counterparty.
+
+  ## Filing without being told (03 §11.10-§11.14)
+
+  Six more entries, chosen so that every branch of the classification is
+  exercised on a real budget rather than only in a unit test:
+
+    two card payments to a supermarket   -> Groceries
+    a direct debit to a network operator -> Phone & Internet
+    the bank's own charge                -> Bank fees, from the payment class
+    a shop nothing knows about           -> stays Uncategorised
+    money coming in                      -> stays Uncategorised
+
+  The last two are the point of the file as much as the first three: §11.13
+  would rather leave a transaction unfiled than have AYQ claim to know where it
+  belongs, and a credit could be salary, a refund nobody flagged, or a friend
+  paying back dinner.
+
+  Every account, name, IBAN, terminal, amount and date here belongs to nobody.
+  The two merchant names that are real companies are here because the
+  classification is built on names of that kind and a test of it needs one; no
+  transaction below ever happened.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-2026-filing</MsgId>
+      <CreDtTm>2026-07-01T03:04:05</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL00TEST0246813579.2026-filing</Id>
+      <LglSeqNb>301</LglSeqNb>
+      <CreDtTm>2026-07-01T03:04:05</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-06-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-06-30T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL00TEST0246813579</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">1000.00</Amt><CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-06-01</Dt></Dt>
+      </Bal>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">2846.85</Amt><CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-06-30</Dt></Dt>
+      </Bal>
+
+      <!-- The same shop, named two ways. One counterparty, one display name. -->
+      <Ntry>
+        <Amt Ccy="EUR">1.85</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-04</Dt></BookgDt><ValDt><Dt>2026-06-04</Dt></ValDt>
+        <AcctSvcrRef>2026060400000301</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>ICDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <RltdPties><Cdtr><Nm>Maas</Nm></Cdtr></RltdPties>
+        </TxDtls></NtryDtls>
+        <AddtlNtryInf>SEPA Overboeking   Naam: Maas   Omschrijving: bestelling</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">2.60</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-05</Dt></BookgDt><ValDt><Dt>2026-06-05</Dt></ValDt>
+        <AcctSvcrRef>2026060500000302</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>ICDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <RltdPties><Cdtr><Nm>Maas - 220722 Royal Fl</Nm></Cdtr></RltdPties>
+        </TxDtls></NtryDtls>
+        <AddtlNtryInf>SEPA Overboeking   Naam: Maas - 220722 Royal Fl   Omschrijving: bestelling</AddtlNtryInf>
+      </Ntry>
+
+      <!-- A supermarket, twice, from two different terminals. -->
+      <Ntry>
+        <Amt Ccy="EUR">79.67</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-07</Dt></BookgDt><ValDt><Dt>2026-06-07</Dt></ValDt>
+        <AcctSvcrRef>2026060700000303</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00E101, 07.06.26/18:22   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">23.41</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-14</Dt></BookgDt><ValDt><Dt>2026-06-14</Dt></ValDt>
+        <AcctSvcrRef>2026061400000304</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 5678,PAS421 NR:00E102, 14.06.26/11:05   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+
+      <!-- A network operator, on a mandate. -->
+      <Ntry>
+        <Amt Ccy="EUR">22.80</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-10</Dt></BookgDt><ValDt><Dt>2026-06-10</Dt></ValDt>
+        <AcctSvcrRef>2026061000000305</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>RDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <RltdPties><Cdtr><Nm>Odido Netherlands B.V.</Nm></Cdtr></RltdPties>
+          <RltdAgts><CdtrAgt><FinInstnId><BIC>INGBNL2A</BIC></FinInstnId></CdtrAgt></RltdAgts>
+        </TxDtls></NtryDtls>
+        <AddtlNtryInf>SEPA Incasso algemeen doorlopend   Incassant: NL00ZZZ000000000000   Naam: Odido Netherlands B.V.   Machtiging: TEST-MANDATE-006</AddtlNtryInf>
+      </Ntry>
+
+      <!-- The bank charging for its own services: no table is consulted. -->
+      <Ntry>
+        <Amt Ccy="EUR">3.25</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-30</Dt></BookgDt><ValDt><Dt>2026-06-30</Dt></ValDt>
+        <AcctSvcrRef>2026063000000306</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>MDOP</Cd><SubFmlyCd>COMM</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>Kosten betalingsverkeer juni 2026</AddtlNtryInf>
+      </Ntry>
+
+      <!-- A shop nothing knows about. It stays unfiled, and that is correct. -->
+      <Ntry>
+        <Amt Ccy="EUR">17.40</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-18</Dt></BookgDt><ValDt><Dt>2026-06-18</Dt></ValDt>
+        <AcctSvcrRef>2026061800000307</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   ONBEKENDE WINKEL,PAS421 NR:00E103, 18.06.26/16:40   UTRECHT</AddtlNtryInf>
+      </Ntry>
+
+      <!-- Money coming in. Salary, a refund, a friend? Nothing here says. -->
+      <Ntry>
+        <Amt Ccy="EUR">1996.98</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-25</Dt></BookgDt><ValDt><Dt>2026-06-25</Dt></ValDt>
+        <AcctSvcrRef>2026062500000308</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <RltdPties><Dbtr><Nm>TESTWERKGEVER BV</Nm></Dbtr></RltdPties>
+        </TxDtls></NtryDtls>
+        <AddtlNtryInf>SEPA Overboeking   Naam: TESTWERKGEVER BV   Omschrijving: juni</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

@@ -26,7 +26,7 @@ test('a card entry yields the raw string as the name — that is the loss', () =
   const legacy = ayqToLegacyTransaction(entries[0]);
   assert.equal(
     legacy.payee_name,
-    'BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM',
+    'BEA, Betaalpas   TESTMARKT 1234,PAS421 NR:00A1B2, 31.05.26/23:10   AMSTERDAM',
   );
   assert.equal(legacy.amount, -23.45);
   assert.equal(legacy.date, '2026-05-31');

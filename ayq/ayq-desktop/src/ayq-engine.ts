@@ -79,6 +79,7 @@ import { ayqToday } from './ayq-plan-series.ts';
 import { ayqSaveSettings, ayqSettings } from './ayq-preferences.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import {
+  ayqApplyFiling,
   ayqApplyRules,
   ayqFileCounterparty,
   ayqForgetRule,
@@ -89,7 +90,12 @@ import {
   ayqRules,
 } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
-import { ayqDamagedStore, ayqReadStore, ayqWriteStore } from './ayq-store.ts';
+import {
+  AYQ_COUNTERPARTY_FOLD,
+  ayqDamagedStore,
+  ayqReadStore,
+  ayqWriteStore,
+} from './ayq-store.ts';
 
 const BUDGET_NAME = 'AYQ';
 
@@ -227,6 +233,19 @@ async function openBudgetOnce(dataDir: string): Promise<AyqOpenBudget> {
     // owner decided — a confirmed record, a manual record, a match and a
     // rejection all come through untouched.
     await ayqRetireInvalidSuggestions(dataDir);
+    // 3 §3.9 was widened in build 006, so a counterparty the bank prints with a
+    // reference folds to one key where it used to fold to several. The payees
+    // already in the budget were written under the older rule, and §3.13 wants
+    // one name per counterparty on every screen — so they are brought up to
+    // date once, here, and the marker says it has been done. A store that is
+    // already current never pays for the pass.
+    await foldCounterparties(dataDir);
+    // 11 §11.12: a store filed before automatic categorisation existed catches
+    // up here, without the owner refiling anything by hand. It is idempotent —
+    // a second launch finds nothing left to file — and it cannot reach a
+    // decision a person or a rule made, so running it on every launch costs one
+    // query on a store that is already up to date.
+    await ayqApplyFiling(dataDir);
     opened = { budgetId: existing, created: false };
     return opened;
   }
@@ -664,13 +683,14 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         result: ayqForgetRule(dataDir, request.ruleId),
       };
 
-    case 'rules.apply':
-      return {
-        id,
-        ok: true,
-        kind: 'rules.apply',
-        result: await ayqApplyRules(dataDir),
-      };
+    case 'rules.apply': {
+      // Both passes, in the order 03 §11.11 fixes: the owner's own rules first,
+      // then AYQ's reading of whatever they left. The count reported is the
+      // rules' own, so the button goes on meaning what it meant.
+      const applied = await ayqApplyRules(dataDir);
+      await ayqApplyFiling(dataDir);
+      return { id, ok: true, kind: 'rules.apply', result: applied };
+    }
 
     case 'recurring.list':
       return {
@@ -1018,3 +1038,32 @@ channel.onMessage(message => {
     channel.send(response);
   })();
 });
+
+/**
+ * Brings the budget's payees up to date with the current folding rule, once.
+ *
+ * `ayqApplyAliases` is the existing machinery for "every transaction AYQ
+ * imported carries the payee its counterparty ought to have", and it is exactly
+ * what is wanted: it reads provenance, which an alias and a fold both leave
+ * untouched, and writes only the rows whose payee disagrees. It is used rather
+ * than a second implementation so that there is one answer to what a
+ * transaction should be called and not two that can drift apart.
+ *
+ * Marked rather than scanned. A pass over every transaction on every launch is
+ * how build 003's status bar cost seventeen seconds on fifty thousand rows, and
+ * this has no more right to that than the status bar did.
+ *
+ * The marker is written only after the pass returns, so an interrupted run is
+ * finished by the next launch (03 §5.5, and the same discipline the taxonomy
+ * marker keeps).
+ */
+async function foldCounterparties(dataDir: string): Promise<void> {
+  const store = ayqReadStore(dataDir);
+  if (store.counterpartyFoldVersion >= AYQ_COUNTERPARTY_FOLD) return;
+
+  await ayqApplyAliases(dataDir);
+
+  const after = ayqReadStore(dataDir);
+  after.counterpartyFoldVersion = AYQ_COUNTERPARTY_FOLD;
+  ayqWriteStore(dataDir, after);
+}

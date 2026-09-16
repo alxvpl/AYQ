@@ -234,9 +234,9 @@ test('the imported transactions come back as ledger rows', async () => {
   assert.equal(salary?.payee, 'Testwerkgever B.V.');
 
   // The counterparty is canonical, not the terminal's variant: six Albert
-  // Heijn visits across three store numbers are one counterparty.
-  const albert = ledger.rows.filter(row => row.payee === 'Albert Heijn');
-  assert.equal(albert.length, 6, 'every store number collapsed into one name');
+  // Visits across three store numbers are one counterparty.
+  const shop = ledger.rows.filter(row => row.payee === 'Testmarkt');
+  assert.equal(shop.length, 6, 'every store number collapsed into one name');
 
   for (const row of ledger.rows) {
     assert.ok(row.payee !== null, 'every row names a counterparty');
@@ -273,7 +273,7 @@ test('the ledger can be searched and filtered', async () => {
 
   const search = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(search.total, 6, 'the counterparty, case-blind');
 
@@ -332,7 +332,7 @@ test('the totals describe the filtered set, and keep the unfiled in it', async (
 
   const narrowed = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(narrowed.total, 6);
   assert.ok(
@@ -638,14 +638,14 @@ test('a transaction explains where its name came from', async () => {
     transactionId: card.id,
   });
 
-  assert.equal(detail.row.payee, 'Albert Heijn');
+  assert.equal(detail.row.payee, 'Testmarkt');
   // The variant the terminal printed is kept, and it is not what is shown.
-  assert.match(detail.importedPayee ?? '', /ALBERT HEIJN 1234/);
+  assert.match(detail.importedPayee ?? '', /TESTMARKT 1234/);
   assert.ok(detail.importedId && detail.importedId.length > 0);
 
   const provenance = detail.provenance;
   assert.ok(provenance, 'the import remembered what Actual has no field for');
-  assert.equal(provenance.counterpartyKey, 'ALBERT HEIJN');
+  assert.equal(provenance.counterpartyKey, 'TESTMARKT');
   assert.equal(provenance.resolvedBy, 'description');
   assert.equal(provenance.kind, 'card-terminal');
   assert.equal(provenance.bankTransactionCode, 'PMNT/CCRD/POSD');
@@ -672,13 +672,13 @@ test('a category can be set, remembered, and applied to the rest', async () => {
   assert.ok(groceries, 'AYQ seeds a category a grocery shop can go in');
 
   const ledger = await ask(dataDir, { kind: 'transactions.list' });
-  const albert = ledger.rows.filter(row => row.payee === 'Albert Heijn');
-  assert.equal(albert.length, 6);
+  const shop = ledger.rows.filter(row => row.payee === 'Testmarkt');
+  assert.equal(shop.length, 6);
 
   // One decision, and the rule carries it to the other five.
   const updated = await ask(dataDir, {
     kind: 'transaction.categorise',
-    transactionId: albert[0].id,
+    transactionId: shop[0].id,
     categoryId: groceries.id,
     createRule: true,
   });
@@ -687,12 +687,12 @@ test('a category can be set, remembered, and applied to the rest', async () => {
 
   const rules = await ask(dataDir, { kind: 'rules.list' });
   assert.equal(rules.length, 1);
-  assert.equal(rules[0].counterpartyKey, 'ALBERT HEIJN');
+  assert.equal(rules[0].counterpartyKey, 'TESTMARKT');
   assert.equal(rules[0].categoryName, groceries.name);
 
   const after = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(
     after.rows.filter(row => row.categoryId === groceries.id).length,
@@ -709,7 +709,7 @@ test('a category can be set, remembered, and applied to the rest', async () => {
   // A category can be taken off again.
   const cleared = await ask(dataDir, {
     kind: 'transaction.categorise',
-    transactionId: albert[0].id,
+    transactionId: shop[0].id,
     categoryId: null,
   });
   assert.equal(cleared.row.categoryId, null);
@@ -766,7 +766,7 @@ test('the recurring view finds a rhythm and leaves coincidences out', async () =
 
   const recurring = await ask(dataDir, { kind: 'recurring.list' });
 
-  // The fixture decides this exactly: Albert Heijn six times and Testfuel
+  // The fixture decides this exactly: Testmarkt six times and Testfuel
   // four, both often enough to be a rhythm. The two coffees are twice, which
   // is a coincidence; the energy bill is once; and the salary is income, which
   // belongs in the summary rather than among the things you pay.
@@ -774,24 +774,24 @@ test('the recurring view finds a rhythm and leaves coincidences out', async () =
     recurring.map(
       entry => `${entry.name} ${entry.occurrences}× ${entry.cadence}`,
     ),
-    ['Albert Heijn 6× weekly', 'Testfuel 4× weekly'],
+    ['Testmarkt 6× weekly', 'Testfuel 4× weekly'],
   );
 
-  const [albert] = recurring;
-  assert.equal(albert.firstDate, '2026-06-02');
-  assert.equal(albert.lastDate, '2026-06-27');
+  const [shop] = recurring;
+  assert.equal(shop.firstDate, '2026-06-02');
+  assert.equal(shop.lastDate, '2026-06-27');
   assert.equal(
-    albert.nextExpectedDate,
+    shop.nextExpectedDate,
     '2026-07-02',
     'the last date plus the median gap',
   );
-  assert.equal(albert.lastAmountCents, -944);
+  assert.equal(shop.lastAmountCents, -944);
   assert.equal(
-    albert.amountVaries,
+    shop.amountVaries,
     true,
     '9.44 and 63.90 are not the same charge',
   );
-  assert.equal(albert.mandateId, null, 'a card payment carries no mandate');
+  assert.equal(shop.mandateId, null, 'a card payment carries no mandate');
 
   for (const entry of recurring) {
     assert.ok(entry.occurrences >= 3, 'twice is a coincidence');
@@ -1539,26 +1539,26 @@ test('filing one transaction offers the rest of the counterparty', async () => {
   assert.ok(groceries);
 
   const ledger = await ask(dataDir, { kind: 'transactions.list' });
-  const albert = ledger.rows.filter(row => row.payee === 'Albert Heijn');
-  assert.equal(albert.length, 6);
+  const shop = ledger.rows.filter(row => row.payee === 'Testmarkt');
+  assert.equal(shop.length, 6);
 
   // One row, by hand, with no rule: the other five stay where they were.
   const answer = await ask(dataDir, {
     kind: 'transaction.categorise',
-    transactionId: albert[0].id,
+    transactionId: shop[0].id,
     categoryId: groceries.id,
   });
 
   assert.equal(answer.row.categoryId, groceries.id);
   assert.equal(answer.row.categorySource, 'manual');
-  assert.equal(answer.counterpartyKey, 'ALBERT HEIJN');
-  assert.equal(answer.counterpartyName, 'Albert Heijn');
+  assert.equal(answer.counterpartyKey, 'TESTMARKT');
+  assert.equal(answer.counterpartyName, 'Testmarkt');
   assert.equal(answer.pendingForCounterparty, 5, 'the other five, exactly');
   assert.deepEqual(await ask(dataDir, { kind: 'rules.list' }), []);
 
   const midway = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(
     midway.rows.filter(row => row.categoryId === groceries.id).length,
@@ -1569,7 +1569,7 @@ test('filing one transaction offers the rest of the counterparty', async () => {
   // Accepting the offer files the rest and remembers the counterparty.
   const accepted = await ask(dataDir, {
     kind: 'transaction.categoriseCounterparty',
-    counterpartyKey: 'ALBERT HEIJN',
+    counterpartyKey: 'TESTMARKT',
     categoryId: groceries.id,
     createRule: true,
   });
@@ -1577,7 +1577,7 @@ test('filing one transaction offers the rest of the counterparty', async () => {
 
   const after = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(
     after.rows.filter(row => row.categoryId === groceries.id).length,
@@ -1600,7 +1600,7 @@ test('filing one transaction offers the rest of the counterparty', async () => {
   });
   assert.equal(others.total, 8);
   assert.ok(
-    others.rows.every(row => row.payee !== 'Albert Heijn'),
+    others.rows.every(row => row.payee !== 'Testmarkt'),
     'the shop that was filed is not among the unfiled',
   );
 });
@@ -1615,27 +1615,27 @@ test('a rule never overwrites a category filed by hand', async () => {
   assert.ok(groceries && shopping);
 
   const ledger = await ask(dataDir, { kind: 'transactions.list' });
-  const albert = ledger.rows.filter(row => row.payee === 'Albert Heijn');
+  const shop = ledger.rows.filter(row => row.payee === 'Testmarkt');
 
   // One visit is filed by hand somewhere else on purpose — a big shop that was
   // not groceries. Then the counterparty gets a rule for Groceries.
   await ask(dataDir, {
     kind: 'transaction.categorise',
-    transactionId: albert[0].id,
+    transactionId: shop[0].id,
     categoryId: shopping.id,
   });
   await ask(dataDir, {
     kind: 'transaction.categoriseCounterparty',
-    counterpartyKey: 'ALBERT HEIJN',
+    counterpartyKey: 'TESTMARKT',
     categoryId: groceries.id,
     createRule: true,
   });
 
   const after = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
-  const exception = after.rows.find(row => row.id === albert[0].id);
+  const exception = after.rows.find(row => row.id === shop[0].id);
   assert.equal(exception?.category, 'Shopping', 'the correction stands');
   assert.equal(exception?.categorySource, 'manual');
   assert.equal(
@@ -1648,10 +1648,10 @@ test('a rule never overwrites a category filed by hand', async () => {
   assert.equal((await ask(dataDir, { kind: 'rules.apply' })).categorised, 0);
   const later = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(
-    later.rows.find(row => row.id === albert[0].id)?.category,
+    later.rows.find(row => row.id === shop[0].id)?.category,
     'Shopping',
   );
 });
@@ -1667,13 +1667,13 @@ test('a changed rule re-files what it filed, and nothing else', async () => {
 
   await ask(dataDir, {
     kind: 'transaction.categoriseCounterparty',
-    counterpartyKey: 'ALBERT HEIJN',
+    counterpartyKey: 'TESTMARKT',
     categoryId: groceries.id,
     createRule: true,
   });
   const first = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(
     first.rows.filter(row => row.category === 'Groceries').length,
@@ -1683,7 +1683,7 @@ test('a changed rule re-files what it filed, and nothing else', async () => {
   // The person changes their mind about the whole counterparty.
   const again = await ask(dataDir, {
     kind: 'transaction.categoriseCounterparty',
-    counterpartyKey: 'ALBERT HEIJN',
+    counterpartyKey: 'TESTMARKT',
     categoryId: eatingOut.id,
     createRule: true,
   });
@@ -1691,7 +1691,7 @@ test('a changed rule re-files what it filed, and nothing else', async () => {
 
   const after = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { search: 'albert' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(
     after.rows.filter(row => row.category === 'Eating out').length,
@@ -1766,7 +1766,7 @@ test('the ledger can be narrowed to one category or one counterparty', async () 
 
   await ask(dataDir, {
     kind: 'transaction.categoriseCounterparty',
-    counterpartyKey: 'ALBERT HEIJN',
+    counterpartyKey: 'TESTMARKT',
     categoryId: groceries.id,
     createRule: true,
   });
@@ -1776,7 +1776,7 @@ test('the ledger can be narrowed to one category or one counterparty', async () 
     filter: { categoryId: groceries.id },
   });
   assert.equal(filed.total, 6);
-  assert.ok(filed.rows.every(row => row.payee === 'Albert Heijn'));
+  assert.ok(filed.rows.every(row => row.payee === 'Testmarkt'));
 
   const unfiled = await ask(dataDir, {
     kind: 'transactions.list',
@@ -1795,7 +1795,7 @@ test('the ledger can be narrowed to one category or one counterparty', async () 
   // And the two filters compose rather than fighting.
   const both = await ask(dataDir, {
     kind: 'transactions.list',
-    filter: { counterpartyKey: 'ALBERT HEIJN', categoryId: groceries.id },
+    filter: { counterpartyKey: 'TESTMARKT', categoryId: groceries.id },
   });
   assert.equal(both.total, 6);
 });
@@ -1870,8 +1870,8 @@ test('the counterparties are grouped by who they are, not by what was printed', 
   // The key is AYQ's — normalised, so six terminal strings are one shop. The
   // name is the budget's: Actual titles the payee names it is given, and what a
   // counterparty is called on screen is its business rather than AYQ's.
-  const shop = counterparty(list, 'ALBERT HEIJN');
-  assert.equal(shop.name, 'Albert Heijn');
+  const shop = counterparty(list, 'TESTMARKT');
+  assert.equal(shop.name, 'Testmarkt');
   assert.equal(shop.transactions, 6);
   assert.equal(shop.outgoingCents, 15259, "the engine's own total");
   assert.equal(shop.firstDate, '2026-06-02');
@@ -1893,7 +1893,7 @@ test('the counterparties are grouped by who they are, not by what was printed', 
     list.rows.map(row => row.key),
     [
       'TESTFUEL',
-      'ALBERT HEIJN',
+      'TESTMARKT',
       'TESTENERGIE NEDERLAND B V',
       'KOFFIEHUIS DE TEST',
       'TESTWERKGEVER B V',
@@ -1903,10 +1903,10 @@ test('the counterparties are grouped by who they are, not by what was printed', 
   // And searching narrows it, by name or by key.
   const searched = await ask(dataDir, {
     kind: 'counterparties.list',
-    filter: { search: 'heijn' },
+    filter: { search: 'testmarkt' },
   });
   assert.equal(searched.total, 1);
-  assert.equal(searched.rows[0].key, 'ALBERT HEIJN');
+  assert.equal(searched.rows[0].key, 'TESTMARKT');
 });
 
 test('a counterparty says what AYQ has seen it called', async () => {
@@ -1915,12 +1915,12 @@ test('a counterparty says what AYQ has seen it called', async () => {
 
   const detail = await ask(dataDir, {
     kind: 'counterparty.detail',
-    key: 'ALBERT HEIJN',
+    key: 'TESTMARKT',
   });
 
   assert.equal(detail.counterparty.transactions, 6);
   assert.equal(detail.variants.length, 1, 'one key, however many strings');
-  assert.equal(detail.variants[0].key, 'ALBERT HEIJN');
+  assert.equal(detail.variants[0].key, 'TESTMARKT');
   assert.equal(detail.variants[0].transactions, 6);
   assert.equal(detail.variants[0].aliased, false, 'the statement said so');
 
@@ -1928,12 +1928,12 @@ test('a counterparty says what AYQ has seen it called', async () => {
   // grouping rather than the identity itself.
   assert.deepEqual(
     [...detail.variants[0].names].sort(),
-    ['ALBERT HEIJN 1234', 'ALBERT HEIJN 5678', 'ALBERT HEIJN 9012'],
+    ['TESTMARKT 1234', 'TESTMARKT 5678', 'TESTMARKT 9012'],
   );
 
   assert.equal(detail.recent.length, 6, 'the newest transactions of this shop');
   assert.ok(
-    detail.recent.every(row => row.payee === 'Albert Heijn'),
+    detail.recent.every(row => row.payee === 'Testmarkt'),
     'the ledger rows belong to the counterparty they were asked for',
   );
 });

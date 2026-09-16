@@ -210,9 +210,11 @@ function toRow(
   row: AyqQueriedRow,
   source: AyqCategorySource,
 ): AyqLedgerRow {
+  const provenance = store.provenance[ayqRowKey(row)];
   const canonical = ayqCanonicalKey(
     store,
-    store.provenance[ayqRowKey(row)]?.counterpartyKey,
+    provenance?.counterpartyKey,
+    provenance?.counterpartyName,
   );
   return {
     id: String(row.id),
@@ -398,9 +400,11 @@ export async function ayqUnfiled(
 
     // The counterparty a person would recognise, aliases applied: two names
     // one shop was printed under are one line and one decision.
+    const provenance = store.provenance[ayqRowKey(row)];
     const key = ayqCanonicalKey(
       store,
-      store.provenance[ayqRowKey(row)]?.counterpartyKey,
+      provenance?.counterpartyKey,
+      provenance?.counterpartyName,
     );
     if (!key) continue;
 
@@ -447,6 +451,7 @@ export async function ayqLedger(
         ayqCanonicalKey(
           store,
           store.provenance[ayqRowKey(row)]?.counterpartyKey,
+          store.provenance[ayqRowKey(row)]?.counterpartyName,
         ) === filter.counterpartyKey,
     );
     matching.sort(compareRows);
@@ -589,7 +594,11 @@ export async function ayqDetail(
   // actually act on this transaction rather than one written against a variant
   // somebody has since said is the same shop.
   const counterpartyKey =
-    ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) ?? null;
+    ayqCanonicalKey(
+      store,
+      store.provenance[key]?.counterpartyKey,
+      store.provenance[key]?.counterpartyName,
+    ) ?? null;
 
   return {
     row: toRow(store, found, ayqStandingDecision(store, key)?.source ?? null),
@@ -854,7 +863,11 @@ export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
   // payee field happens to say.
   const counterparties = new Set<string>();
   for (const key of Object.keys(store.provenance)) {
-    const canonical = ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey);
+    const canonical = ayqCanonicalKey(
+      store,
+      store.provenance[key]?.counterpartyKey,
+      store.provenance[key]?.counterpartyName,
+    );
     if (canonical) counterparties.add(canonical);
   }
 
