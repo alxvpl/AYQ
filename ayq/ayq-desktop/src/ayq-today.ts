@@ -54,8 +54,12 @@ export async function ayqTodayView(
     today,
     accounts,
     lowest: forecast.lowest,
+    // Where the month ends is an absolute figure, so it goes the way every
+    // other absolute figure goes when the position is unknown (§5): away,
+    // rather than out as a number computed from a starting point AYQ has not
+    // got.
     monthEnd:
-      monthEnd === null
+      monthEnd === null || monthEnd.closingCents === null
         ? null
         : { month: monthEnd.month, closingCents: monthEnd.closingCents },
     waiting,

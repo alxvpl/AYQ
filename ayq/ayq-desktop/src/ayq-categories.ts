@@ -5,42 +5,13 @@
 // a small, practical list into Actual's own groups when it creates a budget,
 // and after that reads and writes Actual's categories like any other client.
 //
-// The seed is deliberately short. A taxonomy nobody can hold in their head is
-// a taxonomy nobody files anything into, and every one of these can be renamed
-// or added to from the interface.
+// The list AYQ provisions and the rules for provisioning it live in
+// `ayq-taxonomy.ts`; this file is the ordinary reading and writing of Actual's
+// categories that every screen goes through.
 
 import api from '@actual-app/api';
 
 import type { AyqCategory } from '../../ayq-client/src/ayq-ipc-contract.ts';
-
-/**
- * What a fresh AYQ starts with.
- *
- * Actual seeds "Food", "General", "Bills", "Bills (Flexible)" — placeholders
- * for a budget it knows nothing about. On a bank statement they answer no
- * question: "General" is where a transaction goes to be forgotten. These are
- * the categories a Dutch current account actually produces, and they are
- * replaced rather than added to, so the list stays short.
- */
-const STARTER: Array<{ group: string; names: string[] }> = [
-  {
-    group: 'Usual Expenses',
-    names: [
-      'Groceries',
-      'Eating out',
-      'Transport',
-      'Housing',
-      'Utilities',
-      'Insurance',
-      'Health',
-      'Shopping',
-      'Subscriptions',
-    ],
-  },
-];
-
-/** Actual's own placeholders, removed when AYQ seeds its own. */
-const REPLACED = new Set(['Food', 'General', 'Bills', 'Bills (Flexible)']);
 
 export async function ayqCategories(): Promise<AyqCategory[]> {
   const groups = await api.getCategoryGroups();
@@ -53,35 +24,6 @@ export async function ayqCategories(): Promise<AyqCategory[]> {
     groupName: byGroup.get(category.group_id ?? '') ?? '',
     isIncome: category.is_income === true,
   }));
-}
-
-/**
- * Puts AYQ's starting categories in place.
- *
- * Only ever called on a budget AYQ has just created, so nothing can be
- * referencing the placeholders it removes. Adding is by name: running it twice
- * changes nothing.
- */
-export async function ayqSeedCategories(): Promise<void> {
-  const groups = await api.getCategoryGroups();
-  const existing = await api.getCategories();
-  const byName = new Map(existing.map(category => [category.name, category]));
-
-  for (const { group, names } of STARTER) {
-    const target = groups.find(candidate => candidate.name === group);
-    const groupId = target ? target.id : await api.createCategoryGroup({ name: group });
-
-    for (const name of names) {
-      if (byName.has(name)) continue;
-      await api.createCategory({ name, group_id: groupId });
-    }
-  }
-
-  for (const category of existing) {
-    if (category.is_income === true) continue;
-    if (!REPLACED.has(category.name)) continue;
-    await api.deleteCategory(category.id);
-  }
 }
 
 /** A new category, in a group that already exists. */

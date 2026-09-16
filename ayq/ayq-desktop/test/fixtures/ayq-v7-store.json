@@ -1,0 +1,75 @@
+{
+  "version": 7,
+  "imports": [],
+  "rules": [
+    {
+      "id": "rule-1",
+      "counterpartyKey": "TESTMARKT",
+      "categoryName": "Groceries",
+      "createdAt": "2026-02-01T09:00:00.000Z"
+    }
+  ],
+  "provenance": {},
+  "decisions": {
+    "row-1": [
+      {
+        "source": "manual",
+        "categoryName": "Housekeeping",
+        "at": "2026-02-01T09:00:00.000Z"
+      }
+    ]
+  },
+  "aliases": [
+    {
+      "id": "alias-1",
+      "variant": "TESTMARKT 118",
+      "variantKey": "TESTMARKT 118",
+      "counterpartyKey": "TESTMARKT",
+      "counterpartyName": "TESTMARKT",
+      "createdAt": "2026-02-02T09:00:00.000Z"
+    }
+  ],
+  "planned": [
+    {
+      "id": "plan-1",
+      "name": "Invented rent",
+      "kind": "expense",
+      "amountCents": 120000,
+      "categoryName": "Housing",
+      "counterpartyKey": null,
+      "accountId": null,
+      "startDate": "2026-03-01",
+      "recurrence": { "frequency": "monthly", "interval": 1 },
+      "endDate": null,
+      "state": "confirmed",
+      "provenance": "manual",
+      "mandateId": null,
+      "confirmedAt": "2026-02-10",
+      "suggestedAt": null,
+      "createdAt": "2026-02-10T08:00:00.000Z",
+      "updatedAt": "2026-02-10T08:00:00.000Z"
+    }
+  ],
+  "occurrences": [
+    {
+      "recordId": "plan-1",
+      "dueDate": "2026-03-01",
+      "rescheduledTo": null,
+      "matchedTransactionId": "row-9",
+      "matchedAt": "2026-03-02T08:00:00.000Z",
+      "matchProvenance": "manual",
+      "dismissed": false,
+      "rejected": ["row-8"]
+    }
+  ],
+  "accountFlags": { "acc-1": { "countsTowardFunds": true } },
+  "settings": { "ground": "system" },
+  "coverage": {
+    "acc-1": {
+      "toDate": "2026-02-28",
+      "closingBalanceCents": 174131,
+      "file": "invented-february.xml",
+      "readAt": "2026-02-28T10:00:00.000Z"
+    }
+  }
+}

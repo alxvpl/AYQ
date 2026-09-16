@@ -28,8 +28,17 @@ export type AyqForecastInput = {
   today: string;
   /** The end of the horizon, inclusive. */
   horizon: string;
-  /** Only the accounts flagged as counting (03 §7.6). */
-  availableFundsCents: number;
+  /**
+   * Only the accounts flagged as counting (03 §7.6) — or null (§5).
+   *
+   * Null when any counted account's balance is unknown. The forecast still
+   * computes everything that does not rest on an absolute starting position:
+   * which occurrences are expected, what they come to, what each month is
+   * expected to take in and pay out. What it must not do is project a balance
+   * forward from a starting point it does not have, so every absolute figure
+   * below comes back null instead.
+   */
+  availableFundsCents: number | null;
   /** Everything the records fall on, arrears included (03 §7.13). */
   occurrences: AyqPlanOccurrence[];
   /** What each category is planned to take, month by month. */
@@ -188,14 +197,24 @@ export function ayqComputeForecast(input: AyqForecastInput): AyqForecast {
     return left.label < right.label ? -1 : 1;
   });
 
-  let running = availableFundsCents;
-  let lowest = { date: today, balanceCents: availableFundsCents };
+  // The position, only where there is a position to project. With available
+  // funds unknown, every running balance below stays null: a "lowest balance"
+  // computed from a starting point AYQ does not have is a number that looks
+  // like an answer and is not one, and §5 is explicit that no such figure may
+  // be shown.
+  const known = availableFundsCents !== null;
+  let running: number | null = availableFundsCents;
+  let lowest: { date: string; balanceCents: number } | null = known
+    ? { date: today, balanceCents: availableFundsCents as number }
+    : null;
   const dated: AyqForecastEvent[] = [];
 
   for (const event of events) {
-    running += event.kind === 'income' ? event.amountCents : -event.amountCents;
+    if (running !== null) {
+      running += event.kind === 'income' ? event.amountCents : -event.amountCents;
+    }
     dated.push({ ...event, balanceCents: running });
-    if (running < lowest.balanceCents) {
+    if (running !== null && lowest !== null && running < lowest.balanceCents) {
       lowest = { date: event.date, balanceCents: running };
     }
   }
@@ -209,6 +228,8 @@ export function ayqComputeForecast(input: AyqForecastInput): AyqForecast {
       closingCents: availableFundsCents,
     });
   }
+  // What each month is expected to take in and pay out is a relative fact and
+  // survives an unknown position; where the month *closes* does not.
   for (const event of dated) {
     const month = byMonth.get(ayqMonthOf(event.date));
     if (month === undefined) continue;

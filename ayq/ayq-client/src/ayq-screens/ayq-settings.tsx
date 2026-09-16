@@ -1,21 +1,31 @@
 // Settings.
 //
-// Four surfaces, and each owns its question outright: which accounts count
+// Five surfaces, and each owns its question outright: which accounts count
 // toward available funds (03 §7.6), the categories (the only place they are
 // created, renamed, grouped or archived), the rules that will act from now on
-// (04 A7), and the ground the window is drawn in (A23).
+// (04 A7), the ground the window is drawn in (A23), and which build this is
+// (12 §12).
 //
-// All four are built.
+// About is a tab here and nowhere else. It is not a rail destination, and the
+// version and build number it carries appear on no other screen — a product
+// that stamps its build number across its own chrome is a product that thinks
+// its build number is a feature.
 
 import type { ReactNode } from 'react';
 
 import { type AyqStringKey } from '../ayq-strings.ts';
+import { AyqAboutScreen } from './ayq-about.tsx';
 import { AyqAppearanceScreen } from './ayq-appearance.tsx';
 import { AyqSettingsAccounts } from './ayq-settings-accounts.tsx';
 import { AyqSettingsCategories } from './ayq-settings-categories.tsx';
 import { AyqSettingsRules } from './ayq-settings-rules.tsx';
 
-export type AyqSettingsTab = 'accounts' | 'categories' | 'rules' | 'appearance';
+export type AyqSettingsTab =
+  | 'accounts'
+  | 'categories'
+  | 'rules'
+  | 'appearance'
+  | 'about';
 
 export const AYQ_SETTINGS_TABS: readonly {
   id: AyqSettingsTab;
@@ -25,6 +35,7 @@ export const AYQ_SETTINGS_TABS: readonly {
   { id: 'categories', key: 'settings.tab.categories' },
   { id: 'rules', key: 'settings.tab.rules' },
   { id: 'appearance', key: 'settings.tab.appearance' },
+  { id: 'about', key: 'settings.tab.about' },
 ];
 
 export function AyqSettingsScreen({
@@ -39,6 +50,8 @@ export function AyqSettingsScreen({
   onOpenAccounts(): void;
 }): ReactNode {
   if (tab === 'appearance') return <AyqAppearanceScreen />;
+
+  if (tab === 'about') return <AyqAboutScreen onFailure={onFailure} />;
 
   if (tab === 'accounts') {
     return (

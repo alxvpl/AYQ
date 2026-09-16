@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Every case 9 §9.1 turns on, in one invented statement.
+
+  The strict rule lets exactly two of these through: the 9.99 monthly
+  subscription and the 4.99 one. What it must keep out is the supermarket whose
+  visits are regular and whose totals are not, the fuel bought at the same round
+  amount on no rhythm, the energy bill that is one cent apart three months
+  running, the water mandate that collects whenever the meter is read, and the
+  one-off purchases that happen to share a counterparty with a subscription.
+
+  Nine months, opened and closed by the bank's own arithmetic, so the account
+  also has a balance AYQ is entitled to state.
+
+  The IBAN is a test number. The creditors do not exist, the mandates are
+  invented, and no real statement is anywhere near this file.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>camt053-strict-series</MsgId>
+      <CreDtTm>2026-10-01T03:04:05</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>NL02TEST0123456789.2026-series</Id>
+      <LglSeqNb>200</LglSeqNb>
+      <CreDtTm>2026-10-01T03:04:05</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-01-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-09-30T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL02TEST0123456789</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Ownr><Nm>J. TESTPERSOON</Nm></Ownr>
+        <Svcr><FinInstnId><BIC>ABNANL2A</BIC></FinInstnId></Svcr>
+      </Acct>
+
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">2000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-01-01</Dt></Dt>
+      </Bal>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">884.83</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-09-30</Dt></Dt>
+      </Bal>
+
+      <Ntry>
+        <Amt Ccy="EUR">60.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-01-05</Dt></BookgDt><ValDt><Dt>2026-01-05</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000009</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000009</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTFUEL B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTFUEL B.V. BRANDSTOF</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">42.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-01-10</Dt></BookgDt><ValDt><Dt>2026-01-10</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000016</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000016</EndToEndId><MndtId>NL99ZZZ000000000099</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTWATER N.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTWATER N.V. WATER</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">60.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-02-06</Dt></BookgDt><ValDt><Dt>2026-02-06</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000010</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000010</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTFUEL B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTFUEL B.V. BRANDSTOF</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">61.90</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-01</Dt></BookgDt><ValDt><Dt>2026-03-01</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000013</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000013</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTENERGIE NEDERLAND B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTENERGIE NEDERLAND B.V. ENERGIE</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">42.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-22</Dt></BookgDt><ValDt><Dt>2026-03-22</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000017</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000017</EndToEndId><MndtId>NL99ZZZ000000000099</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTWATER N.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTWATER N.V. WATER</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">61.91</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-04-01</Dt></BookgDt><ValDt><Dt>2026-04-01</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000014</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000014</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTENERGIE NEDERLAND B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTENERGIE NEDERLAND B.V. ENERGIE</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">47.31</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-04-02</Dt></BookgDt><ValDt><Dt>2026-04-02</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000005</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1234,PAS100 NR:00B005, 02.04.26/17:41   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">42.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-04-02</Dt></BookgDt><ValDt><Dt>2026-04-02</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000018</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000018</EndToEndId><MndtId>NL99ZZZ000000000099</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTWATER N.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTWATER N.V. WATER</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">9.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-04-04</Dt></BookgDt><ValDt><Dt>2026-04-04</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000001</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000001</EndToEndId><MndtId>NL11ZZZ000000000011</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTSTREAM B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTSTREAM B.V. ABONNEMENT</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">4.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-04-10</Dt></BookgDt><ValDt><Dt>2026-04-10</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000020</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000020</EndToEndId><MndtId>NL22ZZZ000000000022</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTCLOUD B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTCLOUD B.V. OPSLAG</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-04-19</Dt></BookgDt><ValDt><Dt>2026-04-19</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000023</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000023</EndToEndId><MndtId>NL22ZZZ000000000022</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTCLOUD B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTCLOUD B.V. EENMALIG</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">61.90</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-05-01</Dt></BookgDt><ValDt><Dt>2026-05-01</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000015</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000015</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTENERGIE NEDERLAND B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTENERGIE NEDERLAND B.V. ENERGIE</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">52.08</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-05-02</Dt></BookgDt><ValDt><Dt>2026-05-02</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000006</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1234,PAS100 NR:00B006, 02.05.26/17:41   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">9.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-05-04</Dt></BookgDt><ValDt><Dt>2026-05-04</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000002</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000002</EndToEndId><MndtId>NL11ZZZ000000000011</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTSTREAM B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTSTREAM B.V. ABONNEMENT</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">4.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-05-10</Dt></BookgDt><ValDt><Dt>2026-05-10</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000021</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000021</EndToEndId><MndtId>NL22ZZZ000000000022</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTCLOUD B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTCLOUD B.V. OPSLAG</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">60.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-05-15</Dt></BookgDt><ValDt><Dt>2026-05-15</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000011</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000011</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTFUEL B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTFUEL B.V. BRANDSTOF</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-05-27</Dt></BookgDt><ValDt><Dt>2026-05-27</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000024</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000024</EndToEndId><MndtId>NL22ZZZ000000000022</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTCLOUD B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTCLOUD B.V. EENMALIG</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">38.94</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-02</Dt></BookgDt><ValDt><Dt>2026-06-02</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000007</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1234,PAS100 NR:00B007, 02.06.26/17:41   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">9.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-04</Dt></BookgDt><ValDt><Dt>2026-06-04</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000003</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000003</EndToEndId><MndtId>NL11ZZZ000000000011</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTSTREAM B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTSTREAM B.V. ABONNEMENT</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">4.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-10</Dt></BookgDt><ValDt><Dt>2026-06-10</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000022</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000022</EndToEndId><MndtId>NL22ZZZ000000000022</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTCLOUD B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTCLOUD B.V. OPSLAG</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">60.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-14</Dt></BookgDt><ValDt><Dt>2026-06-14</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000012</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000012</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTFUEL B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTFUEL B.V. BRANDSTOF</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">61.20</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-07-02</Dt></BookgDt><ValDt><Dt>2026-07-02</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000008</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTMARKT 1234,PAS100 NR:00B008, 02.07.26/17:41   AMSTERDAM</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">9.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-07-04</Dt></BookgDt><ValDt><Dt>2026-07-04</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000004</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000004</EndToEndId><MndtId>NL11ZZZ000000000011</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTSTREAM B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTSTREAM B.V. ABONNEMENT</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">42.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-09-30</Dt></BookgDt><ValDt><Dt>2026-09-30</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000019</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000019</EndToEndId><MndtId>NL99ZZZ000000000099</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTWATER N.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTWATER N.V. WATER</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-09-30</Dt></BookgDt><ValDt><Dt>2026-09-30</Dt></ValDt>
+        <AcctSvcrRef>SERIES0000000025</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>E2E-SERIES0000000025</EndToEndId><MndtId>NL22ZZZ000000000022</MndtId></Refs>
+          <RltdPties><Cdtr><Nm>TESTCLOUD B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTCLOUD B.V. EENMALIG</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

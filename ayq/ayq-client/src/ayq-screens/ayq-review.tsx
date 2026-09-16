@@ -14,7 +14,7 @@
 // statement about every one that arrives from now on (03 §4.1). AYQ will not
 // make the second from the first, and the screen says which is which.
 
-import { Select, makeStyles } from '@fluentui/react-components';
+import { Input, Select, makeStyles } from '@fluentui/react-components';
 import {
   useCallback,
   useEffect,
@@ -52,6 +52,12 @@ const useStyles = makeStyles({
     padding: `13px ${AYQ_METRIC.space.screen}px`,
   },
   note: { margin: '0', color: 'var(--ayq-ink-quiet)' },
+  rename: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: `${AYQ_METRIC.space.small}px`,
+    flexWrap: 'wrap',
+  },
   quiet: { color: 'var(--ayq-ink-faint)' },
   label: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)' },
   group: {
@@ -254,6 +260,8 @@ function AyqReviewPane({
 }): ReactNode {
   const styles = useStyles();
   const [categoryId, setCategoryId] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [typedName, setTypedName] = useState('');
 
   if (detail === null) {
     return (
@@ -324,10 +332,82 @@ function AyqReviewPane({
     });
   };
 
+  /**
+   * What the owner calls this counterparty (8 §8.3).
+   *
+   * A name, and only a name: the canonical key does not move, the category rule
+   * stays keyed to it, the transactions are not rewritten, and the string the
+   * bank printed stays in the transaction detail as the evidence it is. A later
+   * import cannot undo it, because it is not stored in the budget at all.
+   */
+  const rename = (displayName: string): void => {
+    void (async () => {
+      const answer = await ayqAsk({
+        kind: 'counterparty.setName',
+        counterpartyKey: counterparty.key,
+        displayName,
+      });
+      if (!answer.ok) throw new Error(answer.message);
+      if (answer.kind !== 'counterparty.setName') return;
+      onOutcome(
+        displayName.trim() === ''
+          ? ayqText('review.renamed.cleared')
+          : ayqText('review.renamed', { name: answer.result.counterparty.name }),
+      );
+      onChanged();
+    })().catch((error: unknown) => {
+      onFailure(error instanceof Error ? error.message : String(error));
+    });
+  };
+
   return (
     <AyqPane mark="review-detail" title={counterparty.name}>
       <div className={styles.body} data-ayq-counterparty={counterparty.key}>
         <div className={styles.group}>
+          {/* The owner's own name for this counterparty. Beside the figures
+              because it is a fact about who this is, not an action buried in a
+              menu. */}
+          {renaming ? (
+            <span className={styles.rename}>
+              <Input
+                size="small"
+                appearance="underline"
+                aria-label={ayqText('review.rename')}
+                data-ayq-rename-input=""
+                value={typedName}
+                onChange={(_event, data) => setTypedName(data.value)}
+              />
+              <AyqButton
+                size="small"
+                mark="review-rename-save"
+                onClick={() => {
+                  setRenaming(false);
+                  rename(typedName);
+                }}
+              >
+                {ayqText('review.rename.save')}
+              </AyqButton>
+              <AyqButton
+                size="small"
+                mark="review-rename-cancel"
+                onClick={() => setRenaming(false)}
+              >
+                {ayqText('review.rename.cancel')}
+              </AyqButton>
+              <span className={styles.quiet}>{ayqText('review.rename.note')}</span>
+            </span>
+          ) : (
+            <AyqButton
+              size="small"
+              mark="review-rename"
+              onClick={() => {
+                setTypedName(counterparty.name);
+                setRenaming(true);
+              }}
+            >
+              {ayqText('review.rename')}
+            </AyqButton>
+          )}
           <AyqFigure cents={-counterparty.outgoingCents} size="large" />
           <span className={styles.quiet}>
             {ayqText('review.seen', {

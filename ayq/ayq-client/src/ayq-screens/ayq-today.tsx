@@ -63,8 +63,35 @@ const useStyles = makeStyles({
     alignItems: 'baseline',
     gap: `${AYQ_METRIC.space.screen}px`,
     padding: '4px 0',
+    // A row that opens something is a control, and is built as one so that a
+    // keyboard reaches it. It keeps the look of a line of text.
+    width: '100%',
+    textAlign: 'left',
+    backgroundColor: 'transparent',
+    borderTopStyle: 'none',
+    borderRightStyle: 'none',
+    borderBottomStyle: 'none',
+    borderLeftStyle: 'none',
+    fontFamily: 'inherit',
+    fontSize: 'inherit',
+    color: 'inherit',
+    cursor: 'pointer',
+    ':hover': { backgroundColor: 'var(--ayq-ground)' },
   },
+  accountLines: { flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '1px' },
   accountName: { flexGrow: 1 },
+  accountRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' },
+  facts: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: `${AYQ_METRIC.space.medium}px`,
+    color: 'var(--ayq-ink-faint)',
+    fontSize: 'var(--ayq-size-small)',
+  },
+  wanted: {
+    color: 'var(--ayq-ink-quiet)',
+    fontSize: 'var(--ayq-size-small)',
+  },
   uncounted: { color: 'var(--ayq-ink-faint)' },
   total: {
     ...ayqBorderTop('var(--ayq-line)'),
@@ -127,10 +154,13 @@ function Waiting({
 export function AyqTodayScreen({
   onFailure,
   onOpen,
+  onOpenAccount,
   round,
 }: {
   onFailure(message: string): void;
   onOpen(destination: AyqDestination): void;
+  /** Opens one account's own detail — a secondary surface, not a workspace. */
+  onOpenAccount(accountId: string): void;
   round: number;
 }): ReactNode {
   const styles = useStyles();
@@ -179,7 +209,16 @@ export function AyqTodayScreen({
         <div className={styles.headline} data-ayq-today="">
           <div className={styles.funds}>
             <span className={styles.label}>{ayqText('today.funds')}</span>
-            <span data-ayq-available-funds={String(accounts.availableFundsCents)}>
+            {/* Still first and still largest — and when it is unknown, the
+                word Unknown occupies that position rather than a number that
+                would be acted on (§5). */}
+            <span
+              data-ayq-available-funds={
+                accounts.availableFundsCents === null
+                  ? 'unknown'
+                  : String(accounts.availableFundsCents)
+              }
+            >
               <AyqFigure
                 cents={accounts.availableFundsCents}
                 size="headline"
@@ -187,16 +226,24 @@ export function AyqTodayScreen({
               />
             </span>
             <span className={styles.label}>
-              {ayqText('today.funds.counted', {
-                counted: ayqCount(counted.length),
-                total: ayqCount(accounts.accounts.length),
-              })}
+              {accounts.availableFundsCents === null
+                ? ayqText('today.funds.unknown')
+                : ayqText('today.funds.counted', {
+                    counted: ayqCount(counted.length),
+                    total: ayqCount(accounts.accounts.length),
+                  })}
             </span>
           </div>
 
           <div className={styles.strip}>
+            {/* 7 §7.2: for every account, its name, its balance or Unknown,
+                when an import last succeeded, how far the bank's own data
+                reaches, whether AYQ agrees with the bank where there is a bank
+                figure to agree with, and the way to fix a missing balance.
+                Clicking it opens the account's own detail. */}
             {accounts.accounts.map(account => (
-              <div
+              <button
+                type="button"
                 key={account.id}
                 className={
                   account.countsTowardFunds
@@ -204,10 +251,52 @@ export function AyqTodayScreen({
                     : `${styles.account} ${styles.uncounted}`
                 }
                 data-ayq-today-account={account.id}
+                data-ayq-account-balance={
+                  account.balanceCents === null
+                    ? 'unknown'
+                    : String(account.balanceCents)
+                }
+                onClick={() => onOpenAccount(account.id)}
               >
-                <span className={styles.accountName}>{account.name}</span>
-                <AyqFigure cents={account.balanceCents} />
-              </div>
+                <span className={styles.accountLines}>
+                  <span className={styles.accountName}>{account.name}</span>
+                  <span className={styles.facts}>
+                    <span data-ayq-last-import={account.lastImportAt ?? ''}>
+                      {account.lastImportAt === null
+                        ? ayqText('today.account.lastImport.never')
+                        : ayqText('today.account.lastImport', {
+                            when: ayqDate(account.lastImportAt.slice(0, 10)),
+                          })}
+                    </span>
+                    <span data-ayq-bank-through={account.bankDataThrough ?? ''}>
+                      {account.bankDataThrough === null
+                        ? ayqText('today.account.bankThrough.none')
+                        : ayqText('today.account.bankThrough', {
+                            date: ayqDate(account.bankDataThrough),
+                          })}
+                    </span>
+                    {account.reconciliation === null ? null : (
+                      <span data-ayq-agrees={String(account.reconciliation.agrees)}>
+                        {account.reconciliation.agrees
+                          ? ayqText('today.account.agrees')
+                          : ayqText('today.account.differs', {
+                              amount: ayqMoney(
+                                account.reconciliation.differenceCents,
+                              ),
+                            })}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <span className={styles.accountRight}>
+                  <AyqFigure cents={account.balanceCents} />
+                  {account.balanceCents === null ? (
+                    <span className={styles.wanted}>
+                      {ayqText('today.account.setBalance')}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
             ))}
             <div className={`${styles.account} ${styles.total}`}>
               <span className={styles.accountName}>
@@ -253,7 +342,11 @@ export function AyqTodayScreen({
         }
       >
         <div className={styles.body}>
-          {today.lowest === null ? (
+          {accounts.availableFundsCents === null ? (
+            <p className={styles.note} data-ayq-no-position="">
+              {ayqText('today.noPosition')}
+            </p>
+          ) : today.lowest === null ? (
             <p className={styles.note}>{ayqText('today.noForecast')}</p>
           ) : (
             <>

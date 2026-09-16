@@ -10,8 +10,15 @@ import { fileURLToPath } from 'node:url';
 
 import { build } from 'esbuild';
 
+import { ayqBuildInfo } from './ayq-build-info.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, 'dist');
+
+// 12 §12.2: the real revision, the real build date, the real version. Baked in
+// as a constant so the packaged application carries it inside its asar rather
+// than depending on a file that can be left behind.
+const buildInfo = ayqBuildInfo();
 
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
@@ -22,6 +29,7 @@ const shared = {
   target: 'node22',
   sourcemap: true,
   logLevel: 'info',
+  define: { __AYQ_BUILD__: JSON.stringify(buildInfo) },
 };
 
 await build({
@@ -64,4 +72,8 @@ await cp(join(here, '../ayq-client/dist'), join(out, 'client'), {
   recursive: true,
 });
 
-process.stdout.write('ayq-desktop: dist/ built\n');
+process.stdout.write(
+  `ayq-desktop: dist/ built — ${buildInfo.productVersion} build ` +
+    `${buildInfo.buildNumber}, ${buildInfo.revision ?? 'no revision'}, ` +
+    `${buildInfo.buildDate}\n`,
+);

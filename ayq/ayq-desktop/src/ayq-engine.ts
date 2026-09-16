@@ -15,6 +15,7 @@ import api from '@actual-app/api';
 
 import type {
   AyqEngineStatus,
+  AyqAbout,
   AyqRequest,
   AyqResponse,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -39,8 +40,11 @@ import {
   ayqCategories,
   ayqCreateCategory,
   ayqRenameCategory,
-  ayqSeedCategories,
 } from './ayq-categories.ts';
+import { ayqProvisionTaxonomy } from './ayq-taxonomy.ts';
+import { ayqAbout, ayqRepositoryUrl } from './ayq-about.ts';
+import { ayqApplyAnchor, ayqRecordAnchor } from './ayq-anchors.ts';
+import { ayqSetDisplayName } from './ayq-names.ts';
 import {
   ayqCounterparties,
   ayqCounterpartyDetail,
@@ -63,6 +67,8 @@ import {
   ayqRemovePlan,
   ayqReschedule,
   ayqPlanSheet,
+  ayqRetireInvalidSuggestions,
+  ayqUsePlanSuggestions,
   ayqRunMatching,
   ayqSavePlan,
   ayqSetPlanState,
@@ -211,6 +217,16 @@ async function openBudgetOnce(dataDir: string): Promise<AyqOpenBudget> {
     // nothing to lose by moving it: AYQ has never set a budgeted amount, and
     // envelope arithmetic is what 01 §4 and 04 A8 say AYQ does not do.
     await ayqEnsureTrackingBudget(sendToEngine);
+    // 11 §11.3: one-time and strictly additive on a budget that already exists.
+    // It runs on every launch and does nothing at all from the second one
+    // onward, because the marker in the store says it has been done.
+    await ayqProvisionTaxonomy(dataDir, { fresh: false });
+    // 9 §9.2: offers a previous AYQ made under the looser rule are reconsidered
+    // against the strict one, once, on the way in. It costs a query only when
+    // there are outstanding offers to reconsider, and it touches nothing the
+    // owner decided — a confirmed record, a manual record, a match and a
+    // rejection all come through untouched.
+    await ayqRetireInvalidSuggestions(dataDir);
     opened = { budgetId: existing, created: false };
     return opened;
   }
@@ -235,8 +251,8 @@ async function openBudgetOnce(dataDir: string): Promise<AyqOpenBudget> {
   await api.loadBudget(created);
   await ayqEnsureTrackingBudget(sendToEngine);
   // Only ever on a budget just created, so nothing can be referencing the
-  // placeholders it replaces.
-  await ayqSeedCategories();
+  // placeholders it replaces (11 §11.2).
+  await ayqProvisionTaxonomy(dataDir, { fresh: true });
   opened = { budgetId: created, created: true };
   return opened;
 }
@@ -258,6 +274,37 @@ async function status(dataDir: string): Promise<AyqEngineStatus> {
 }
 
 /** Read from the installed package rather than hard-coded, so it cannot drift. */
+/**
+ * This build, as the About tab shows it.
+ *
+ * The engine answers it because it is the side that knows which
+ * `@actual-app/api` actually loaded, and because the copy text's privacy
+ * contract (12 §12.4) is the engine's to keep.
+ */
+function aboutThisBuild(): AyqAbout {
+  return ayqAbout({
+    engineVersion: apiVersion(),
+    electronVersion: process.versions.electron ?? null,
+    nodeVersion: process.versions.node,
+    repositoryUrl: manifestRepository(),
+  });
+}
+
+/** The repository the manifest declares, wherever the manifest ended up. */
+function manifestRepository(): string | null {
+  for (const candidate of ['../package.json', '../../package.json']) {
+    try {
+      const found = ayqRepositoryUrl(
+        fileURLToPath(new URL(candidate, import.meta.url)),
+      );
+      if (found !== null) return found;
+    } catch {
+      // Try the next location.
+    }
+  }
+  return null;
+}
+
 function apiVersion(): string {
   for (const candidate of [
     '../node_modules/@actual-app/api/package.json',
@@ -360,6 +407,13 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
     };
   }
 
+  // What this build is, answered without opening a budget: it is a fact about
+  // the application and not about anybody's money, which is also why nothing in
+  // it can carry any (12 §12.4).
+  if (request.kind === 'about') {
+    return { id, ok: true, kind: 'about', result: aboutThisBuild() };
+  }
+
   const budget = await openBudget(dataDir);
 
   switch (request.kind) {
@@ -398,6 +452,62 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'accounts.setFlag',
         result: await ayqAccounts(dataDir),
+      };
+
+    case 'accounts.setBalance':
+    case 'accounts.reanchor': {
+      // One implementation, because they are one act: the owner stating what an
+      // account holds on a named day. They are two request kinds because they
+      // are reached from two places and mean two different things to the person
+      // — the first is answering a question the import asked, the second is
+      // correcting an answer already given — and an import record that could
+      // not tell them apart would lose that.
+      const anchor = ayqRecordAnchor(dataDir, {
+        accountId: request.accountId,
+        amountCents: request.amountCents,
+        coverageDate: request.coverageDate,
+        importId:
+          request.kind === 'accounts.setBalance'
+            ? (request.importId ?? null)
+            : null,
+        source: 'manual',
+      });
+      await ayqApplyAnchor(anchor);
+      return {
+        id,
+        ok: true,
+        kind: request.kind,
+        result: await ayqAccountsView(dataDir),
+      };
+    }
+
+    case 'counterparty.setName':
+      ayqSetDisplayName(dataDir, request.counterpartyKey, request.displayName);
+      return {
+        id,
+        ok: true,
+        kind: 'counterparty.setName',
+        result: await ayqCounterpartyDetail(dataDir, request.counterpartyKey),
+      };
+
+    case 'plan.useSuggestion':
+      return {
+        id,
+        ok: true,
+        kind: 'plan.useSuggestion',
+        result: await ayqUsePlanSuggestions(dataDir, request.month, {
+          categoryId: request.categoryId,
+        }),
+      };
+
+    case 'plan.useAllSuggestions':
+      return {
+        id,
+        ok: true,
+        kind: 'plan.useAllSuggestions',
+        result: await ayqUsePlanSuggestions(dataDir, request.month, {
+          all: true,
+        }),
       };
 
     case 'transactions.list':

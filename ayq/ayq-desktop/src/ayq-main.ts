@@ -411,6 +411,40 @@ async function openDestination(
 }
 
 /**
+ * Opens the account detail the way Today opens it (7 §7.1, §7.3).
+ *
+ * There is no rail tab for it any more. Today's own control is the route, and
+ * using it here means the acceptance run exercises the route a person has
+ * rather than one kept alive for the test.
+ */
+async function openAccountDetail(window: BrowserWindow): Promise<boolean> {
+  if (!(await openDestination(window, 'today'))) return false;
+
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const pressed = await window.webContents.executeJavaScript(
+      `(() => {
+        const open = document.querySelector('[data-ayq-action="today-accounts"]');
+        if (!open) return false;
+        open.click();
+        return true;
+      })()`,
+    );
+    if (pressed === true) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  while (Date.now() < deadline) {
+    const there = await window.webContents.executeJavaScript(
+      "!!document.querySelector('[data-ayq-screen=\"accounts\"]')",
+    );
+    if (there === true) return true;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  return false;
+}
+
+/**
  * Opens the Register and waits for it to have drawn.
  *
  * Every read of the ledger below goes through here: the ledger is one screen
@@ -1234,8 +1268,11 @@ async function accountsShown(
   window: BrowserWindow,
   expect: string,
 ): Promise<string> {
-  if (!(await openDestination(window, 'accounts'))) {
-    return 'the Accounts destination never opened';
+  // 7 §7.1 takes Accounts off the rail, so this goes the way a person now
+  // goes: Today, and the control beside the coverage line. A check that still
+  // clicked a rail tab would fail for the right reason and say the wrong thing.
+  if (!(await openAccountDetail(window))) {
+    return 'the account detail never opened from Today';
   }
 
   const drawn = async (): Promise<boolean> =>
@@ -1339,6 +1376,394 @@ async function accountsShown(
   }
 
   return `--accounts was given ${expect}, which is not a case`;
+}
+
+
+/**
+ * Unknown is a state, and a balance the owner states is exact (§4.1, §4.4, §5).
+ *
+ * The whole of the highest-priority change in build 005, driven on the drawn
+ * window rather than through the engine: a statement with no bank balance in it
+ * leaves Today saying Unknown where the biggest figure on the screen goes, the
+ * account offers the way out of it, and the balance typed into that form is the
+ * balance the account has afterwards — to the cent, on the day it was stated
+ * for, with nothing added to the ledger to make it so.
+ */
+async function balanceShown(window: BrowserWindow): Promise<string> {
+  if (!(await openDestination(window, 'today'))) {
+    return 'Today never opened';
+  }
+
+  const read = async (): Promise<{
+    funds: string | null;
+    account: string | null;
+    accountId: string | null;
+    offered: boolean;
+    position: boolean;
+  }> =>
+    JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const funds = document.querySelector('[data-ayq-available-funds]');
+          const account = document.querySelector('[data-ayq-today-account]');
+          return JSON.stringify({
+            funds: funds ? funds.dataset.ayqAvailableFunds : null,
+            account: account ? account.dataset.ayqAccountBalance : null,
+            accountId: account ? account.dataset.ayqTodayAccount : null,
+            offered: !!(account && /Set account balance/i.test(account.innerText)),
+            position: !!document.querySelector('[data-ayq-no-position]'),
+          });
+        })()`),
+      ),
+    );
+
+  const deadline = Date.now() + 60_000;
+  let seen = await read();
+  while (Date.now() < deadline && seen.account === null) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    seen = await read();
+  }
+
+  if (seen.account === null) return 'Today drew no account at all';
+  if (seen.account !== 'unknown') {
+    return `the account with no bank balance reads ${seen.account} rather than Unknown`;
+  }
+  if (seen.funds !== 'unknown') {
+    return `available funds read ${seen.funds} where no balance is known`;
+  }
+  if (!seen.offered) return 'no way to set the balance is offered';
+  if (!seen.position) return 'the screen projects a position it cannot have';
+
+  // §6: the two freshness facts, separately. A file with no closing balance in
+  // it still proved a month of movements, so "bank data through" has to have
+  // advanced — which is the whole of what version 7 could not do — and it is a
+  // different date from when the import happened.
+  const freshness = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const account = document.querySelector('[data-ayq-today-account]');
+        const imported = account.querySelector('[data-ayq-last-import]');
+        const through = account.querySelector('[data-ayq-bank-through]');
+        return JSON.stringify({
+          imported: imported ? imported.dataset.ayqLastImport : null,
+          through: through ? through.dataset.ayqBankThrough : null,
+          importedSaid: imported ? imported.innerText.trim() : '',
+          throughSaid: through ? through.innerText.trim() : '',
+        });
+      })()`),
+    ),
+  ) as {
+    imported: string | null;
+    through: string | null;
+    importedSaid: string;
+    throughSaid: string;
+  };
+
+  if (!freshness.through) {
+    return 'a statement with no closing balance advanced no coverage at all';
+  }
+  if (!freshness.imported) return 'the account says nothing about its last import';
+  if (freshness.importedSaid === freshness.throughSaid) {
+    return 'the two freshness facts are drawn as one';
+  }
+  process.stdout.write(
+    `[ayq-smoke] coverage without a closing balance: bank data through ` +
+      `${freshness.through}, last import ${freshness.imported}\n`,
+  );
+
+  process.stdout.write(
+    '[ayq-smoke] balance: Unknown, said out loud, and the way out offered\n',
+  );
+
+  // And now the owner says what the account holds. Through the form on the
+  // account's own detail, which is where §4.5 puts it.
+  if (!(await openAccountDetail(window))) {
+    return 'the account detail never opened from Today';
+  }
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const opened = await window.webContents.executeJavaScript(
+    `(() => {
+      const row = document.querySelector('[data-ayq-table="accounts"] tbody tr');
+      if (row) row.click();
+      return true;
+    })()`,
+  );
+  if (opened !== true) return 'the account list drew no row to open';
+  await new Promise(resolve => setTimeout(resolve, 400));
+
+  const anchoring = await window.webContents.executeJavaScript(
+    `(() => {
+      const button = document.querySelector('[data-ayq-action="account-anchor"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`,
+  );
+  if (anchoring !== true) return 'the account detail offers no way to set a balance';
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  // Typed the way a person types, through the controls themselves, so that
+  // what is being proved is the form and not a call this file made.
+  const typed = await window.webContents.executeJavaScript(`(() => {
+    const set = (selector, value) => {
+      const field = document.querySelector(selector);
+      if (!field) return false;
+      const native = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value').set;
+      native.call(field, value);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    };
+    if (!set('[data-ayq-balance-amount]', '1240.55')) return 'no amount field';
+    if (!set('[data-ayq-balance-date]', '2026-06-30')) return 'no date field';
+    const told = document.querySelector('[data-ayq-balance-form]');
+    if (!/must already include/i.test(told.innerText)) {
+      return 'the form does not say the balance has to include what is imported';
+    }
+    const save = document.querySelector('[data-ayq-action="balance-save"]');
+    if (!save) return 'no way to save it';
+    save.click();
+    return 'ok';
+  })()`);
+  if (typed !== 'ok') return String(typed);
+
+  const settled = Date.now() + 60_000;
+  let after = '';
+  while (Date.now() < settled) {
+    after = String(
+      await window.webContents.executeJavaScript(
+        `(() => {
+          const pane = document.querySelector('[data-ayq-detail-balance]');
+          return pane ? pane.dataset.ayqDetailBalance : '';
+        })()`,
+      ),
+    );
+    if (after !== '' && after !== 'unknown') break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
+  if (after !== '124055') {
+    return `the balance came back as ${after || '(nothing)'} rather than 124055`;
+  }
+
+  // §4.2: no ordinary transaction was written to make that true.
+  await openRegister(window);
+  const invented = await window.webContents.executeJavaScript(
+    `(() => {
+      const rows = [...document.querySelectorAll('[data-ayq-table="register"] tbody tr')];
+      return rows.filter(one => /starting balance/i.test(one.innerText)).length;
+    })()`,
+  );
+  if (Number(invented) > 0) {
+    return 'a balancing transaction was written into the ledger';
+  }
+
+  process.stdout.write(
+    '[ayq-smoke] balance: set to 124055 cents on 2026-06-30, exactly, ' +
+      'and nothing was added to the ledger\n',
+  );
+  return '';
+}
+
+/**
+ * Settings → About, and the privacy contract on the copy button (12).
+ *
+ * The packaged build is the only place the build stamp is real, so this is the
+ * only place it can be checked. What is read is the drawn screen: the version,
+ * the build number, the author, the copyright, a forty-character revision that
+ * is not a placeholder, and a technical-information block that carries the safe
+ * fields and none of the forbidden ones (§12.4).
+ */
+async function aboutShown(window: BrowserWindow): Promise<string> {
+  if (!(await openDestination(window, 'settings'))) {
+    return 'Settings never opened';
+  }
+
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const pressed = await window.webContents.executeJavaScript(
+      `(() => {
+        const tab = document.querySelector('[data-ayq-screen-tab="about"]');
+        if (!tab) return false;
+        tab.click();
+        return true;
+      })()`,
+    );
+    if (pressed === true) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  let seen: Record<string, string> = {};
+  while (Date.now() < deadline) {
+    seen = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const said = {};
+          for (const one of document.querySelectorAll('[data-ayq-about]')) {
+            said[one.dataset.ayqAbout] = one.innerText.trim();
+          }
+          const technical = document.querySelector('[data-ayq-technical]');
+          said.technical = technical ? technical.innerText : '';
+          said.screen = (
+            document.querySelector('[data-ayq-about-screen]') || { innerText: '' }
+          ).innerText;
+          return JSON.stringify(said);
+        })()`),
+      ),
+    ) as Record<string, string>;
+    if (seen.version !== undefined) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  if (seen.version === undefined) return 'the About tab drew nothing';
+
+  if (seen.version !== '0.2.0') return `About says version ${seen.version}`;
+  if (seen.build !== '005') return `About says build ${seen.build}`;
+  if (seen.author !== 'Plamen Alexandrov') return `About says author ${seen.author}`;
+  if (seen.copyright !== '\u00a9 2026 Plamen Alexandrov.') {
+    return `About says copyright ${seen.copyright}`;
+  }
+  if (seen.engine !== 'Actual Budget 26.9.0') return `About says engine ${seen.engine}`;
+  if (seen.baseline !== 'db1b0ea9') return `About says baseline ${seen.baseline}`;
+  if (!/^Windows x64$/.test(seen.architecture ?? '')) {
+    return `About says architecture ${seen.architecture}`;
+  }
+  // A real revision, from git, in a packaged build (§12.2).
+  if (!/^[0-9a-f]{40}$/.test(seen.revision ?? '')) {
+    return `About says revision ${seen.revision || '(nothing)'}`;
+  }
+  // And a real date, not a placeholder.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(seen['build-date'] ?? '')) {
+    return `About says build date ${seen['build-date'] || '(nothing)'}`;
+  }
+  if (seen.development !== undefined) {
+    return 'a packaged build reports itself as a development build';
+  }
+
+  const technical = seen.technical ?? '';
+  for (const wanted of ['0.2.0', '005', 'db1b0ea9', 'Actual Budget 26.9.0', seen.revision]) {
+    if (!technical.includes(wanted)) {
+      return `the technical information leaves out ${wanted}`;
+    }
+  }
+  // §12.4: nothing about the money, and nothing about the machine.
+  for (const forbidden of [
+    'AppData',
+    'C:\\\\Users',
+    'ayq-budget',
+    'ayq-store',
+    'Groceries',
+    'NL00TEST',
+    'TESTMARKT',
+  ]) {
+    if (technical.includes(forbidden)) {
+      return `the technical information carries ${forbidden}`;
+    }
+  }
+
+  process.stdout.write(
+    `[ayq-smoke] about: ${seen.version} build ${seen.build}, ${seen.revision}, ` +
+      `${seen['build-date']}, ${seen.architecture}\n`,
+  );
+  return '';
+}
+
+/**
+ * The strict detector and the Plan's historical suggestions, on the window
+ * (9 §9.1, 10 §10.3).
+ *
+ * Upcoming is asked to suggest, and only the series that qualify may appear.
+ * Then Plan is asked what history suggests, and the suggestion has to state the
+ * basis it rests on and has to stay out of the Planned column until somebody
+ * presses the control that puts it there.
+ */
+async function suggestionsShown(window: BrowserWindow): Promise<string> {
+  if (!(await openUpcoming(window))) return 'Upcoming never opened';
+
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-action="plan-suggest"]')?.click(); true`,
+  );
+
+  const deadline = Date.now() + 60_000;
+  let offered: string[] = [];
+  while (Date.now() < deadline) {
+    offered = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const rows = [...document.querySelectorAll(
+            '[data-ayq-table="upcoming"] tbody tr')];
+          return JSON.stringify(rows.map(
+            one => one.innerText.replace(/\\s+/g, ' ').trim()));
+        })()`),
+      ),
+    ) as string[];
+    if (offered.length > 0) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
+  const said = offered.join(' | ');
+  process.stdout.write(`[ayq-smoke] upcoming: ${offered.length} rows\n`);
+
+  // The two that qualify, and none of the four that must not.
+  for (const wanted of ['9.99', '4.99']) {
+    if (!said.includes(wanted)) {
+      return `the exact monthly series of ${wanted} was not offered`;
+    }
+  }
+  for (const [what, figure] of [
+    ['the supermarket', '47.31'],
+    ['the fuel on no rhythm', '60.00'],
+    ['the bill a cent apart', '61.90'],
+    ['the irregular mandate', '42.00'],
+    ['the one-off purchase', '89.00'],
+  ] as Array<[string, string]>) {
+    if (said.includes(figure)) return `${what} was offered as an expectation`;
+  }
+
+  process.stdout.write(
+    '[ayq-smoke] upcoming: only the exact, regular series were offered\n',
+  );
+
+  // And the Plan's own suggestions.
+  if (!(await openDestination(window, 'plan'))) return 'Plan never opened';
+
+  let plan: { suggested: string | null; months: string | null; basis: string } = {
+    suggested: null,
+    months: null,
+    basis: '',
+  };
+  while (Date.now() < deadline) {
+    plan = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const cell = document.querySelector('[data-ayq-suggestion]:not([data-ayq-suggestion="none"])');
+          const basis = document.querySelector('[data-ayq-plan-basis]');
+          return JSON.stringify({
+            suggested: cell ? cell.dataset.ayqSuggestion : null,
+            months: cell ? cell.dataset.ayqSuggestionMonths : null,
+            basis: basis ? basis.innerText.replace(/\\s+/g, ' ').trim() : '',
+          });
+        })()`),
+      ),
+    ) as typeof plan;
+    if (plan.basis !== '') break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
+  if (plan.basis === '') return 'the Plan says nothing about what it suggests from';
+  process.stdout.write(
+    `[ayq-smoke] plan: suggestion ${plan.suggested ?? '(none)'} from ` +
+      `${plan.months ?? '0'} months; basis: ${plan.basis.slice(0, 120)}\n`,
+  );
+
+  // Whatever the basis is, it has to be stated rather than implied — a figure
+  // a person cannot check is a figure they cannot use.
+  if (!/complete/.test(plan.basis)) {
+    return 'the Plan does not say how many complete months it averaged';
+  }
+
+  return '';
 }
 
 /**
@@ -2642,6 +3067,47 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // §4.1, §4.4, §5: Unknown said out loud, and the balance the owner states
+  // being exactly the balance the account then has.
+  const balanceAsked = process.env.AYQ_SMOKE_BALANCE === '1';
+  let balance = 'not asked';
+  let balanceOk = true;
+  if (balanceAsked) {
+    const wrong = await balanceShown(window);
+    balance = wrong === '' ? 'held' : wrong;
+    balanceOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] the balance: ${balanceOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
+  // 12: which build this is, and what the copy button may carry.
+  const aboutAsked = process.env.AYQ_SMOKE_ABOUT === '1';
+  let about = 'not asked';
+  let aboutOk = true;
+  if (aboutAsked) {
+    const wrong = await aboutShown(window);
+    about = wrong === '' ? 'held' : wrong;
+    aboutOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] About: ${aboutOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
+  // 9 §9.1 and 10 §10.3: what history is allowed to suggest, and what it is
+  // allowed to do with the suggestion.
+  const suggestAsked = process.env.AYQ_SMOKE_SUGGEST === '1';
+  let suggest = 'not asked';
+  let suggestOk = true;
+  if (suggestAsked) {
+    const wrong = await suggestionsShown(window);
+    suggest = wrong === '' ? 'held' : wrong;
+    suggestOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] suggestions: ${suggestOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // The shell: the rail, its order, one scroller, and what stays put while the
   // rows move (04 A20, A22).
   const shellAsked = process.env.AYQ_SMOKE_SHELL === '1';
@@ -2730,6 +3196,9 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     todayOk &&
     reviewOk &&
     reportsOk &&
+    balanceOk &&
+    aboutOk &&
+    suggestOk &&
     pagedOk;
 
   // A packaged Windows application is a GUI subsystem binary: nothing it writes
@@ -2771,6 +3240,12 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           reviewOk,
           reports,
           reportsOk,
+          balance,
+          balanceOk,
+          about,
+          aboutOk,
+          suggest,
+          suggestOk,
           pagedOk,
           imports: importRounds,
           dataDir,
@@ -2805,7 +3280,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} suggest=${suggest}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is

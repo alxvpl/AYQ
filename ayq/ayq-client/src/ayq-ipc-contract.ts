@@ -17,12 +17,64 @@
 /** The single IPC channel. One channel, like Actual's own `message`. */
 export const AYQ_IPC_CHANNEL = 'ayq:request';
 
+/**
+ * A balance AYQ was given, and the day it is true on.
+ *
+ * Either the bank stated it or the owner did. There is no third way to know
+ * what an account holds: a statement is a list of movements, and movements
+ * added to an assumed nought are not a balance.
+ */
+export type AyqBalanceAnchorView = {
+  /** Signed integer cents. */
+  amountCents: number;
+  /** YYYY-MM-DD: the day the figure is true on. */
+  coverageDate: string;
+  source: 'bank' | 'manual';
+  createdAt: string;
+};
+
+/**
+ * What AYQ and the bank each say one account held, and the difference.
+ *
+ * Only ever present where the bank actually stated a closing balance. Without
+ * one there is nothing to reconcile against, and AYQ says so rather than
+ * comparing its own arithmetic with itself.
+ */
+export type AyqReconciliation = {
+  /** The day both figures are about. */
+  asOf: string;
+  statementBalanceCents: number;
+  /**
+   * What the movements AYQ holds account for on that day.
+   *
+   * The bank's own earlier reading plus every movement AYQ holds since — not
+   * the balance on the screen. The balance on the screen is the anchor, and
+   * the anchor is the bank's figure, so comparing the two would be comparing a
+   * number with itself. This asks the question that can still come out wrong:
+   * do the statements AYQ has been given explain how the account got here?
+   */
+  ledgerBalanceCents: number;
+  /** What the bank said minus what AYQ accounts for. Zero means they agree. */
+  differenceCents: number;
+  agrees: boolean;
+  /** The statement it came from: base name only. */
+  file: string | null;
+  readAt: string;
+};
+
 /** An account as the renderer sees it. */
 export type AyqAccountSummary = {
   id: string;
   name: string;
-  /** Signed integer cents, computed by the engine, not by the renderer. */
-  balanceCents: number;
+  /**
+   * The absolute balance, or **null** when AYQ does not know it.
+   *
+   * Null is a real state and is drawn as `Unknown`. It is never nought: a
+   * statement without a bank balance tells AYQ what moved and not what is
+   * there, and presenting the net of imported movements as an account balance
+   * is the defect this field exists to make impossible.
+   */
+  balanceCents: number | null;
   /** Transactions the budget holds for it. */
   transactionCount: number;
   /**
@@ -32,6 +84,16 @@ export type AyqAccountSummary = {
    * decides what Actual counts in a budget month, which the Plan reads.
    */
   countsTowardFunds: boolean;
+  /** The anchor the balance rests on, or null when there is none. */
+  anchor: AyqBalanceAnchorView | null;
+  /** Every anchor this account has ever had, newest decision first. */
+  anchorHistory: AyqBalanceAnchorView[];
+  /** When an import last succeeded for this account. Not the same as below. */
+  lastImportAt: string | null;
+  /** How far the bank's own movements reach. Not the same as above. */
+  bankDataThrough: string | null;
+  /** Only where the bank stated a closing balance. */
+  reconciliation: AyqReconciliation | null;
 };
 
 /**
@@ -61,8 +123,8 @@ export type AyqAccountCoverage = {
   toDate: string | null;
   /** The closing balance that statement stated. */
   statementBalanceCents: number | null;
-  /** The balance AYQ holds for the account. */
-  ledgerBalanceCents: number;
+  /** The balance AYQ holds for the account; null when it is unknown. */
+  ledgerBalanceCents: number | null;
   /**
    * What the statement says minus what AYQ holds.
    *
@@ -83,10 +145,19 @@ export type AyqAccountCoverage = {
 export type AyqAccountsView = {
   accounts: AyqAccountSummary[];
   coverage: AyqAccountCoverage[];
-  /** Only the accounts flagged as counting (03 §7.6). */
-  availableFundsCents: number;
-  /** Every account, counted or not. */
-  totalBalanceCents: number;
+  /**
+   * Only the accounts flagged as counting (03 §7.6) — or **null**.
+   *
+   * Null when any counted account's balance is unknown. The known subset is
+   * deliberately not summed and labelled: a figure that silently leaves out an
+   * account is worse than no figure, because nothing on the screen says which
+   * account it left out.
+   */
+  availableFundsCents: number | null;
+  /** Every account, counted or not. Null when any of them is unknown. */
+  totalBalanceCents: number | null;
+  /** How many counted accounts have no anchor, and so no known balance. */
+  countedWithoutAnchor: number;
   /**
    * The reliability boundary of everything computed from these accounts
    * (03 §8.4): the *earliest* coverage date among the accounts that count,
@@ -130,7 +201,7 @@ export type AyqToday = {
   accounts: AyqAccountsView;
   /** The worst the position gets over the forecast, and when. */
   lowest: { date: string; balanceCents: number } | null;
-  /** Where this month ends. */
+  /** Where this month ends. Null when the position is unknown (§5). */
   monthEnd: { month: string; closingCents: number } | null;
   waiting: AyqWaiting;
 };
@@ -552,6 +623,19 @@ export type AyqImportRecord = {
    * only that a number failed.
    */
   problems: AyqImportProblem[];
+  /**
+   * Whether the owner still has to say what this account holds (§4.4).
+   *
+   * True when the import succeeded and left the account with no anchor at all:
+   * the files carried no bank balance and none was ever set by hand, so the
+   * balance is Unknown and **Set account balance** is offered. False once an
+   * anchor exists — a later import never asks again.
+   */
+  balanceWanted: boolean;
+  /** The day the anchor that now stands is true on, if one stands. */
+  anchoredAt: string | null;
+  /** Whether this import is what first gave the account an anchor. */
+  anchorEstablished: boolean;
 };
 
 /** One chosen thing AYQ could not use, and why. */
@@ -578,9 +662,10 @@ export type AyqImportSummary = AyqImportRecord & {
 
 export type AyqSummary = {
   accounts: AyqAccountSummary[];
-  totalBalanceCents: number;
-  /** The part of it that counts toward available funds (03 §7.6). */
-  availableFundsCents: number;
+  /** Null when any account's balance is unknown (§5). */
+  totalBalanceCents: number | null;
+  /** The part of it that counts toward available funds (03 §7.6). Null: unknown. */
+  availableFundsCents: number | null;
   /** The month the ledger's newest transaction falls in, YYYY-MM. */
   month: string | null;
   monthIncomeCents: number;
@@ -682,8 +767,20 @@ export type AyqPlanRecurrence = {
  *
  * `suggested` is what the recurring detection produces and nothing else: a
  * rhythm AYQ noticed is an offer, never a decision. `confirmed` is a person's.
+ *
+ * `retired` is AYQ withdrawing an offer of its own that no longer meets the
+ * rule it was made under (9 §9.2). It is deliberately not `dismissed`, which
+ * means *a person said this will not happen* — writing one as the other would
+ * put words in the owner's mouth. A retired record stops appearing in Upcoming
+ * and stops counting in the forecast, and it stays in the store with its whole
+ * history, its matches and its rejections intact. Only a record AYQ itself
+ * suggested and nobody has acted on can ever reach this state.
  */
-export type AyqPlanState = 'suggested' | 'confirmed' | 'dismissed';
+export type AyqPlanState =
+  | 'suggested'
+  | 'confirmed'
+  | 'dismissed'
+  | 'retired';
 
 /** Who put the record there. A person, or the detection. */
 export type AyqPlanProvenance = 'manual' | 'detected';
@@ -925,29 +1022,42 @@ export type AyqForecastEvent = {
   suggested: boolean;
   /** Past its date and unmatched: it still counts, and it needs attention. */
   flagged: boolean;
-  /** The projected position immediately after this. */
-  balanceCents: number;
+  /**
+   * The projected position immediately after this — or null (§5).
+   *
+   * Null when available funds are unknown. The event itself, its date and its
+   * amount are all still true; where it leaves the balance is not knowable
+   * without a starting position, and is not guessed at.
+   */
+  balanceCents: number | null;
 };
 
 export type AyqForecastMonth = {
   month: string;
+  /** What the month is expected to take in and pay out: relative, so always known. */
   expectedIncomeCents: number;
   expectedExpenseCents: number;
-  /** Where the position stands at the end of this month. */
-  closingCents: number;
+  /** Where the position stands at the end of this month; null when unknown. */
+  closingCents: number | null;
 };
 
 export type AyqForecast = {
   today: string;
   horizon: string;
-  /** Where it starts: the flagged accounts' balances, today (03 §7.6). */
-  availableFundsCents: number;
+  /** Where it starts: the flagged accounts' balances, today (03 §7.6). Null: unknown. */
+  availableFundsCents: number | null;
   events: AyqForecastEvent[];
   months: AyqForecastMonth[];
-  /** The worst it gets, and when — the question a forecast is really for. */
-  lowest: { date: string; balanceCents: number };
-  /** Where the twelve months end. */
-  closingCents: number;
+  /**
+   * The worst it gets, and when — the question a forecast is really for.
+   *
+   * Null when available funds are unknown. A lowest balance projected from a
+   * starting point AYQ does not have would be the most confident-looking wrong
+   * number in the product (§5).
+   */
+  lowest: { date: string; balanceCents: number } | null;
+  /** Where the twelve months end; null when unknown. */
+  closingCents: number | null;
 };
 
 /* --------------------------------------------------------------- the sheet
@@ -955,6 +1065,34 @@ export type AyqForecast = {
    Categories down, one month across: what was planned, what happened, what is
    left of it, and what AYQ still expects before the month ends. A worksheet —
    not envelope budgeting (04 A8), and not a dashboard of cards (04 A3).     */
+
+/**
+ * What one category normally costs, and what that is based on (10 §10.2).
+ *
+ * `suggestedCents` is null when there is no usable basis: nought complete
+ * months behind the Plan month. Null is not nought — a category AYQ cannot
+ * suggest for is a different thing from one it suggests nothing for — and the
+ * screen says so rather than offering a plan of zero.
+ *
+ * `monthsUsed` is the divisor, and it is carried across the boundary so the
+ * screen can say "based on 7 complete months" rather than implying twelve. A
+ * suggestion with no stated basis is a number a person cannot check.
+ *
+ * Derived on every read and stored nowhere.
+ */
+export type AyqPlanSuggestion = {
+  categoryId: string;
+  categoryName: string;
+  /** Arithmetic mean over the included months, positive cents. Null: no basis. */
+  suggestedCents: number | null;
+  /** How many complete, reliably covered months the mean is over. */
+  monthsUsed: number;
+  /** The oldest and newest month included, YYYY-MM. Null when none were. */
+  fromMonth: string | null;
+  toMonth: string | null;
+  /** What the category took over exactly those months, positive cents. */
+  totalCents: number;
+};
 
 export type AyqPlanSheetRow = AyqBudgetCategory & {
   /**
@@ -979,6 +1117,14 @@ export type AyqPlanSheet = {
   totalActualCents: number;
   totalRemainingCents: number;
   totalExpectedCents: number;
+  /**
+   * What history suggests for each row, and the basis (10 §10.3).
+   *
+   * Beside the plan, never in it. A suggestion never becomes a planned value on
+   * its own: the row's `Planned` figure is whatever the owner set, and
+   * `plan.useSuggestion` is the explicit act that changes it.
+   */
+  suggestions: AyqPlanSuggestion[];
 };
 
 /** What turning the detected rhythms into offers came to. */
@@ -986,6 +1132,47 @@ export type AyqPlanSuggested = {
   plan: AyqPlan;
   /** Records created by this call; rhythms already offered are not repeated. */
   added: number;
+};
+
+/**
+ * What this build of AYQ is (12 §12.1).
+ *
+ * Every field is read rather than written: the revision from git, the date from
+ * the clock at build time, the engine version from the API that is actually
+ * loaded. `development` is true for a build that had no git to ask, and a
+ * build that says so is one nobody will mistake for a release.
+ */
+export type AyqAbout = {
+  productName: string;
+  tagline: string;
+  author: string;
+  copyright: string;
+  productVersion: string;
+  buildNumber: string;
+  /** ISO 8601 UTC, or `unbuilt` for a run that never went through the build. */
+  buildDate: string;
+  architecture: string;
+  /** The commit, or null when this build cannot prove which one it is. */
+  revision: string | null;
+  engine: string;
+  actualBaseline: string;
+  electronVersion: string | null;
+  nodeVersion: string;
+  development: boolean;
+  licence: string;
+  localFirst: string;
+  /** Only links that really exist. Never invented. */
+  links: Array<{ label: string; url: string }>;
+  /**
+   * Exactly what **Copy technical information** puts on the clipboard.
+   *
+   * Composed by the engine, not the renderer, so that the privacy contract in
+   * 12 §12.4 is one function with one test over it. It carries facts about the
+   * application and nothing about the money: no budget name, no path, no
+   * account id or IBAN fragment, no machine or user identifier, no transaction,
+   * no balance, no counterparty, no category and no rule.
+   */
+  technicalInformation: string;
 };
 
 /** What the engine answers to each request kind. */
@@ -997,6 +1184,12 @@ export type AyqResults = {
   'accounts.view': AyqAccountsView;
   today: AyqToday;
   'accounts.setFlag': AyqAccountSummary[];
+  'accounts.setBalance': AyqAccountsView;
+  'accounts.reanchor': AyqAccountsView;
+  'counterparty.setName': AyqCounterpartyDetail;
+  'plan.useSuggestion': AyqPlanSheet;
+  'plan.useAllSuggestions': AyqPlanSheet;
+  about: AyqAbout;
   'transactions.list': AyqLedger;
   'transaction.detail': AyqTransactionDetail;
   'transaction.categorise': AyqCategorised;
@@ -1060,6 +1253,69 @@ export type AyqRequestBody =
       accountId: string;
       countsTowardFunds: boolean;
     }
+  | {
+      /**
+       * Says what one account actually holds, on a stated day (§4.4).
+       *
+       * The three fields are all required and all explicit. The amount is
+       * integer cents; the account is named rather than guessed at by the
+       * engine; and the coverage date is stated rather than defaulted to
+       * today, because the balance a person reads off their bank is the
+       * balance on the day the statement they are looking at ends.
+       *
+       * `importId` binds it to the import that prompted it when there was one,
+       * so the anchor's provenance says where it came from.
+       */
+      kind: 'accounts.setBalance';
+      accountId: string;
+      amountCents: number;
+      coverageDate: string;
+      importId?: string | null;
+    }
+  | {
+      /**
+       * Corrects an account's balance (§4.5).
+       *
+       * The same act as above and a different one in meaning: this is the
+       * recovery action, reached from the account's own detail rather than from
+       * an import, and it is offered when an anchor already exists. It adds a
+       * new manual anchor and leaves every earlier one in place.
+       */
+      kind: 'accounts.reanchor';
+      accountId: string;
+      amountCents: number;
+      coverageDate: string;
+    }
+  | {
+      /**
+       * Says what the owner calls one counterparty (8 §8.3).
+       *
+       * The canonical key does not change, no rule moves and no transaction is
+       * rewritten. An empty name clears the decision and puts the automatic
+       * name back.
+       */
+      kind: 'counterparty.setName';
+      counterpartyKey: string;
+      displayName: string;
+    }
+  | {
+      /** Accepts one historical suggestion as this month's plan (10 §10.3). */
+      kind: 'plan.useSuggestion';
+      month: string;
+      categoryId: string;
+    }
+  | {
+      /**
+       * Accepts every suggestion that would fill an empty row, and no others.
+       *
+       * Never a row that already carries a plan: a bulk action is a person
+       * agreeing to a page they have not read line by line, and overwriting a
+       * figure they typed would be the product deciding they did not mean it.
+       */
+      kind: 'plan.useAllSuggestions';
+      month: string;
+    }
+  | { kind: 'about' }
   | { kind: 'transactions.list'; filter?: AyqLedgerFilter }
   | { kind: 'transaction.detail'; transactionId: string }
   | {

@@ -70,7 +70,7 @@ test('with nothing expected, the position is today s available funds', () => {
   assert.equal(answer.months.length, 13, 'twelve months ahead, plus this one');
   assert.equal(answer.months[0].month, '2026-06');
   assert.equal(answer.months[12].month, '2027-06');
-  assert.equal(answer.lowest.balanceCents, 100_000);
+  assert.equal(answer.lowest?.balanceCents, 100_000);
 });
 
 test('the position is available funds plus income minus expenses, in order', () => {
@@ -104,7 +104,7 @@ test('money out comes before money in on the same day', () => {
     answer.events.map(one => one.label),
     ['Out', 'In'],
   );
-  assert.equal(answer.lowest.balanceCents, -30_000);
+  assert.equal(answer.lowest?.balanceCents, -30_000);
 });
 
 test('a yearly payment is inside the horizon, and a later one is not', () => {

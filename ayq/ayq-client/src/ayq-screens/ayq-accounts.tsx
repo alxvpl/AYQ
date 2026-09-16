@@ -1,11 +1,22 @@
-// Accounts: what each holds, how far its statements reach, and whether AYQ
-// agrees with the bank (03 §8, 04 A4).
+// One account, in detail: what it holds, where that figure came from, how
+// fresh it is, and whether AYQ agrees with the bank (03 §8, 04 A4, 7 §7.3).
 //
-// The whole screen is a comparison and nothing more. A difference is stated and
+// This is a **secondary surface**, not a workspace. 7 §7.1 takes Accounts off
+// the rail: an account is not somewhere a person goes, it is something they
+// look at when Today raises a question about it, so Today opens this for one
+// account and this offers a way back. Configuring an account — including
+// whether it counts toward available funds — is a different act and stays at
+// Settings → Accounts.
+//
+// Reconciliation is a comparison and nothing more. A difference is stated and
 // left standing — AYQ does not adjust a balance, create a balancing entry or
 // reconcile by writing anything into the ledger (§8.3) — and it gates nothing
-// (§8.6). Reconciliation state is derived on every read and is not a decision
-// (§8.5), so there is nothing here to accept, dismiss or mark as done.
+// (§8.6). It is derived on every read and is not a decision (§8.5), so there is
+// nothing here to accept, dismiss or mark as done.
+//
+// The two things that *are* decisions live here: setting a balance the bank
+// never stated, and correcting one that is wrong (§4.4, §4.5). Both add an
+// anchor and keep every earlier one.
 
 import { makeStyles } from '@fluentui/react-components';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -18,7 +29,9 @@ import type {
 } from '../ayq-ipc-contract.ts';
 import { ayqCount, ayqDate, ayqMoment, ayqMoney, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
+import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorderTop } from '../ayq-ui/ayq-css.ts';
+import { AyqBalanceForm } from './ayq-balance-form.tsx';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
@@ -66,7 +79,13 @@ function Field({ label, children }: { label: string; children: ReactNode }): Rea
   );
 }
 
-function AyqAccountDetail({ row }: { row: AyqAccountRow | null }): ReactNode {
+function AyqAccountDetail({
+  row,
+  onAnchor,
+}: {
+  row: AyqAccountRow | null;
+  onAnchor(row: AyqAccountRow): void;
+}): ReactNode {
   const styles = useStyles();
   if (row === null) {
     return <div className={styles.empty}>{ayqText('detail.none')}</div>;
@@ -77,48 +96,121 @@ function AyqAccountDetail({ row }: { row: AyqAccountRow | null }): ReactNode {
     <div className={styles.pane} data-ayq-account-detail={row.id}>
       <h3 className={styles.name}>{row.name}</h3>
 
-      <Field label={ayqText('accounts.detail.counts')}>
-        {ayqText(row.countsTowardFunds ? 'accounts.counts.yes' : 'accounts.counts.no')}
-      </Field>
-      <Field label={ayqText('accounts.detail.ledger')}>
-        <AyqFigure cents={coverage.ledgerBalanceCents} withSymbol />
+      <Field label={ayqText('accounts.detail.balance')}>
+        <span
+          data-ayq-detail-balance={
+            row.balanceCents === null ? 'unknown' : String(row.balanceCents)
+          }
+        >
+          <AyqFigure cents={row.balanceCents} withSymbol />
+        </span>
       </Field>
 
-      {coverage.toDate === null ? (
+      {/* Where the figure came from, always — a balance with no stated source
+          is a balance nobody can check. */}
+      {row.anchor === null ? (
+        <p className={styles.note} data-ayq-no-anchor="">
+          {ayqText('accounts.detail.anchor.none')}
+        </p>
+      ) : (
+        <Field label={ayqText('accounts.detail.anchor')}>
+          <span data-ayq-anchor-source={row.anchor.source}>
+            {ayqText(
+              row.anchor.source === 'bank'
+                ? 'accounts.detail.anchor.bank'
+                : 'accounts.detail.anchor.manual',
+              { date: ayqDate(row.anchor.coverageDate) },
+            )}
+          </span>
+        </Field>
+      )}
+
+      {/* The two freshness facts, apart, because they are two facts (§6). */}
+      <Field label={ayqText('accounts.detail.lastImport')}>
+        <span data-ayq-detail-last-import={row.lastImportAt ?? ''}>
+          {row.lastImportAt === null
+            ? ayqText('accounts.detail.lastImport.never')
+            : ayqMoment(row.lastImportAt)}
+        </span>
+      </Field>
+      <Field label={ayqText('accounts.detail.bankThrough')}>
+        <span data-ayq-detail-bank-through={row.bankDataThrough ?? ''}>
+          {row.bankDataThrough === null
+            ? ayqText('accounts.detail.bankThrough.none')
+            : ayqDate(row.bankDataThrough)}
+        </span>
+      </Field>
+
+      {/* Reconciliation, and only where the bank stated a figure to reconcile
+          against (§5). */}
+      {row.reconciliation === null ? (
         <p className={styles.note}>{ayqText('accounts.detail.nothing')}</p>
       ) : (
         <>
-          <Field label={ayqText('accounts.column.statements')}>
-            {ayqDate(coverage.toDate)}
-          </Field>
           <Field label={ayqText('accounts.detail.statement')}>
-            <AyqFigure cents={coverage.statementBalanceCents ?? 0} withSymbol />
+            <AyqFigure
+              cents={row.reconciliation.statementBalanceCents}
+              withSymbol
+            />
           </Field>
-          {coverage.differenceCents === 0 ? null : (
+          <Field label={ayqText('accounts.detail.ledger')}>
+            <AyqFigure cents={row.reconciliation.ledgerBalanceCents} withSymbol />
+          </Field>
+          {row.reconciliation.agrees ? null : (
             <Field label={ayqText('accounts.detail.difference')}>
-              <span data-ayq-difference={String(coverage.differenceCents)}>
-                <AyqFigure cents={coverage.differenceCents ?? 0} withSymbol />
+              <span
+                data-ayq-difference={String(row.reconciliation.differenceCents)}
+              >
+                <AyqFigure
+                  cents={row.reconciliation.differenceCents}
+                  withSymbol
+                />
               </span>
             </Field>
           )}
-          {coverage.file === null ? null : (
-            <Field label={ayqText('accounts.detail.readFrom')}>{coverage.file}</Field>
-          )}
-          {coverage.readAt === null ? null : (
-            <Field label={ayqText('accounts.detail.readAt')}>
-              {ayqMoment(coverage.readAt)}
+          {row.reconciliation.file === null ? null : (
+            <Field label={ayqText('accounts.detail.readFrom')}>
+              {row.reconciliation.file}
             </Field>
           )}
+          <Field label={ayqText('accounts.detail.readAt')}>
+            {ayqMoment(row.reconciliation.readAt)}
+          </Field>
           <p className={styles.note}>
             {ayqText(
-              coverage.agrees === true
+              row.reconciliation.agrees
                 ? 'accounts.detail.agrees'
                 : 'accounts.detail.differs',
             )}
           </p>
         </>
       )}
+
+      {/* Every anchor this account has ever had. A correction adds; it never
+          writes over what was there (§4.5). */}
+      {row.anchorHistory.length <= 1 ? null : (
+        <Field label={ayqText('accounts.detail.anchorHistory')}>
+          <span data-ayq-anchor-history={String(row.anchorHistory.length)}>
+            {row.anchorHistory
+              .slice(1)
+              .map(one => `${ayqDate(one.coverageDate)}`)
+              .join(', ')}
+          </span>
+        </Field>
+      )}
+
+      <p className={styles.note}>
+        <AyqButton size="small" mark="account-anchor" onClick={() => onAnchor(row)}>
+          {ayqText(
+            row.anchor === null
+              ? 'balance.set.title'
+              : 'balance.reanchor.title',
+          )}
+        </AyqButton>
+      </p>
+
       <p className={styles.note}>{ayqText('accounts.detail.informs')}</p>
+      <p className={styles.note}>{ayqText('accounts.detail.configure')}</p>
     </div>
   );
 }
@@ -126,14 +218,30 @@ function AyqAccountDetail({ row }: { row: AyqAccountRow | null }): ReactNode {
 export function AyqAccountsScreen({
   onFailure,
   round,
+  accountId = null,
+  onChanged,
+  onBack,
 }: {
   onFailure(message: string): void;
   /** Bumped by the shell when something has changed underneath. */
   round: number;
+  /** The account Today opened, when it opened one. */
+  accountId?: string | null;
+  onChanged?(): void;
+  onBack?(): void;
 }): ReactNode {
   const styles = useStyles();
   const [view, setView] = useState<AyqAccountsView | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(accountId);
+  /** The account whose balance is being set or corrected, if any. */
+  const [anchoring, setAnchoring] = useState<AyqAccountRow | null>(null);
+
+  // Today opening one account is the same act as selecting it here, so the
+  // selection follows what was asked for rather than being a second state that
+  // can disagree with it.
+  useEffect(() => {
+    if (accountId !== null) setOpenId(accountId);
+  }, [accountId]);
 
   useEffect(() => {
     let live = true;
@@ -270,10 +378,69 @@ export function AyqAccountsScreen({
         }
         detail={
           <AyqPane mark="accounts-detail">
-            <AyqAccountDetail row={open} />
+            {anchoring === null ? (
+              <AyqAccountDetail row={open} onAnchor={setAnchoring} />
+            ) : (
+              <AyqBalanceForm
+                title={ayqText(
+                  anchoring.anchor === null
+                    ? 'balance.set.title'
+                    : 'balance.reanchor.title',
+                )}
+                accountName={anchoring.name}
+                coverageDate={
+                  anchoring.anchor?.coverageDate ??
+                  anchoring.bankDataThrough ??
+                  new Date().toISOString().slice(0, 10)
+                }
+                note={
+                  anchoring.anchor === null
+                    ? null
+                    : ayqText('balance.reanchor')
+                }
+                cancelLabel={ayqText('balance.cancel')}
+                onCancel={() => setAnchoring(null)}
+                onSubmit={(amountCents, coverageDate) => {
+                  const account = anchoring;
+                  setAnchoring(null);
+                  void (async () => {
+                    const answered = await ayqAsk(
+                      account.anchor === null
+                        ? {
+                            kind: 'accounts.setBalance',
+                            accountId: account.id,
+                            amountCents,
+                            coverageDate,
+                          }
+                        : {
+                            kind: 'accounts.reanchor',
+                            accountId: account.id,
+                            amountCents,
+                            coverageDate,
+                          },
+                    );
+                    if (!answered.ok) throw new Error(answered.message);
+                    setView(answered.result as AyqAccountsView);
+                    onChanged?.();
+                  })().catch((error: unknown) => {
+                    onFailure(
+                      error instanceof Error ? error.message : String(error),
+                    );
+                  });
+                }}
+              />
+            )}
           </AyqPane>
         }
       />
+
+      {onBack === undefined ? null : (
+        <p className={styles.boundary}>
+          <AyqButton size="small" mark="accounts-back" onClick={onBack}>
+            {ayqText('accounts.back')}
+          </AyqButton>
+        </p>
+      )}
     </>
   );
 }

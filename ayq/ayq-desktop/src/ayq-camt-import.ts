@@ -34,11 +34,13 @@ import { ayqTransactionCount } from './ayq-ledger.ts';
 import { ayqRunMatching } from './ayq-plan.ts';
 import { ayqApplyRules } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
+import { ayqActiveAnchor, ayqReapplyAnchor } from './ayq-anchors.ts';
+import { ayqAddDays } from './ayq-dates.ts';
 import {
   ayqId,
   ayqReadStore,
   ayqWriteStore,
-  type AyqStatementCoverage,
+  type AyqCoverageEvidence,
 } from './ayq-store.ts';
 
 /** The name the imported account gets: the statement's own IBAN, masked. */
@@ -82,35 +84,108 @@ function earliestOpening(
 }
 
 /**
- * The statement that reaches furthest, and what the bank said it closed at.
+ * What each statement in the file proves, as an interval (§6.2).
  *
- * 03 §8.1: an account records how far its statements reach and the closing
- * balance stated there. The furthest is the one that matters — importing 2021
- * after 2026 must not move the boundary backwards — and a statement with no
- * closing balance is not coverage at all, because there is nothing to agree
- * or disagree with.
+ * One row per statement, not one per file and not one per account: the union of
+ * intervals is what proves a complete month, and a union cannot be built out of
+ * "the furthest date seen". The closing balance rides along when the bank
+ * stated one and is null when it did not — coverage does not depend on it,
+ * which is the whole of the change from version 7.
+ *
+ * `fromDate` is the statement's own stated start and nothing else. The booking
+ * date of the first entry is *not* used for it: a statement that begins on the
+ * 15th because the first fortnight had no movements and one that begins on the
+ * 15th because half of it is missing look identical from the entries alone, and
+ * treating them alike would manufacture coverage AYQ does not have. The end
+ * falls back to the last booking date because a file that lists entries has
+ * demonstrably been read that far.
  */
-function furthestClosing(
+function coverageEvidence(
   entries: AyqBankEntry[],
-): AyqStatementCoverage | null {
-  let found: AyqStatementCoverage | null = null;
+  accountId: string,
+  importId: string,
+  readAt: string,
+): AyqCoverageEvidence[] {
+  const byStatement = new Map<string, AyqCoverageEvidence>();
 
   for (const entry of entries) {
-    const closing = entry.statement.closingBalance;
-    if (!closing || closing.value === null) continue;
-    const date = entry.statement.toDate?.slice(0, 10) ?? entry.bookingDate.date;
-    if (date === null) continue;
-    if (found === null || date > found.toDate) {
-      found = {
-        toDate: date,
-        closingBalanceCents: Math.round(closing.value * 100),
-        file: entry.statement.file,
-        readAt: new Date().toISOString(),
-      };
+    const statement = entry.statement;
+    const stated = statement.toDate?.slice(0, 10) ?? null;
+    const booked = entry.bookingDate.date;
+    const toDate = stated ?? booked;
+    if (toDate === null) continue;
+
+    // One row per statement in the file. The identity is the statement's own
+    // identifier where it has one, and its stated period otherwise.
+    const identity = `${statement.file ?? ''}|${statement.statementId ?? ''}|${statement.electronicSequenceNumber ?? ''}|${statement.fromDate ?? ''}|${statement.toDate ?? ''}`;
+    const held = byStatement.get(identity);
+
+    if (held === undefined) {
+      const closing = statement.closingBalance;
+      byStatement.set(identity, {
+        accountId,
+        importId,
+        fromDate: statement.fromDate?.slice(0, 10) ?? null,
+        toDate,
+        closingBalanceCents:
+          closing && closing.value !== null
+            ? Math.round(closing.value * 100)
+            : null,
+        file: statement.file,
+        readAt,
+      });
+      continue;
+    }
+
+    // Only the fallback end moves: a stated end is the bank's word and the
+    // entries cannot argue with it.
+    if (stated === null && booked !== null && booked > held.toDate) {
+      held.toDate = booked;
     }
   }
 
-  return found;
+  return [...byStatement.values()];
+}
+
+/**
+ * The balances the bank itself stated, as anchors (§4.4).
+ *
+ * Both ends of a statement count, and for the same reason: each is the bank
+ * saying what the account held on a named day. The closing balance applies on
+ * the statement's `toDate`; the opening balance applies on the day *before* its
+ * `fromDate`, because "what there was before the first entry" is the balance at
+ * the end of the previous day.
+ *
+ * A file that states neither produces no anchor at all, and an account with no
+ * anchor has an Unknown balance rather than a fabricated one — which is §4.1.
+ */
+function bankAnchors(
+  entries: AyqBankEntry[],
+): Array<{ amountCents: number; coverageDate: string }> {
+  const found = new Map<string, number>();
+
+  for (const entry of entries) {
+    const statement = entry.statement;
+
+    const closing = statement.closingBalance;
+    const closesOn = statement.toDate?.slice(0, 10) ?? entry.bookingDate.date;
+    if (closing && closing.value !== null && closesOn !== null) {
+      found.set(closesOn, Math.round(closing.value * 100));
+    }
+
+    const opening = statement.openingBalance;
+    const opensOn = statement.fromDate?.slice(0, 10) ?? null;
+    if (opening && opening.value !== null && opensOn !== null) {
+      const dayBefore = ayqAddDays(opensOn, -1);
+      if (!found.has(dayBefore)) {
+        found.set(dayBefore, Math.round(opening.value * 100));
+      }
+    }
+  }
+
+  return [...found.entries()]
+    .map(([coverageDate, amountCents]) => ({ coverageDate, amountCents }))
+    .sort((left, right) => (left.coverageDate < right.coverageDate ? -1 : 1));
 }
 
 async function accountFor(
@@ -308,22 +383,77 @@ export async function ayqImportCamt(
     categorised,
     matched: matched.applied,
     matchesWaiting: matched.proposals.length,
+    // Filled in below, once the anchors this file carried have been written and
+    // the one that stands is known.
+    balanceWanted: false,
+    anchoredAt: null,
+    anchorEstablished: false,
   };
 
   const after = ayqReadStore(dataDir);
   after.imports.push(record);
 
-  // How far this account's statements now reach (03 §8.1). Recorded only when
-  // it moves the boundary forward: a person importing an old statement to fill
-  // a gap has not made AYQ's knowledge of the account older.
-  const closing = furthestClosing(records);
-  if (closing !== null) {
-    const held = after.coverage[accountId];
-    if (!held || closing.toDate > held.toDate) {
-      after.coverage[accountId] = closing;
-    }
+  // What this file proves about the account's movements (§6.2). Every interval
+  // is kept, not just the furthest: an older statement imported to fill a gap
+  // is exactly the evidence that closes the gap, and a store that keeps only
+  // the boundary throws it away. Nothing here moves any boundary backwards
+  // either — the union does that arithmetic where it belongs.
+  const readAt = new Date().toISOString();
+  after.evidence.push(
+    ...coverageEvidence(records, accountId, importId, readAt),
+  );
+
+  // And the balances the bank itself stated, as anchors (§4.4). Which of them
+  // stands is `ayqActiveAnchor`'s question, not this one's: an older statement
+  // imported later adds an older anchor and does not displace a newer one.
+  const anchoredBefore = ayqActiveAnchor(after, accountId);
+  for (const stated of bankAnchors(records)) {
+    const already = after.anchors.some(
+      one =>
+        one.accountId === accountId &&
+        one.source === 'bank' &&
+        one.coverageDate === stated.coverageDate &&
+        one.amountCents === stated.amountCents,
+    );
+    // Importing the same statement twice must not write the same anchor twice:
+    // duplicates are to have zero effect (§4.3), and an anchor history full of
+    // identical rows is provenance nobody can read.
+    if (already) continue;
+    after.anchors.push({
+      id: ayqId('anchor'),
+      accountId,
+      amountCents: stated.amountCents,
+      coverageDate: stated.coverageDate,
+      importId,
+      source: 'bank',
+      createdAt: readAt,
+    });
   }
   ayqWriteStore(dataDir, after);
+
+  // §4.3: whatever the active anchor now is, Actual's balance has to agree
+  // with it at its own coverage date. When every new movement falls after that
+  // date the arithmetic lands on the technical figure that is already there and
+  // nothing is written; when one falls on or before it, the technical starting
+  // balance is recomputed so the anchor stays true. One code path, so neither
+  // case can be forgotten — and none of it runs at all when the account has no
+  // anchor, because there is then nothing to keep true.
+  await ayqReapplyAnchor(dataDir, accountId);
+
+  // Whether the import left the owner anything to do about the balance (§4.4):
+  // no reliable bank figure, and no anchor from before either.
+  const anchorAfter = ayqActiveAnchor(ayqReadStore(dataDir), accountId);
+  record.balanceWanted = anchorAfter === null;
+  record.anchoredAt = anchorAfter?.coverageDate ?? null;
+  if (anchoredBefore === null && anchorAfter !== null) {
+    record.anchorEstablished = true;
+  }
+  const settled = ayqReadStore(dataDir);
+  const at = settled.imports.findIndex(one => one.id === importId);
+  if (at >= 0) {
+    settled.imports[at] = record;
+    ayqWriteStore(dataDir, settled);
+  }
 
   return {
     ...record,

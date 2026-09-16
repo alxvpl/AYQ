@@ -27,6 +27,7 @@ import type {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqAliasMap, ayqCanonicalKey } from './ayq-aliases.ts';
+import { ayqDisplayName } from './ayq-names.ts';
 import { ayqLedger } from './ayq-ledger.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import { ayqReadStore, ayqRowKey, type AyqStore } from './ayq-store.ts';
@@ -140,7 +141,9 @@ function decorate(
   const rule = store.rules.find(one => one.counterpartyKey === bucket.key);
   return {
     key: bucket.key,
-    name: bucket.name,
+    // 8 §8.2: the owner's own name outranks whatever the newest transaction
+    // happens to be filed under.
+    name: ayqDisplayName(store, bucket.key, bucket.name) ?? bucket.key,
     transactions: bucket.transactions,
     outgoingCents: bucket.outgoingCents,
     firstDate: bucket.firstDate,
@@ -223,7 +226,7 @@ export async function ayqCounterpartyDetail(
     ? decorate(store, bucket, new Set(recurring === null ? [] : [key]))
     : {
         key,
-        name: key,
+        name: ayqDisplayName(store, key, key) ?? key,
         transactions: 0,
         outgoingCents: 0,
         firstDate: '',

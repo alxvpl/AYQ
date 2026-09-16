@@ -15,6 +15,7 @@ import api from '@actual-app/api';
 import type { AyqRecurring } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
+import { ayqDisplayName } from './ayq-names.ts';
 import { ayqReadStore, ayqRowKey } from './ayq-store.ts';
 
 /** Below this a rhythm is a coincidence. */
@@ -143,7 +144,9 @@ export async function ayqRecurring(dataDir: string): Promise<AyqRecurring[]> {
     const last = occurrences[occurrences.length - 1];
     found.push({
       key,
-      name: last.name,
+      // 8 §8.2 again: a rhythm is named after its counterparty, and the
+      // counterparty is called what the owner calls it.
+      name: ayqDisplayName(store, key, last.name) ?? last.name,
       occurrences: occurrences.length,
       cadence,
       amountVaries: smallest * 4 < largest * 3,

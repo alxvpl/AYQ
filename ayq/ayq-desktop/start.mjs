@@ -148,6 +148,24 @@ if (expectGround) env.AYQ_SMOKE_EXPECT_GROUND = expectGround;
 // an ambiguous match that waits for a person.
 if (has('conformance')) env.AYQ_SMOKE_CONFORMANCE = '1';
 
+// `--balance` requires Today to say Unknown where an account has no balance
+// AYQ can vouch for, and then sets one through the account's own form and
+// requires the figure to be exactly what was typed, with nothing added to the
+// ledger to make it so (§4.1, §4.4, §5).
+if (has('balance')) env.AYQ_SMOKE_BALANCE = '1';
+
+// `--about` opens Settings → About and reads the build stamp off the drawn
+// screen: the version, the build number, the author, the copyright, a real
+// forty-character revision and a real date — and requires the technical
+// information the copy button carries to hold the safe fields and none of the
+// forbidden ones (12 §12.1, §12.4).
+if (has('about')) env.AYQ_SMOKE_ABOUT = '1';
+
+// `--suggest` asks Upcoming to suggest and requires only the exact, regular
+// series to appear (9 §9.1), then reads the Plan's historical suggestions and
+// requires the basis to be stated rather than implied (10 §10.3).
+if (has('suggest')) env.AYQ_SMOKE_SUGGEST = '1';
+
 // `--plan-sheet "Category:amount"` opens Plan, sets that category's monthly
 // plan through the sheet, and requires the row's own Left column — which the
 // engine computed — to come back showing it.

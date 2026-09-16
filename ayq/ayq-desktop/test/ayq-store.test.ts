@@ -19,7 +19,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+import { ayqCompleteMonths } from '../src/ayq-evidence.ts';
 import {
+  AYQ_LEGACY_EVIDENCE,
   AYQ_STORE_VERSION,
   ayqMigrate,
   ayqReadStore,
@@ -128,6 +130,9 @@ function atVersion(to: number): Record<string, unknown> {
         matchedAt: '2026-03-02T08:00:00Z',
         matchProvenance: 'manual',
         dismissed: false,
+        // Version 3 wrote this field; a fixture without it would be a version 3
+        // store no version 3 ever produced.
+        rejected: [],
       },
     ];
     store.accountFlags = { 'acc-1': { countsTowardFunds: true } };
@@ -160,6 +165,39 @@ function atVersion(to: number): Record<string, unknown> {
       },
     };
   }
+  if (to >= 8) {
+    store.anchors = [
+      {
+        id: 'anchor-1',
+        accountId: 'acc-1',
+        amountCents: 174_131,
+        coverageDate: '2026-02-28',
+        importId: 'imp-2',
+        source: 'bank',
+        createdAt: '2026-02-28T10:00:00Z',
+      },
+    ];
+    store.evidence = [
+      {
+        accountId: 'acc-1',
+        importId: 'imp-2',
+        fromDate: '2026-02-01',
+        toDate: '2026-02-28',
+        closingBalanceCents: 174_131,
+        file: 'invented-february.xml',
+        readAt: '2026-02-28T10:00:00Z',
+      },
+    ];
+    store.counterpartyNames = {
+      TESTMARKT: {
+        counterpartyKey: 'TESTMARKT',
+        displayName: 'Testmarkt',
+        decidedAt: '2026-03-01T10:00:00Z',
+      },
+    };
+    store.starterTaxonomyVersion = 1;
+    delete store.coverage;
+  }
   store.version = to;
   return store;
 }
@@ -175,7 +213,9 @@ function counts(store: AyqStore): Record<string, number> {
     planned: store.planned.length,
     occurrences: store.occurrences.length,
     accountFlags: Object.keys(store.accountFlags).length,
-    coverage: Object.keys(store.coverage).length,
+    evidence: store.evidence.length,
+    anchors: store.anchors.length,
+    counterpartyNames: Object.keys(store.counterpartyNames).length,
   };
 }
 
@@ -211,7 +251,14 @@ for (let from = 1; from < AYQ_STORE_VERSION; from += 1) {
     assert.equal(now.planned, from >= 3 ? was.planned : 0);
     assert.equal(now.occurrences, from >= 3 ? was.occurrences : 0);
     assert.equal(now.accountFlags, from >= 3 ? was.accountFlags : 0);
-    assert.equal(now.coverage, from >= 7 ? was.coverage : 0);
+    // Version 7's coverage map becomes one evidence row per account, and
+    // version 8's own evidence survives as itself. Either way the count is the
+    // one the fixture put in.
+    assert.equal(now.evidence, from >= 7 ? was.evidence : 0);
+    // No anchor is ever invented by a migration: only a store that already
+    // held one has one.
+    assert.equal(now.anchors, from >= 8 ? was.anchors : 0);
+    assert.equal(now.counterpartyNames, from >= 8 ? was.counterpartyNames : 0);
 
     // §5.4 and §4.4: the owner's decisions read back exactly as they were.
     assert.deepEqual(standing(after), {
@@ -350,4 +397,109 @@ test('an interrupted migration leaves a store that still opens (§5.5)', async (
   // Then written, and from then on nothing migrates.
   ayqWriteStore(dataDir, first);
   assert.deepEqual(ayqReadStore(dataDir), first);
+});
+
+/* ---------------------------------------------------------------- version 8
+
+   Balance anchors, coverage as intervals, the owner's own counterparty names
+   and the taxonomy marker. The step that matters is the coverage one: version
+   7 recorded a closing balance and a date it reached *to*, and never a date it
+   reached *from*. Carrying that across with an invented start would silently
+   qualify months AYQ cannot actually vouch for, and Plan suggestions are an
+   arithmetic mean over exactly those months.                                */
+
+test('v7 coverage becomes evidence with its start left unknown (§3.2)', () => {
+  const after = ayqMigrate(atVersion(7));
+
+  assert.equal(after.evidence.length, 1, 'the one coverage row became one evidence row');
+  const [carried] = after.evidence;
+
+  // Preserved, exactly: what version 7 actually knew.
+  assert.equal(carried.accountId, 'acc-1');
+  assert.equal(carried.toDate, '2026-02-28');
+  assert.equal(carried.closingBalanceCents, 174_131);
+  assert.equal(carried.file, 'invented-february.xml');
+  assert.equal(carried.readAt, '2026-02-28T10:00:00Z');
+
+  // And unknown, exactly: what it did not. Not the first of the month, not the
+  // first imported transaction's date, not the day before `toDate`. Version 7
+  // stored no start, so there is none.
+  assert.equal(carried.fromDate, null, 'a start date was invented');
+
+  // It is marked as carried up rather than as something AYQ read from a file.
+  assert.equal(carried.importId, AYQ_LEGACY_EVIDENCE);
+});
+
+test('the migration invents no anchor, however much evidence it carries', () => {
+  const after = ayqMigrate(atVersion(7));
+
+  // A closing balance in a version 7 store is the bank stating a figure in a
+  // file. §4.4 is what turns one into an anchor, and it runs at import time
+  // with an account id in hand — not here, over a store, from a date.
+  assert.deepEqual(after.anchors, [], 'the migration anchored an account');
+});
+
+test('a migrated store has not had the starter taxonomy (§3.4)', () => {
+  for (let from = 1; from <= 7; from += 1) {
+    assert.equal(
+      ayqMigrate(atVersion(from)).starterTaxonomyVersion,
+      0,
+      `a version ${from} store claimed the taxonomy had been provisioned`,
+    );
+  }
+  // And a store that really has had it keeps saying so.
+  assert.equal(ayqMigrate(atVersion(8)).starterTaxonomyVersion, 1);
+});
+
+test('legacy evidence of unknown start proves no complete month (§6.3)', () => {
+  const after = ayqMigrate(atVersion(7));
+
+  // February 2026 is entirely inside what the legacy row's `toDate` reaches,
+  // and it still does not qualify: an interval with no start proves nothing,
+  // which is the whole reason the field is allowed to be null.
+  const complete = ayqCompleteMonths(
+    after,
+    [{ accountId: 'acc-1', firstSeen: '2026-01-05' }],
+    ['2026-01', '2026-02'],
+  );
+  assert.equal(complete.size, 0, 'a month was qualified by evidence with no start');
+});
+
+test('the owner’s counterparty names survive, and none is invented', () => {
+  assert.deepEqual(ayqMigrate(atVersion(7)).counterpartyNames, {});
+
+  const kept = ayqMigrate(atVersion(8)).counterpartyNames;
+  assert.equal(kept.TESTMARKT?.displayName, 'Testmarkt');
+  assert.equal(kept.TESTMARKT?.decidedAt, '2026-03-01T10:00:00Z');
+});
+
+test('a v7 store with no coverage at all migrates to no evidence', () => {
+  const bare = atVersion(6);
+  bare.version = 7;
+  bare.coverage = {};
+  const after = ayqMigrate(bare);
+  assert.deepEqual(after.evidence, []);
+  assert.deepEqual(after.anchors, []);
+});
+
+test('the aliases, rules, plans, matches and rejections all reach version 8', () => {
+  const after = ayqMigrate(atVersion(7));
+
+  assert.equal(after.aliases.length, 1);
+  assert.equal(after.aliases[0].counterpartyKey, 'TESTMARKT');
+  assert.equal(after.rules.length, 1);
+  assert.equal(after.rules[0].categoryName, 'Groceries');
+  assert.equal(after.planned.length, 2);
+  assert.equal(after.occurrences.length, 1);
+  assert.equal(after.occurrences[0].matchedTransactionId, 'row-9');
+  assert.equal(after.occurrences[0].matchProvenance, 'manual');
+  assert.deepEqual(after.occurrences[0].rejected, []);
+  assert.deepEqual(after.accountFlags, { 'acc-1': { countsTowardFunds: true } });
+  assert.equal(after.settings.ground, 'dark');
+});
+
+test('a version 9 store is refused rather than read as version 8', () => {
+  const ahead = atVersion(8);
+  ahead.version = 9;
+  assert.throws(() => ayqMigrate(ahead), /version 9/);
 });

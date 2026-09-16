@@ -49,11 +49,33 @@ export function ayqSetAccountFlag(
   ayqWriteStore(dataDir, store);
 }
 
-/** Only the flagged accounts. 03 §7.6. */
-export function ayqAvailableFunds(accounts: AyqAccountSummary[]): number {
-  return accounts
-    .filter(account => account.countsTowardFunds)
-    .reduce((total, account) => total + account.balanceCents, 0);
+/**
+ * Only the flagged accounts (03 §7.6) — or nothing at all (§5).
+ *
+ * Null when any counted account's balance is unknown. The known subset is
+ * deliberately not summed and labelled "available funds": a person acting on a
+ * figure that silently omits their current account is worse off than a person
+ * told that AYQ does not know, because nothing on the screen would say which
+ * account was left out.
+ */
+export function ayqAvailableFunds(
+  accounts: AyqAccountSummary[],
+): number | null {
+  const counted = accounts.filter(account => account.countsTowardFunds);
+  if (counted.some(account => account.balanceCents === null)) return null;
+  return counted.reduce(
+    (total, account) => total + (account.balanceCents ?? 0),
+    0,
+  );
+}
+
+/** The same rule over every account, counted or not: total held (§5). */
+export function ayqTotalHeld(accounts: AyqAccountSummary[]): number | null {
+  if (accounts.some(account => account.balanceCents === null)) return null;
+  return accounts.reduce(
+    (total, account) => total + (account.balanceCents ?? 0),
+    0,
+  );
 }
 
 /**

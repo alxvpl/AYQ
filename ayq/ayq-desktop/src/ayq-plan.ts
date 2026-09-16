@@ -32,7 +32,7 @@ import type {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
-import { ayqBudgetMonth, ayqBudgetMonths } from './ayq-budget.ts';
+import { ayqBudgetMonth, ayqBudgetMonths, ayqSetPlan } from './ayq-budget.ts';
 import { ayqMonthOf, ayqMonthsBetween } from './ayq-dates.ts';
 import { ayqComputeForecast } from './ayq-forecast.ts';
 import { ayqAvailableFunds } from './ayq-funds.ts';
@@ -43,8 +43,15 @@ import {
   ayqIsOccurrenceOf,
   ayqOccurrencesBetween,
   ayqPlanWindow,
+  ayqToday,
 } from './ayq-plan-series.ts';
-import { ayqRecurring } from './ayq-recurring.ts';
+import {
+  ayqDetectSeries,
+  ayqSeriesStillHolds,
+  type AyqSeriesOccurrence,
+} from './ayq-series.ts';
+import { ayqDisplayName } from './ayq-names.ts';
+import { ayqPlanSuggestions } from './ayq-plan-suggestions.ts';
 import {
   ayqId,
   ayqReadStore,
@@ -166,7 +173,54 @@ export async function ayqPlanSheet(
     totalActualCents: budget.totalActualCents,
     totalRemainingCents: budget.totalRemainingCents,
     totalExpectedCents: rows.reduce((sum, row) => sum + row.expectedCents, 0),
+    suggestions: await ayqPlanSuggestions(dataDir, chosen),
   };
+}
+
+/**
+ * Accepts one suggestion, or every suggestion that would fill an empty row.
+ *
+ * 10 §10.3 keeps the two apart, and the difference is the whole of the rule. A
+ * row-level acceptance is a person looking at one category and deciding, so it
+ * may replace whatever is there. `Use all suggestions` is a person accepting a
+ * page they have not read line by line, so it fills only rows whose plan is
+ * nought or empty and never writes over a figure somebody typed.
+ *
+ * Nothing is stored here that Actual does not already own: an accepted
+ * suggestion becomes a planned amount through the tracking-budget API, which is
+ * the same write the box on the sheet makes. There is no second plan store to
+ * disagree with it, and recomputing the suggestions afterwards cannot move a
+ * plan, because the suggestion and the plan are different fields.
+ */
+export async function ayqUsePlanSuggestions(
+  dataDir: string,
+  month: string,
+  scope: { categoryId: string } | { all: true },
+): Promise<AyqPlanSheet> {
+  const sheet = await ayqPlanSheet(dataDir, ayqToday(), month);
+  if (!sheet.editable) {
+    throw new Error(`Actual does not keep a budget month for ${month}`);
+  }
+
+  const wanted =
+    'categoryId' in scope
+      ? sheet.suggestions.filter(one => one.categoryId === scope.categoryId)
+      : sheet.suggestions.filter(one => {
+          const row = sheet.rows.find(
+            candidate => candidate.categoryId === one.categoryId,
+          );
+          return row !== undefined && row.planCents === 0;
+        });
+
+  for (const one of wanted) {
+    if (one.suggestedCents === null) continue;
+    // A suggestion of nought or less is not a plan: writing it would clear the
+    // row, which is not what accepting an offer means.
+    if (one.suggestedCents <= 0) continue;
+    await ayqSetPlan(dataDir, month, one.categoryId, one.suggestedCents);
+  }
+
+  return ayqPlanSheet(dataDir, ayqToday(), month);
 }
 
 function validate(draft: AyqPlanDraft): void {
@@ -379,44 +433,45 @@ const CADENCE: Record<string, AyqPlanFrequency> = {
  * The amount is the larger of the last charge and the average of them, because
  * the forecast errs toward showing less money available (03 §7.5).
  */
-export async function ayqSuggestFromRecurring(
+export async function ayqSuggestFromSeries(
   dataDir: string,
   now: string,
   today: string,
 ): Promise<number> {
-  const rhythms = await ayqRecurring(dataDir);
+  const series = await ayqHistoricalSeries(dataDir);
   const store = ayqReadStore(dataDir);
+
+  // One offer per counterparty *and amount*, so a shop with a monthly
+  // subscription and a separate yearly one can be offered both — and so that
+  // accepting one does not silently suppress the other.
   const known = new Set(
     store.planned
-      .map(record => record.counterpartyKey)
-      .filter((key): key is string => key !== null),
+      .filter(record => record.counterpartyKey !== null)
+      .map(record => `${record.counterpartyKey} @ ${record.amountCents}`),
   );
 
   let added = 0;
-  for (const rhythm of rhythms) {
-    if (known.has(rhythm.key)) continue;
-    const frequency = CADENCE[rhythm.cadence];
-    // An irregular rhythm has no next date to project onto. It stays in the
-    // Recurring view, which is where a person can still see it.
-    if (frequency === undefined || rhythm.nextExpectedDate === null) continue;
+  for (const one of series) {
+    const identity = `${one.counterpartyKey} @ ${one.amountCents}`;
+    if (known.has(identity)) continue;
 
     store.planned.push({
       id: ayqId('plan'),
-      name: rhythm.name,
+      name: one.name,
       kind: 'expense',
-      amountCents: Math.max(
-        Math.abs(rhythm.lastAmountCents),
-        Math.abs(rhythm.averageAmountCents),
-      ),
+      // The exact repeated amount (9 §9.1) — not an average of it with
+      // anything, because there is nothing to average: every occurrence in a
+      // qualifying series carried this figure.
+      amountCents: one.amountCents,
       categoryName: null,
-      counterpartyKey: rhythm.key,
+      counterpartyKey: one.counterpartyKey,
       accountId: null,
-      startDate: rhythm.nextExpectedDate,
-      recurrence: { frequency, interval: 1 },
+      startDate: one.nextExpectedDate,
+      recurrence: { frequency: one.frequency, interval: 1 },
       endDate: null,
       state: 'suggested',
       provenance: 'detected',
-      mandateId: rhythm.mandateId,
+      mandateId: one.mandateId,
       // A rhythm found in years of statements is suggested today, and expects
       // nothing before today (03 §7.14). The payments it was detected from
       // already happened; they are history, not arrears.
@@ -425,12 +480,94 @@ export async function ayqSuggestFromRecurring(
       createdAt: now,
       updatedAt: now,
     });
-    known.add(rhythm.key);
+    known.add(identity);
     added += 1;
   }
 
   if (added > 0) ayqWriteStore(dataDir, store);
   return added;
+}
+
+/**
+ * The qualifying series in the budget's own history.
+ *
+ * The occurrences are read here and judged in `ayq-series.ts`, which touches no
+ * budget at all — so every case in 9 §9.1 can be proved on invented data.
+ */
+export async function ayqHistoricalSeries(dataDir: string) {
+  const store = ayqReadStore(dataDir);
+
+  const answer = (await api.aqlQuery(
+    api
+      .q('transactions')
+      .filter({ starting_balance_flag: false })
+      .select(['id', 'date', 'amount', 'imported_id', { payee: 'payee.name' }]),
+  )) as {
+    data?: Array<{
+      id: string;
+      date: string;
+      amount: number;
+      imported_id: string | null;
+      payee: string | null;
+    }>;
+  };
+
+  const occurrences: AyqSeriesOccurrence[] = [];
+  for (const row of answer.data ?? []) {
+    const provenance = store.provenance[ayqRowKey(row)];
+    const key = ayqCanonicalKey(store, provenance?.counterpartyKey);
+    // No canonical identity, no series: condition 1 of §9.1 is not "roughly the
+    // same string", it is the same counterparty, and a row AYQ never resolved
+    // has no counterparty to be the same as.
+    if (!key) continue;
+    occurrences.push({
+      counterpartyKey: key,
+      name: ayqDisplayName(store, key, row.payee ?? null) ?? key,
+      date: String(row.date),
+      amountCents: Number(row.amount ?? 0),
+      mandateId: provenance?.mandateId ?? null,
+    });
+  }
+
+  return ayqDetectSeries(occurrences);
+}
+
+/**
+ * Withdraws offers AYQ made under the older, looser rule (9 §9.2).
+ *
+ * Only records that are *both* `detected` and still `suggested` are considered:
+ * a record a person typed is theirs, and a suggestion a person has already
+ * confirmed is theirs too — neither is AYQ's to reconsider. Nothing is deleted
+ * and no occurrence decision, match or rejection is touched; the record moves
+ * to `retired`, stops generating occurrences and stops counting in the
+ * forecast, and everything about it stays readable.
+ *
+ * Returns how many were withdrawn, so a caller can say so.
+ */
+export async function ayqRetireInvalidSuggestions(
+  dataDir: string,
+): Promise<number> {
+  const store = ayqReadStore(dataDir);
+  const offers = store.planned.filter(
+    record => record.provenance === 'detected' && record.state === 'suggested',
+  );
+  if (offers.length === 0) return 0;
+
+  const series = await ayqHistoricalSeries(dataDir);
+
+  let retired = 0;
+  const now = new Date().toISOString();
+  for (const record of store.planned) {
+    if (record.provenance !== 'detected') continue;
+    if (record.state !== 'suggested') continue;
+    if (ayqSeriesStillHolds(series, record)) continue;
+    record.state = 'retired';
+    record.updatedAt = now;
+    retired += 1;
+  }
+
+  if (retired > 0) ayqWriteStore(dataDir, store);
+  return retired;
 }
 
 /* ----------------------------------------------------------------- matching
@@ -651,6 +788,9 @@ export async function ayqSuggest(
   today: string,
   now: string,
 ): Promise<AyqPlanSuggested> {
-  const added = await ayqSuggestFromRecurring(dataDir, now, today);
+  // Offers AYQ can no longer stand behind go first, so a pass that withdraws
+  // one and finds a better one for the same counterparty does both.
+  await ayqRetireInvalidSuggestions(dataDir);
+  const added = await ayqSuggestFromSeries(dataDir, now, today);
   return { plan: ayqPlan(dataDir, today), added };
 }

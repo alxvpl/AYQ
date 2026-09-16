@@ -17,7 +17,7 @@ import type { AyqPlanSheet } from '../src/ayq-ipc-contract.ts';
 import { AyqPlanScreen } from '../src/ayq-screens/ayq-plan.tsx';
 import { ayqMonthName, ayqText } from '../src/ayq-strings.ts';
 import { AyqGroundProvider } from '../src/ayq-ui/ayq-ground-provider.tsx';
-import { ayqBlur, ayqOpenWindow, ayqType } from './ayq-react.ts';
+import { ayqBlur, ayqOpenWindow, ayqPress, ayqType } from './ayq-react.ts';
 
 const SHEET: AyqPlanSheet = {
   month: '2026-09',
@@ -65,6 +65,37 @@ const SHEET: AyqPlanSheet = {
   totalActualCents: 179_340,
   totalRemainingCents: 30_000,
   totalExpectedCents: 42_500,
+  // 10 §10.2: a figure, the basis it rests on, and a category with no basis at
+  // all — which is a different thing from a category suggested nothing for.
+  suggestions: [
+    {
+      categoryId: 'cat-housing',
+      categoryName: 'Housing',
+      suggestedCents: 148_000,
+      monthsUsed: 7,
+      fromMonth: '2026-02',
+      toMonth: '2026-08',
+      totalCents: 1_036_000,
+    },
+    {
+      categoryId: 'cat-groceries',
+      categoryName: 'Groceries',
+      suggestedCents: 40_873,
+      monthsUsed: 7,
+      fromMonth: '2026-02',
+      toMonth: '2026-08',
+      totalCents: 286_111,
+    },
+    {
+      categoryId: 'cat-transport',
+      categoryName: 'Transport',
+      suggestedCents: null,
+      monthsUsed: 0,
+      fromMonth: null,
+      toMonth: null,
+      totalCents: 0,
+    },
+  ],
 };
 
 function engine(sheet: AyqPlanSheet = SHEET) {
@@ -75,6 +106,14 @@ function engine(sheet: AyqPlanSheet = SHEET) {
         : { ...sheet, month: String(request.month) };
     }
     if (request.kind === 'budget.setPlan') return { month: sheet.month };
+    // Both acceptances answer with the sheet as it stands afterwards, which is
+    // what the screen redraws from.
+    if (
+      request.kind === 'plan.useSuggestion' ||
+      request.kind === 'plan.useAllSuggestions'
+    ) {
+      return sheet;
+    }
     return undefined;
   };
 }
@@ -269,6 +308,7 @@ test('a budget with no categories says so where the rows would be', async () => 
       totalActualCents: 0,
       totalRemainingCents: 0,
       totalExpectedCents: 0,
+      suggestions: [],
     }),
   );
   await window.render(screen());
@@ -277,6 +317,152 @@ test('a budget with no categories says so where the rows would be', async () => 
     window.container.querySelector('[data-ayq-table="plan"][data-ayq-empty]')
       ?.textContent ?? '',
     new RegExp(ayqText('plan.empty')),
+  );
+
+  await window.close();
+});
+
+/* ------------------------------------------------- what history suggests (10)
+
+   Beside the plan, never in it. A suggestion is an offer with its basis stated;
+   what makes it a plan is a person deciding, and the two acts that do that are
+   deliberately not the same act.                                            */
+
+test('a suggestion is shown with the basis it rests on, and is not the plan', async () => {
+  const window = await ayqOpenWindow(engine());
+  await window.render(screen());
+
+  const rows = window.container.querySelectorAll(
+    '[data-ayq-table="plan"] tbody tr',
+  );
+  const housing = rows[0];
+
+  const suggestion = housing.querySelector('[data-ayq-suggestion]');
+  assert.ok(suggestion, 'the sheet does not show a suggestion at all');
+  assert.equal(suggestion.getAttribute('data-ayq-suggestion'), '148000');
+  assert.equal(suggestion.getAttribute('data-ayq-suggestion-months'), '7');
+
+  // It says what it is based on, so the figure can be checked rather than
+  // believed. Seven, not twelve.
+  assert.match(suggestion.textContent ?? '', /7 months/);
+
+  // And Planned is still the owner's own figure, untouched.
+  assert.equal(
+    (housing.querySelector('[data-ayq-plan-cell="cat-housing"]') as HTMLInputElement)
+      ?.value,
+    '1500.00',
+    'a suggestion became the plan on its own',
+  );
+
+  await window.close();
+});
+
+test('a category with no basis says so, rather than being suggested nought', async () => {
+  const window = await ayqOpenWindow(engine());
+  await window.render(screen());
+
+  const rows = window.container.querySelectorAll(
+    '[data-ayq-table="plan"] tbody tr',
+  );
+  const transport = rows[2];
+  const none = transport.querySelector('[data-ayq-suggestion="none"]');
+  assert.ok(none, 'a category with no basis was given a figure');
+  assert.equal(none.textContent, ayqText('plan.suggestion.none'));
+  // Nought is a plan. No basis is not.
+  assert.ok(!/0[.,]00/.test(none.textContent ?? ''));
+
+  await window.close();
+});
+
+test('the whole sheet says how many months the suggestions rest on', async () => {
+  const window = await ayqOpenWindow(engine());
+  await window.render(screen());
+
+  const basis = window.container.querySelector('[data-ayq-plan-basis]');
+  assert.ok(basis);
+  assert.match(basis.textContent ?? '', /7 complete/);
+  assert.match(basis.textContent ?? '', /fills only rows with no plan/);
+
+  await window.close();
+});
+
+test('Use suggestion sends that row, and only that row (10 §10.3)', async () => {
+  const window = await ayqOpenWindow(engine());
+  await window.render(screen());
+
+  await ayqPress(
+    window.container.querySelector('[data-ayq-action="plan-use-cat-groceries"]'),
+  );
+
+  const sent = window.asked.filter(one => one.kind === 'plan.useSuggestion');
+  assert.equal(sent.length, 1);
+  // The correlation id is the bridge's; what the screen decided is the rest.
+  const { id: _id, ...asked } = sent[0];
+  assert.deepEqual(asked, {
+    kind: 'plan.useSuggestion',
+    month: '2026-09',
+    categoryId: 'cat-groceries',
+  });
+  // Not the bulk action, which is a different decision.
+  assert.equal(
+    window.asked.filter(one => one.kind === 'plan.useAllSuggestions').length,
+    0,
+  );
+
+  await window.close();
+});
+
+test('Use all suggestions is offered only when it would fill something', async () => {
+  // Transport is the one row with no plan, and it has no suggestion — so a
+  // bulk action would do nothing, and is not offered.
+  const nothingToFill = await ayqOpenWindow(engine());
+  await nothingToFill.render(screen());
+  assert.equal(
+    nothingToFill.container.querySelector('[data-ayq-action="plan-use-all"]'),
+    null,
+    'a bulk action was offered that would have done nothing',
+  );
+  await nothingToFill.close();
+
+  // Give Transport a suggestion and it becomes worth offering.
+  const fillable: AyqPlanSheet = {
+    ...SHEET,
+    suggestions: SHEET.suggestions.map(one =>
+      one.categoryId === 'cat-transport'
+        ? { ...one, suggestedCents: 9_000, monthsUsed: 7, fromMonth: '2026-02', toMonth: '2026-08' }
+        : one,
+    ),
+  };
+  const window = await ayqOpenWindow(engine(fillable));
+  await window.render(screen());
+  await ayqPress(window.container.querySelector('[data-ayq-action="plan-use-all"]'));
+
+  const bulk = window.asked.filter(
+    one => one.kind === 'plan.useAllSuggestions',
+  );
+  assert.equal(bulk.length, 1);
+  const { id: _bulkId, ...sentBulk } = bulk[0];
+  assert.deepEqual(sentBulk, {
+    kind: 'plan.useAllSuggestions',
+    month: '2026-09',
+  });
+
+  await window.close();
+});
+
+test('a month that cannot be planned in offers no acceptance at all', async () => {
+  const window = await ayqOpenWindow(
+    engine({ ...SHEET, editable: false }),
+  );
+  await window.render(screen());
+
+  assert.equal(
+    window.container.querySelector('[data-ayq-action="plan-use-all"]'),
+    null,
+  );
+  assert.equal(
+    window.container.querySelector('[data-ayq-action="plan-use-cat-housing"]'),
+    null,
   );
 
   await window.close();

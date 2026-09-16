@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A month of movements with no balance anywhere in it.
+
+  Real exports look like this all the time: the entries are there and the bank
+  states neither an opening nor a closing figure. Build 004 added them to an
+  assumed nought and drew the total as the account's balance, which is what
+  §4.1 forbids. AYQ now says Unknown, and offers the owner the way out of it.
+
+  The IBAN is a test number and the creditor does not exist.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr><MsgId>camt053-no-balance</MsgId><CreDtTm>2026-07-01T00:00:00</CreDtTm></GrpHdr>
+    <Stmt>
+      <Id>NL03TEST0123456789.2026-06</Id>
+      <CreDtTm>2026-07-01T00:00:00</CreDtTm>
+      <FrToDt><FrDtTm>2026-06-01T00:00:00</FrDtTm><ToDtTm>2026-06-30T23:59:59</ToDtTm></FrToDt>
+      <Acct><Id><IBAN>NL03TEST0123456789</IBAN></Id><Ccy>EUR</Ccy></Acct>
+      <Ntry>
+        <Amt Ccy="EUR">20.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-06-10</Dt></BookgDt><ValDt><Dt>2026-06-10</Dt></ValDt>
+        <AcctSvcrRef>NOBAL0000000001</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>DDBT</Cd><SubFmlyCd>PMDD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>NOBAL-1</EndToEndId></Refs>
+          <RltdPties><Cdtr><Nm>TESTWINKEL B.V.</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>TESTWINKEL B.V.</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

@@ -12,6 +12,8 @@ import api from '@actual-app/api';
 
 import type {
   AyqAccountSummary,
+  AyqBalanceAnchorView,
+  AyqReconciliation,
   AyqCategorySource,
   AyqLedger,
   AyqLedgerFilter,
@@ -26,8 +28,20 @@ import type {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
+import { ayqDisplayName } from './ayq-names.ts';
+import {
+  ayqAccountedFor,
+  ayqActiveAnchor,
+  ayqAnchorHistory,
+} from './ayq-anchors.ts';
+import {
+  ayqBankDataThrough,
+  ayqClosingEvidence,
+  ayqLastSuccessfulImport,
+} from './ayq-evidence.ts';
 import {
   ayqAvailableFunds,
+  ayqTotalHeld,
   ayqCountsTowardFunds,
   ayqIsInternalTransfer,
   ayqOwnAccountNames,
@@ -36,6 +50,7 @@ import {
   ayqReadStore,
   ayqRowKey,
   ayqStandingDecision,
+  type AyqBalanceAnchor,
   type AyqStore,
 } from './ayq-store.ts';
 import {
@@ -182,11 +197,27 @@ function compareRows(left: AyqQueriedRow, right: AyqQueriedRow): number {
   return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
-function toRow(row: AyqQueriedRow, source: AyqCategorySource): AyqLedgerRow {
+/**
+ * One queried row as the screen needs it.
+ *
+ * The payee is resolved through 8 §8.2 rather than taken from the budget: the
+ * owner's own name for the counterparty, if they have set one, and what Actual
+ * holds otherwise. Every list of transactions in the product comes through
+ * here, which is why a rename shows up in all of them at once.
+ */
+function toRow(
+  store: AyqStore,
+  row: AyqQueriedRow,
+  source: AyqCategorySource,
+): AyqLedgerRow {
+  const canonical = ayqCanonicalKey(
+    store,
+    store.provenance[ayqRowKey(row)]?.counterpartyKey,
+  );
   return {
     id: String(row.id),
     date: String(row.date),
-    payee: row.payee ?? null,
+    payee: ayqDisplayName(store, canonical, row.payee ?? null),
     amountCents: Number(row.amount ?? 0),
     account: row.account ?? '',
     accountId: String(row.accountId ?? ''),
@@ -383,7 +414,7 @@ export async function ayqUnfiled(
     } else {
       byKey.set(key, {
         key,
-        name: row.payee ?? 'Unknown',
+        name: ayqDisplayName(store, key, row.payee ?? null) ?? 'Unknown',
         cents: -cents,
         transactions: 1,
         firstDate: date,
@@ -421,7 +452,7 @@ export async function ayqLedger(
     matching.sort(compareRows);
     return {
       ...totalsOf(matching, reversals(store)),
-      rows: matching.slice(0, limit).map(row => toRow(row, source(row))),
+      rows: matching.slice(0, limit).map(row => toRow(store, row, source(row))),
       shown: Math.min(matching.length, limit),
     };
   }
@@ -491,7 +522,7 @@ export async function ayqLedger(
   const expenseCents = -Number(outgoing.data ?? 0) - reversedCents;
 
   return {
-    rows: (page.data ?? []).map(row => toRow(row, source(row))),
+    rows: (page.data ?? []).map(row => toRow(store, row, source(row))),
     total: Number(total.data ?? 0),
     shown: (page.data ?? []).length,
     incomeCents,
@@ -561,7 +592,7 @@ export async function ayqDetail(
     ayqCanonicalKey(store, store.provenance[key]?.counterpartyKey) ?? null;
 
   return {
-    row: toRow(found, ayqStandingDecision(store, key)?.source ?? null),
+    row: toRow(store, found, ayqStandingDecision(store, key)?.source ?? null),
     importedPayee: found.imported_payee ?? null,
     notes: found.notes ?? null,
     importedId: found.imported_id ?? null,
@@ -661,15 +692,63 @@ export async function ayqAccounts(
   const store = ayqReadStore(dataDir);
   const accounts: AyqAccountSummary[] = [];
   for (const account of await api.getAccounts()) {
+    const anchor = ayqActiveAnchor(store, account.id);
+
+    // The balance, or nothing. An account with no anchor has no absolute
+    // balance AYQ is entitled to state: what Actual holds for it is the sum of
+    // whatever movements happen to have been imported, and that is not money
+    // in the bank. §5 makes Unknown a real state precisely so this line can
+    // return null instead of a number nobody can act on.
+    const balanceCents =
+      anchor === null ? null : ((await api.getAccountBalance(account.id)) ?? 0);
+
+    // Reconciliation, only where the bank stated a closing balance, and asked
+    // of the *movements* rather than of the balance (see `ayqAccountedFor`).
+    // The comparison is at the day the statement closed, not today: the bank
+    // said what it held on the 31st.
+    const closing = ayqClosingEvidence(store, account.id);
+    let reconciliation: AyqReconciliation | null = null;
+    if (closing !== null && closing.closingBalanceCents !== null) {
+      const accounted = await ayqAccountedFor(store, account.id, closing.toDate);
+      if (accounted !== null) {
+        const difference =
+          closing.closingBalanceCents - accounted.accountedCents;
+        reconciliation = {
+          asOf: closing.toDate,
+          statementBalanceCents: closing.closingBalanceCents,
+          ledgerBalanceCents: accounted.accountedCents,
+          differenceCents: difference,
+          agrees: difference === 0,
+          file: closing.file,
+          readAt: closing.readAt,
+        };
+      }
+    }
+
     accounts.push({
       id: account.id,
       name: account.name,
-      balanceCents: (await api.getAccountBalance(account.id)) ?? 0,
+      balanceCents,
       transactionCount: byAccount.get(account.id) ?? 0,
       countsTowardFunds: ayqCountsTowardFunds(store, account.id),
+      anchor: anchor === null ? null : anchorView(anchor),
+      anchorHistory: ayqAnchorHistory(store, account.id).map(anchorView),
+      lastImportAt: ayqLastSuccessfulImport(store, account.id),
+      bankDataThrough: ayqBankDataThrough(store, account.id),
+      reconciliation,
     });
   }
   return accounts;
+}
+
+/** An anchor as the renderer sees it: the figure, the day, and who said so. */
+function anchorView(anchor: AyqBalanceAnchor): AyqBalanceAnchorView {
+  return {
+    amountCents: anchor.amountCents,
+    coverageDate: anchor.coverageDate,
+    source: anchor.source,
+    createdAt: anchor.createdAt,
+  };
 }
 
 /** Counted through the engine's own query language. */
@@ -783,10 +862,7 @@ export async function ayqSummary(dataDir: string): Promise<AyqSummary> {
 
   return {
     accounts,
-    totalBalanceCents: accounts.reduce(
-      (total, account) => total + account.balanceCents,
-      0,
-    ),
+    totalBalanceCents: ayqTotalHeld(accounts),
     // Only the accounts flagged as counting (03 §7.6). With one current account
     // this equals the balance; with a savings account beside it, it is the part
     // of the money that is actually there to be spent.

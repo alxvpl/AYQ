@@ -39,6 +39,31 @@ const TODAY: AyqToday = {
         balanceCents: 128450,
         transactionCount: 212,
         countsTowardFunds: true,
+        anchor: {
+          amountCents: 128450,
+          coverageDate: '2026-08-31',
+          source: 'bank',
+          createdAt: '2026-09-01T08:00:00.000Z',
+        },
+        anchorHistory: [
+          {
+            amountCents: 128450,
+            coverageDate: '2026-08-31',
+            source: 'bank',
+            createdAt: '2026-09-01T08:00:00.000Z',
+          },
+        ],
+        lastImportAt: '2026-09-01T08:00:00.000Z',
+        bankDataThrough: '2026-08-31',
+        reconciliation: {
+          asOf: '2026-08-31',
+          statementBalanceCents: 128450,
+          ledgerBalanceCents: 128450,
+          differenceCents: 0,
+          agrees: true,
+          file: 'august.xml',
+          readAt: '2026-09-01T08:00:00.000Z',
+        },
       },
       {
         id: 'acc-2',
@@ -46,6 +71,23 @@ const TODAY: AyqToday = {
         balanceCents: 41200,
         transactionCount: 40,
         countsTowardFunds: true,
+        anchor: {
+          amountCents: 41200,
+          coverageDate: '2026-08-31',
+          source: 'manual',
+          createdAt: '2026-09-01T08:05:00.000Z',
+        },
+        anchorHistory: [
+          {
+            amountCents: 41200,
+            coverageDate: '2026-08-31',
+            source: 'manual',
+            createdAt: '2026-09-01T08:05:00.000Z',
+          },
+        ],
+        lastImportAt: '2026-09-01T08:05:00.000Z',
+        bankDataThrough: '2026-08-31',
+        reconciliation: null,
       },
       {
         id: 'acc-3',
@@ -53,6 +95,23 @@ const TODAY: AyqToday = {
         balanceCents: 900000,
         transactionCount: 4,
         countsTowardFunds: false,
+        anchor: {
+          amountCents: 900000,
+          coverageDate: '2026-08-31',
+          source: 'bank',
+          createdAt: '2026-09-01T08:10:00.000Z',
+        },
+        anchorHistory: [
+          {
+            amountCents: 900000,
+            coverageDate: '2026-08-31',
+            source: 'bank',
+            createdAt: '2026-09-01T08:10:00.000Z',
+          },
+        ],
+        lastImportAt: '2026-09-01T08:10:00.000Z',
+        bankDataThrough: '2026-08-31',
+        reconciliation: null,
       },
     ],
     coverage: [],
@@ -60,6 +119,7 @@ const TODAY: AyqToday = {
     totalBalanceCents: 1069650,
     reliableTo: '2026-08-31',
     countedWithoutCoverage: 0,
+    countedWithoutAnchor: 0,
   },
   lowest: { date: '2026-09-28', balanceCents: -17974 },
   monthEnd: { month: '2026-09', closingCents: 306026 },
@@ -96,7 +156,10 @@ function engine(today: AyqToday) {
   };
 }
 
-function screen(open: (destination: string) => void = () => {}) {
+function screen(
+  open: (destination: string) => void = () => {},
+  openAccount: (accountId: string) => void = () => {},
+) {
   return (
     <AyqGroundProvider>
       <AyqTodayScreen
@@ -104,6 +167,7 @@ function screen(open: (destination: string) => void = () => {}) {
           throw new Error(message);
         }}
         onOpen={destination => open(destination)}
+        onOpenAccount={accountId => openAccount(accountId)}
         round={0}
       />
     </AyqGroundProvider>
@@ -292,6 +356,202 @@ test('the latest movements are a table with the same detail pane', async () => {
   // And it asked for the newest few rather than for everything.
   const asked = window.asked.find(one => one.kind === 'transactions.list');
   assert.equal((asked?.filter as { limit?: number }).limit, 8);
+
+  await window.close();
+});
+
+
+/* ------------------------------------------------- 5 and 7 §7.2 on the screen
+
+   An unknown balance is a state, not a nought, and the two freshness facts are
+   two facts. Both are properties of what a person sees, so both are read off
+   the drawn window rather than off the object that was handed to it.        */
+
+/** The view, with one counted account that AYQ has no balance for. */
+function withUnknown(): AyqToday {
+  const accounts = TODAY.accounts.accounts.map(account =>
+    account.id === 'acc-2'
+      ? {
+          ...account,
+          balanceCents: null,
+          anchor: null,
+          anchorHistory: [],
+          reconciliation: null,
+        }
+      : account,
+  );
+  return {
+    ...TODAY,
+    accounts: {
+      ...TODAY.accounts,
+      accounts,
+      // What the engine answers when a counted account has no anchor: no
+      // available funds, no total held, and a count of how many are missing.
+      availableFundsCents: null,
+      totalBalanceCents: null,
+      countedWithoutAnchor: 1,
+    },
+    // And with no position to start from, there is no position to project.
+    lowest: null,
+    monthEnd: null,
+  };
+}
+
+test('an account with no balance says Unknown, and is not drawn as nought', async () => {
+  const window = await ayqOpenWindow(engine(withUnknown()));
+  await window.render(screen());
+
+  const account = window.container.querySelector(
+    '[data-ayq-today-account="acc-2"]',
+  );
+  assert.ok(account);
+  assert.equal(account.getAttribute('data-ayq-account-balance'), 'unknown');
+
+  const figure = account.querySelector('[data-ayq-figure]');
+  assert.equal(figure?.getAttribute('data-ayq-figure'), 'unknown');
+  assert.equal(figure?.textContent, ayqText('figure.unknown'));
+  // The one thing it must never say.
+  assert.ok(!/0[.,]00/.test(account.textContent ?? ''));
+
+  // And the way out of it is offered where the figure is.
+  assert.ok(
+    (account.textContent ?? '').includes(ayqText('today.account.setBalance')),
+    'no way to set the balance is offered',
+  );
+
+  await window.close();
+});
+
+test('available funds is Unknown when any counted account is (§5)', async () => {
+  const window = await ayqOpenWindow(engine(withUnknown()));
+  await window.render(screen());
+
+  const funds = window.container.querySelector('[data-ayq-available-funds]');
+  assert.ok(funds);
+  assert.equal(funds.getAttribute('data-ayq-available-funds'), 'unknown');
+  assert.equal(
+    funds.querySelector('[data-ayq-figure]')?.textContent,
+    ayqText('figure.unknown'),
+  );
+
+  // The known subset is not summed and labelled: 128450 + 900000 is a figure
+  // that would be drawn here if anybody had been tempted.
+  const said = funds.textContent ?? '';
+  assert.ok(!said.includes('1284'), 'the known accounts were summed anyway');
+  assert.ok(!said.includes('9000'), 'the known accounts were summed anyway');
+
+  await window.close();
+});
+
+test('an unknown position shows no lowest point and no month end (§5)', async () => {
+  const window = await ayqOpenWindow(engine(withUnknown()));
+  await window.render(screen());
+
+  assert.ok(
+    window.container.querySelector('[data-ayq-no-position]'),
+    'the screen did not say why there is no projection',
+  );
+  assert.equal(window.container.querySelector('[data-ayq-lowest]'), null);
+  assert.equal(window.container.querySelector('[data-ayq-month-end]'), null);
+
+  await window.close();
+});
+
+test('Today says when an import last succeeded and how far the bank reaches', async () => {
+  const window = await ayqOpenWindow(engine(TODAY));
+  await window.render(screen());
+
+  const account = window.container.querySelector(
+    '[data-ayq-today-account="acc-1"]',
+  );
+  assert.ok(account);
+
+  // Two facts, two elements, two dates. They are not the same timestamp and
+  // the screen must not present them as one.
+  const lastImport = account.querySelector('[data-ayq-last-import]');
+  const through = account.querySelector('[data-ayq-bank-through]');
+  assert.equal(lastImport?.getAttribute('data-ayq-last-import'), '2026-09-01T08:00:00.000Z');
+  assert.equal(through?.getAttribute('data-ayq-bank-through'), '2026-08-31');
+  assert.ok(lastImport !== through);
+
+  assert.match(lastImport?.textContent ?? '', /Last import/);
+  assert.match(through?.textContent ?? '', /Bank data through/);
+
+  await window.close();
+});
+
+test('an account that has never been imported says so, rather than showing a date', async () => {
+  const bare: AyqToday = {
+    ...TODAY,
+    accounts: {
+      ...TODAY.accounts,
+      accounts: TODAY.accounts.accounts.map(account =>
+        account.id === 'acc-3'
+          ? { ...account, lastImportAt: null, bankDataThrough: null }
+          : account,
+      ),
+    },
+  };
+  const window = await ayqOpenWindow(engine(bare));
+  await window.render(screen());
+
+  const account = window.container.querySelector(
+    '[data-ayq-today-account="acc-3"]',
+  );
+  assert.ok(account);
+  assert.equal(
+    account.querySelector('[data-ayq-last-import]')?.textContent,
+    ayqText('today.account.lastImport.never'),
+  );
+  assert.equal(
+    account.querySelector('[data-ayq-bank-through]')?.textContent,
+    ayqText('today.account.bankThrough.none'),
+  );
+
+  await window.close();
+});
+
+test('clicking an account opens its own detail, not a workspace', async () => {
+  let opened: string | null = null;
+  const window = await ayqOpenWindow(engine(TODAY));
+  await window.render(
+    screen(
+      () => {},
+      accountId => {
+        opened = accountId;
+      },
+    ),
+  );
+
+  const account = window.container.querySelector(
+    '[data-ayq-today-account="acc-1"]',
+  );
+  assert.ok(account);
+  await ayqPress(account as HTMLElement);
+
+  assert.equal(opened, 'acc-1', 'the account did not open its detail');
+
+  await window.close();
+});
+
+test('reconciliation is shown only where the bank stated a balance', async () => {
+  const window = await ayqOpenWindow(engine(TODAY));
+  await window.render(screen());
+
+  // acc-1 has a closing balance from the bank and agrees with it.
+  const agreeing = window.container.querySelector(
+    '[data-ayq-today-account="acc-1"] [data-ayq-agrees]',
+  );
+  assert.equal(agreeing?.getAttribute('data-ayq-agrees'), 'true');
+
+  // acc-2 has an anchor the owner set and no bank figure, so there is nothing
+  // to reconcile and nothing is claimed.
+  assert.equal(
+    window.container.querySelector(
+      '[data-ayq-today-account="acc-2"] [data-ayq-agrees]',
+    ),
+    null,
+  );
 
   await window.close();
 });

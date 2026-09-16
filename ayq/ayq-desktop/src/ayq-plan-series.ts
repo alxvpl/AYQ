@@ -172,6 +172,11 @@ export function ayqOccurrencesBetween(
 
   const found: AyqPlanOccurrence[] = [];
   for (const record of records) {
+    // A withdrawn offer generates nothing (9 §9.2). Not "generates dismissed
+    // occurrences": an offer AYQ has taken back is not an event a person ever
+    // has to look at, and leaving it in the series to be filtered downstream is
+    // how it would end up counted in one of the four places that read this.
+    if (record.state === 'retired') continue;
     for (const dueDate of ayqOccurrenceDates(record, from, to)) {
       const one = byKey.get(`${record.id} ${dueDate}`);
       const effectiveDate = one?.rescheduledTo ?? dueDate;

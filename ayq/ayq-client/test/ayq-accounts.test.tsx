@@ -10,35 +10,79 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { AyqAccountsView } from '../src/ayq-ipc-contract.ts';
+import type {
+  AyqAccountSummary,
+  AyqAccountsView,
+  AyqBalanceAnchorView,
+} from '../src/ayq-ipc-contract.ts';
 import { AyqAccountsScreen } from '../src/ayq-screens/ayq-accounts.tsx';
 import { AyqSettingsAccounts } from '../src/ayq-screens/ayq-settings-accounts.tsx';
 import { ayqDate, ayqMoney, ayqText } from '../src/ayq-strings.ts';
 import { AyqGroundProvider } from '../src/ayq-ui/ayq-ground-provider.tsx';
 import { ayqOpenWindow, ayqPress } from './ayq-react.ts';
 
-const EVERYDAY = {
+/** A bank-stated anchor, which is what a statement with a closing balance makes. */
+function anchor(
+  amountCents: number,
+  coverageDate: string,
+  source: 'bank' | 'manual' = 'bank',
+): AyqBalanceAnchorView {
+  return { amountCents, coverageDate, source, createdAt: `${coverageDate}T09:00:00.000Z` };
+}
+
+const EVERYDAY: AyqAccountSummary = {
   id: 'acc-1',
   name: 'AYQ NL…3579',
   balanceCents: 128450,
   transactionCount: 212,
   countsTowardFunds: true,
+  anchor: anchor(128450, '2026-09-11'),
+  anchorHistory: [anchor(128450, '2026-09-11')],
+  lastImportAt: '2026-09-11T09:14:00.000Z',
+  bankDataThrough: '2026-09-11',
+  reconciliation: {
+    asOf: '2026-09-11',
+    statementBalanceCents: 128450,
+    ledgerBalanceCents: 128450,
+    differenceCents: 0,
+    agrees: true,
+    file: 'ayq-invented-2026-09-11.xml',
+    readAt: '2026-09-11T09:14:00.000Z',
+  },
 };
 
-const JOINT = {
+const JOINT: AyqAccountSummary = {
   id: 'acc-2',
   name: 'AYQ NL…9052',
   balanceCents: 41200,
   transactionCount: 40,
   countsTowardFunds: true,
+  anchor: anchor(41200, '2026-08-31', 'manual'),
+  anchorHistory: [anchor(41200, '2026-08-31', 'manual')],
+  lastImportAt: '2026-09-01T09:14:00.000Z',
+  bankDataThrough: '2026-08-31',
+  reconciliation: {
+    asOf: '2026-08-31',
+    statementBalanceCents: 60000,
+    ledgerBalanceCents: 41200,
+    differenceCents: 18800,
+    agrees: false,
+    file: 'ayq-invented-2026-08-31.xml',
+    readAt: '2026-09-01T09:14:00.000Z',
+  },
 };
 
-const SAVINGS = {
+const SAVINGS: AyqAccountSummary = {
   id: 'acc-3',
   name: 'AYQ NL…3310',
   balanceCents: 900000,
   transactionCount: 4,
   countsTowardFunds: false,
+  anchor: anchor(900000, '2026-06-30'),
+  anchorHistory: [anchor(900000, '2026-06-30')],
+  lastImportAt: null,
+  bankDataThrough: null,
+  reconciliation: null,
 };
 
 const VIEW: AyqAccountsView = {
@@ -80,6 +124,7 @@ const VIEW: AyqAccountsView = {
   // The earliest of the two counted accounts, not the latest.
   reliableTo: '2026-08-31',
   countedWithoutCoverage: 0,
+  countedWithoutAnchor: 0,
 };
 
 const screen = (

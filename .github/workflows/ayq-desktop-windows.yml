@@ -182,8 +182,14 @@ jobs:
           if ($said -notmatch 'the shell: held') {
             throw 'the run did not measure the shell at all'
           }
-          if ($said -notmatch 'rail 64px, 9 destinations, 2 hairlines') {
+          # Eight, not nine: 7 §7.1 takes Accounts off the rail, because an
+          # account is not a place a person goes — it is something they look at
+          # when Today raises a question about it. Settings is one of the eight.
+          if ($said -notmatch 'rail 64px, 8 destinations, 2 hairlines') {
             throw 'the rail is not what 04 A20 says it is'
+          }
+          if ($said -match 'the rail reads [^\r\n]*accounts') {
+            throw 'Accounts is back in the rail'
           }
           # 04 A14 asked for Mica and asked for it to be verified rather than
           # claimed. What the window actually got is printed, whichever it is.
@@ -648,6 +654,124 @@ jobs:
           }
           if ($held.secondInstance) { throw 'the first launch stood aside from itself' }
 
+      # The highest-priority change in build 005, on the drawn window.
+      #
+      # A statement that carries no balance from the bank leaves the balance
+      # Unknown rather than showing the net of whatever happened to be imported
+      # (§4.1), Today says so where its largest figure goes (§5), and the
+      # balance the owner then states is exactly the balance the account has —
+      # written through Actual's technical starting-balance transaction with
+      # nothing added to the ledger to make it so (§4.2, §4.4).
+      #
+      # The same step proves §6, which version 7 could not: a file with no
+      # closing balance still advanced "bank data through", and that is not the
+      # same fact as when the import happened.
+      - name: Unknown is a state, and a balance the owner states is exact
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-balance-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-no-balance.xml `
+            --balance `
+            --screenshot "${{ runner.temp }}\ayq-desktop-balance.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'the balance did not hold on the window' }
+          # Exiting zero is not the assertion: a run that was never asked to
+          # check the balance exits zero just as happily.
+          if ($said -notmatch 'the balance: held') {
+            throw 'the run did not check the balance at all'
+          }
+          if ($said -notmatch 'Unknown, said out loud') {
+            throw 'the run did not find Unknown where there is no balance'
+          }
+          if ($said -notmatch 'set to 124055 cents on 2026-06-30, exactly') {
+            throw 'the balance the owner stated is not the balance the account has'
+          }
+          if ($said -notmatch 'coverage without a closing balance: bank data through (\d{4}-\d{2}-\d{2})') {
+            throw 'a statement with no closing balance advanced no coverage'
+          }
+          Write-Host "bank data through $($Matches[1]), from a file with no balance in it"
+
+      # A store as build 004 wrote one, brought forward on the way in (§3).
+      # The copy 03 §5.3 requires is made, the version moves to 8, and every
+      # decision the owner had made is still there afterwards — including the
+      # two things a migration is most likely to quietly invent: a coverage
+      # start date version 7 never recorded, and an anchor nobody ever set.
+      - name: A version 7 store is brought to version 8, and loses nothing
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-migration-budget
+        run: |
+          node start.mjs --smoke --require-host "electron utilityProcess" `
+            --seed-store test/fixtures/ayq-v7-store.json
+          if ($LASTEXITCODE -ne 0) { throw 'AYQ did not open over a version 7 store' }
+
+          $kept = Get-ChildItem $env:AYQ_DATA_DIR -Filter 'ayq-store.before-v7-to-v8.json'
+          if (-not $kept) { throw '03 §5.3: no copy was kept before the shape changed' }
+          Write-Host "kept before migrating: $($kept.Name), $($kept.Length) bytes"
+
+          $store = Get-Content (Join-Path $env:AYQ_DATA_DIR 'ayq-store.json') -Raw |
+            ConvertFrom-Json
+          if ($store.version -ne 8) { throw "the store is version $($store.version)" }
+          if ($store.rules.Count -ne 1) { throw 'a rule was lost' }
+          if ($store.aliases.Count -ne 1) { throw 'an alias was lost' }
+          if ($store.planned.Count -ne 1) { throw 'a planned record was lost' }
+          if ($store.occurrences[0].matchProvenance -ne 'manual') {
+            throw 'a match made by hand lost its provenance'
+          }
+          if ($store.occurrences[0].rejected[0] -ne 'row-8') {
+            throw 'a pairing the owner refused was lost'
+          }
+          if ($store.decisions.'row-1'[0].categoryName -ne 'Housekeeping') {
+            throw 'a decision the owner made was changed'
+          }
+          # 3 §3.2: version 7's coverage is carried across with its start
+          # UNKNOWN, because version 7 never recorded one.
+          if ($store.evidence.Count -ne 1) { throw 'the coverage was not carried across' }
+          if ($null -ne $store.evidence[0].fromDate) {
+            throw 'a start date was invented for evidence that never had one'
+          }
+          if ($store.evidence[0].toDate -ne '2026-02-28') { throw 'the coverage date moved' }
+          # 3 §3.1: a migration anchors nothing.
+          if ($store.anchors.Count -ne 0) { throw 'the migration anchored an account' }
+          Write-Host ("store: version {0}, {1} evidence row(s) with no start, " +
+            "{2} anchors, taxonomy marker {3}" -f $store.version,
+            $store.evidence.Count, $store.anchors.Count, $store.starterTaxonomyVersion)
+
+      # 9 §9.1 and 10 §10.3 on the drawn window: only an exact amount at a
+      # regular rhythm may become an expectation — the supermarket, the fuel on
+      # no rhythm, the bill a cent apart and the irregular mandate all stay out
+      # — and a Plan suggestion states the basis it rests on rather than
+      # appearing as a bare figure.
+      - name: What history may suggest, and what it may not
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-suggest-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-strict-series.xml --import-once `
+            --suggest `
+            --screenshot "${{ runner.temp }}\ayq-desktop-suggest.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'the strict detector did not hold' }
+          if ($said -notmatch 'suggestions: held') {
+            throw 'the run did not check the suggestions at all'
+          }
+          if ($said -notmatch 'only the exact, regular series were offered') {
+            throw 'the run did not check what the detector kept out'
+          }
+          if ($said -notmatch 'plan: suggestion [^\r\n]* from (\d+) months') {
+            throw 'the Plan did not say what its suggestions rest on'
+          }
+          Write-Host "Plan suggestions averaged over $($Matches[1]) complete months"
+
       # The product, as a person would get it: an installer, installed, and the
       # installed application driving itself through the same acceptance.
       - name: Package the Windows installer
@@ -941,6 +1065,22 @@ jobs:
           Remove-Item Env:AYQ_SMOKE_EXPECT_GROUND
           $env:AYQ_DATA_DIR = $budgets
 
+          # About, on the build a person downloads — and only there, because
+          # a packaged build is the only place the revision and the build date
+          # are real (12 §12.2). Its own directory, and its own report, so
+          # "held" is the installed application's word.
+          $env:AYQ_DATA_DIR = "$env:RUNNER_TEMP\ayq-installed-about"
+          New-Item -ItemType Directory -Force -Path $env:AYQ_DATA_DIR | Out-Null
+          $env:AYQ_SMOKE_ABOUT = '1'
+          $env:AYQ_SMOKE_REPORT = "$env:RUNNER_TEMP\ayq-installed-about-report.json"
+          Invoke-Installed 'About           :'
+          $about = Get-Content $env:AYQ_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if ($about.about -ne 'held') {
+            throw "the installed application's About did not hold: $($about.about)"
+          }
+          Remove-Item Env:AYQ_SMOKE_ABOUT
+          $env:AYQ_DATA_DIR = $budgets
+
           $env:AYQ_SMOKE_IMPORT = "$env:GITHUB_WORKSPACE\ayq\ayq-camt\test\fixtures\ayq-abn-month.xml"
           $env:AYQ_SMOKE_CATEGORISE = 'Utilities'
           # And the shell, on the build a person downloads.
@@ -994,8 +1134,11 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-today.png
             ${{ runner.temp }}\ayq-desktop-review.png
             ${{ runner.temp }}\ayq-desktop-reports.png
+            ${{ runner.temp }}\ayq-desktop-balance.png
+            ${{ runner.temp }}\ayq-desktop-suggest.png
             ${{ runner.temp }}\ayq-desktop-installed.png
             ${{ runner.temp }}\ayq-installed-r004-report.json
+            ${{ runner.temp }}\ayq-installed-about-report.json
             ${{ runner.temp }}\ayq-installed-report.json
             ${{ runner.temp }}\ayq-installed-restart-report.json
             ${{ runner.temp }}\ayq-lock-first.json

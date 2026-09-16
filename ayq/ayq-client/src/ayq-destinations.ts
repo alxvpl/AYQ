@@ -5,6 +5,14 @@
 // foot, apart. Import is also reachable from Today, beside the statement
 // coverage line, where it is looked for.
 //
+// Accounts is deliberately not among them. An account is not a place a person
+// goes; it is a thing they look at when Today raises a question about it — what
+// it holds, how fresh it is, whether AYQ agrees with the bank. So it is a
+// secondary detail opened by clicking an account on Today, and `accounts`
+// survives below as an internal route with no rail entry rather than as a
+// destination. Configuring an account, including whether it counts toward
+// available funds, is a different act again and lives in Settings.
+//
 // This module holds the order and nothing else: no labels, because those are
 // the catalogue's (A24), and no icons, because those are the rail's.
 
@@ -30,7 +38,7 @@ export type AyqDestinationGroup = {
 export const AYQ_RAIL_GROUPS: readonly AyqDestinationGroup[] = [
   {
     key: 'destination.group.whereYouStand',
-    destinations: ['today', 'accounts', 'register'],
+    destinations: ['today', 'register'],
   },
   {
     key: 'destination.group.whatNeedsDeciding',
@@ -45,10 +53,27 @@ export const AYQ_RAIL_FOOT: AyqDestination = 'settings';
 /** Where the application opens (A21). */
 export const AYQ_FIRST_DESTINATION: AyqDestination = 'today';
 
+/**
+ * Everything the rail draws: the groups, then Settings at the foot.
+ *
+ * Eight, and `accounts` is not one of them. The rail is measured on the drawn
+ * window by the Windows acceptance run, so this list and what a person sees
+ * cannot drift apart.
+ */
 export const AYQ_DESTINATIONS: readonly AyqDestination[] = [
   ...AYQ_RAIL_GROUPS.flatMap(group => group.destinations),
   AYQ_RAIL_FOOT,
 ];
+
+/**
+ * Routes that exist without being destinations.
+ *
+ * `accounts` is reachable — Today opens it for one account — and is never a
+ * rail entry. Keeping the route is the smallest implementation of "a secondary
+ * detail surface"; keeping it out of `AYQ_DESTINATIONS` is what makes that
+ * true rather than aspirational.
+ */
+export const AYQ_INTERNAL_ROUTES: readonly AyqDestination[] = ['accounts'];
 
 export const AYQ_DESTINATION_LABEL: Record<AyqDestination, AyqStringKey> = {
   today: 'destination.today',

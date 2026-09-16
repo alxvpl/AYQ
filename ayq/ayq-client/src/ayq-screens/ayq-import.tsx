@@ -13,6 +13,7 @@ import { ayqCount, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
+import { AyqBalanceForm } from './ayq-balance-form.tsx';
 import { AyqImportHistory } from './ayq-import-history.tsx';
 
 const useStyles = makeStyles({
@@ -51,6 +52,13 @@ export function AyqImportScreen({
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const [round, setRound] = useState(0);
+  /** The account the last import left without a balance, if it left one. */
+  const [wanted, setWanted] = useState<{
+    accountId: string;
+    accountName: string;
+    importId: string;
+    coverageDate: string;
+  } | null>(null);
 
   const run = useCallback(async (): Promise<void> => {
     setBusy(true);
@@ -98,6 +106,19 @@ export function AyqImportScreen({
       setRound(one => one + 1);
       onImported();
       mark('done', summary);
+
+      // §4.4: the files carried no balance from the bank and this account has
+      // none from before, so AYQ cannot say what it holds. Asking is the only
+      // honest option — and the import has already succeeded, so skipping the
+      // question costs nothing but the balance staying Unknown.
+      if (summary.balanceWanted) {
+        setWanted({
+          accountId: summary.accountId,
+          accountName: summary.accountName,
+          importId: summary.id,
+          coverageDate: summary.anchoredAt ?? new Date().toISOString().slice(0, 10),
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setSaid(null);
@@ -125,6 +146,36 @@ export function AyqImportScreen({
           </AyqButton>
           {said === null ? null : <span className={styles.said}>{said}</span>}
         </div>
+
+        {wanted === null ? null : (
+          <AyqBalanceForm
+            title={ayqText('balance.set.title')}
+            accountName={wanted.accountName}
+            coverageDate={wanted.coverageDate}
+            note={ayqText('balance.wanted')}
+            cancelLabel={ayqText('balance.skip')}
+            onCancel={() => setWanted(null)}
+            onSubmit={(amountCents, coverageDate) => {
+              const account = wanted;
+              setWanted(null);
+              void (async () => {
+                const answered = await ayqAsk({
+                  kind: 'accounts.setBalance',
+                  accountId: account.accountId,
+                  amountCents,
+                  coverageDate,
+                  importId: account.importId,
+                });
+                if (!answered.ok) throw new Error(answered.message);
+                onImported();
+              })().catch((error: unknown) => {
+                onFailure(
+                  error instanceof Error ? error.message : String(error),
+                );
+              });
+            }}
+          />
+        )}
       </AyqPane>
 
       <AyqPane title={ayqText('import.history')} mark="import-history">

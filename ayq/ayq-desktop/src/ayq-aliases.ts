@@ -53,6 +53,7 @@ import {
 import type { AyqAliasRecord } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqSetPayees } from './ayq-batch.ts';
+import { ayqCarryNameOnMerge } from './ayq-names.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import {
   ayqId,
@@ -270,6 +271,12 @@ export function ayqRememberAlias(
       alias.counterpartyName = counterpartyName;
     }
   }
+
+  // 8 §8.4: the target's own name wins, and where it has none the variant's is
+  // carried across rather than dropped. The owner named that shop; only its key
+  // has changed. The variant's own decision stays in the store, so removing the
+  // alias can put things back.
+  ayqCarryNameOnMerge(store, input.variantKey, counterpartyKey);
 
   store.aliases.push({
     id: ayqId('alias'),

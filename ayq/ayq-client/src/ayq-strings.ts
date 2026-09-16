@@ -123,6 +123,22 @@ const EN = {
   'settings.tab.categories': 'Categories',
   'settings.tab.rules': 'Rules',
   'settings.tab.appearance': 'Appearance',
+  'settings.tab.about': 'About',
+
+  'about.author': 'Author',
+  'about.version': 'Product version',
+  'about.build': 'Build',
+  'about.buildDate': 'Build date',
+  'about.architecture': 'Architecture',
+  'about.revision': 'AYQ revision',
+  'about.revision.none': 'not a release build',
+  'about.engine': 'Engine',
+  'about.baseline': 'Actual baseline',
+  'about.development':
+    'This is a development build. It was not produced by the release ' +
+    'workflow and carries no revision.',
+  'about.copy': 'Copy technical information',
+  'about.copied': 'Copied.',
 
   'register.search': 'Search counterparty, description or amount',
   'register.filter.period': 'Period',
@@ -163,7 +179,28 @@ const EN = {
     'this table.',
   'register.emptyFiltered': 'No transaction matches this filter.',
 
+  // The one word §5 exists for. A balance AYQ has no evidence for is Unknown,
+  // and Unknown is said rather than drawn as nought.
+  'figure.unknown': 'Unknown',
+
   'today.funds': 'Available funds',
+  'today.funds.unknown':
+    'One of the counted accounts has no balance AYQ can vouch for, so ' +
+    'available funds cannot be stated. Set the balance on that account and ' +
+    'this becomes a figure.',
+  'today.account.balanceUnknown':
+    'No balance yet — AYQ has movements for this account but nothing that ' +
+    'says what it holds.',
+  'today.account.lastImport': 'Last import {when}',
+  'today.account.lastImport.never': 'Never imported',
+  'today.account.bankThrough': 'Bank data through {date}',
+  'today.account.bankThrough.none': 'No bank data yet',
+  'today.account.setBalance': 'Set account balance',
+  'today.account.agrees': 'Agrees with the bank',
+  'today.account.differs': 'Differs from the bank by {amount}',
+  'today.noPosition':
+    'Available funds are unknown, so there is no position to project forward. ' +
+    'What is planned and expected is still on Upcoming and Plan.',
   'today.funds.counted': '{counted} of {total} accounts counted',
   'today.coverage.to':
     'Reliable to {date} — the earliest date the counted accounts’ statements ' +
@@ -193,7 +230,7 @@ const EN = {
   'today.open.upcoming': 'Open Upcoming',
   'today.open.review': 'Open Review',
   'today.open.register': 'Open Register',
-  'today.open.accounts': 'See accounts',
+  'today.open.accounts': 'Account details',
   'today.open.import': 'Import statements',
 
   // Review (04 A6): transitional by design, and it has to shrink.
@@ -240,6 +277,15 @@ const EN = {
     'yourself into something else.',
   'review.learned': '{count} filed, and AYQ will file this counterparty from now on.',
   'review.moved': '{count} transactions now belong to {name}.',
+  'review.rename': 'Rename',
+  'review.rename.save': 'Save name',
+  'review.rename.cancel': 'Cancel',
+  'review.rename.note':
+    'Only what it is called. The counterparty itself, its rules and what the ' +
+    'bank printed all stay as they are, and the next import cannot undo it.',
+  'review.renamed': 'This counterparty is now called {name} everywhere.',
+  'review.renamed.cleared':
+    'The name you chose has been cleared; AYQ\u2019s own name is back.',
   'review.needsCategory': 'Choose a category first.',
 
   // Settings → Categories: the only place a category is made or renamed.
@@ -310,6 +356,8 @@ const EN = {
   'upcoming.notCounted': 'not counted',
   'upcoming.empty': 'Nothing is expected yet.',
   'upcoming.lowest': 'Lowest point {amount} on {date}',
+  'upcoming.lowest.unknown':
+    'Lowest point unknown — one counted account has no balance yet.',
   'upcoming.new': 'New planned payment',
   'upcoming.match': 'Check what has already happened',
   'upcoming.suggest': 'Find what keeps coming back',
@@ -417,6 +465,21 @@ const EN = {
   'plan.expectedNote':
     'Still expected is the larger of what is left of the plan and the records ' +
     'expected in the category — never their sum (03 §7.10).',
+  'plan.column.suggested': 'Suggested',
+  'plan.suggestion.none': 'No basis yet',
+  'plan.suggestion.basis': 'from {months} months',
+  'plan.suggestion.use': 'Use suggestion',
+  'plan.suggestion.useAll': 'Use all suggestions',
+  'plan.suggestion.wholeBasis':
+    'Suggestions are the average of {months} complete, reliably covered ' +
+    'months, {from} to {to}. Months AYQ holds only part of are left out ' +
+    'rather than counted as nothing. Accepting one is your decision; nothing ' +
+    'here changes a plan on its own, and Use all suggestions fills only rows ' +
+    'with no plan in them.',
+  'plan.suggestion.noBasis':
+    'There is no complete, reliably covered month behind this one, so there ' +
+    'is nothing to suggest from. Importing statements that cover whole months ' +
+    'gives AYQ something to average.',
   'plan.empty': 'This budget has no categories yet.',
 
   'accounts.column.name': 'Account',
@@ -447,6 +510,47 @@ const EN = {
   'accounts.detail.readFrom': 'Read from',
   'accounts.detail.readAt': 'Read on',
   'accounts.detail.counts': 'Counts toward available funds',
+  'accounts.detail.balance': 'Balance',
+  'accounts.detail.anchor': 'Anchor',
+  'accounts.detail.anchor.bank': 'the bank stated it on {date}',
+  'accounts.detail.anchor.manual': 'you set it, for {date}',
+  'accounts.detail.anchor.none':
+    'No balance has been set. AYQ holds this account\u2019s movements but ' +
+    'nothing that says what it holds, so its balance is Unknown.',
+  'accounts.detail.anchorHistory': 'Earlier balances',
+  'accounts.detail.lastImport': 'Last successful import',
+  'accounts.detail.lastImport.never': 'Nothing has been imported yet',
+  'accounts.detail.bankThrough': 'Bank data through',
+  'accounts.detail.bankThrough.none': 'No statement has been read yet',
+  'accounts.detail.configure':
+    'Whether this account counts toward available funds is set in ' +
+    'Settings \u2192 Accounts.',
+  'accounts.back': 'Back to Today',
+
+  // Setting and correcting a balance (§4.4, §4.5).
+  'balance.set.title': 'Set account balance',
+  'balance.reanchor.title': 'Correct this balance',
+  'balance.account': 'Account',
+  'balance.amount': 'Balance',
+  'balance.amount.hint':
+    'As your bank states it, in euro. A negative balance is written with a ' +
+    'minus sign.',
+  'balance.date': 'On this date',
+  'balance.date.hint':
+    'The day the balance is true on. The figure you enter must already ' +
+    'include every transaction imported up to and including this day.',
+  'balance.save': 'Set balance',
+  'balance.cancel': 'Cancel',
+  'balance.invalid': 'Enter a balance in euro, such as 1240.55 or -80.',
+  'balance.invalidDate': 'Enter the date as YYYY-MM-DD.',
+  'balance.wanted':
+    'The statements just imported carry no balance from the bank, so AYQ ' +
+    'cannot say what this account holds. Set it here, or leave it \u2014 the ' +
+    'import succeeded either way.',
+  'balance.skip': 'Not now',
+  'balance.reanchor':
+    'This adds a new balance and keeps the old one. Nothing is written into ' +
+    'the ledger and no transaction is created.',
   'accounts.detail.agrees':
     'What the statement closed at and what AYQ holds are the same figure.',
   'accounts.detail.differs':

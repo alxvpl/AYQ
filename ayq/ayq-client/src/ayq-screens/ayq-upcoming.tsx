@@ -402,12 +402,21 @@ export function AyqUpcomingScreen({
         >
           {ayqText('upcoming.suggest')}
         </AyqButton>
-        <span className={styles.lowest} data-ayq-lowest={forecast.lowest.date}>
-          {ayqText('upcoming.lowest', {
-            amount: ayqMoney(forecast.lowest.balanceCents),
-            date: ayqDate(forecast.lowest.date),
-          })}
-        </span>
+        {/* §5: no lowest point without a position to project from. The
+            occurrences below are still true and still shown — what is expected
+            and when does not depend on knowing what is in the bank. */}
+        {forecast.lowest === null ? (
+          <span className={styles.lowest} data-ayq-lowest="unknown">
+            {ayqText('upcoming.lowest.unknown')}
+          </span>
+        ) : (
+          <span className={styles.lowest} data-ayq-lowest={forecast.lowest.date}>
+            {ayqText('upcoming.lowest', {
+              amount: ayqMoney(forecast.lowest.balanceCents),
+              date: ayqDate(forecast.lowest.date),
+            })}
+          </span>
+        )}
       </div>
 
       {proposals.length === 0 ? null : (

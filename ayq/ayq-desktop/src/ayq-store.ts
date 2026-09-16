@@ -69,12 +69,11 @@ export type AyqPlanOccurrenceRecord = {
 };
 
 /**
- * How far one account's statements reach (03 §8.1).
+ * How far one account's statements reach, as the v7 store recorded it.
  *
- * The bank's own closing balance and the date it applies to, kept per account
- * so that AYQ can say what it agrees with rather than asserting a balance and
- * hoping. Only the statement that reaches furthest is kept: importing an older
- * one after a newer one must not move the boundary backwards.
+ * Kept only so the v7 -> v8 migration can read what is on disk. Version 8
+ * replaces it with `AyqCoverageEvidence`, which does not require the bank to
+ * have stated a closing balance before AYQ will admit it read a statement.
  */
 export type AyqStatementCoverage = {
   /** The date the statement reaches to, YYYY-MM-DD. */
@@ -84,6 +83,84 @@ export type AyqStatementCoverage = {
   file: string | null;
   readAt: string;
 };
+
+/**
+ * One reading of one account's balance, and the day it is true on.
+ *
+ * An absolute balance is the one figure AYQ cannot derive from the statements
+ * it holds: a file of movements says what changed, never what there was. So a
+ * balance is *evidence* — the bank stated it, or the owner did — and it is kept
+ * with the day it applies to and with where it came from.
+ *
+ * Every anchor an account has ever had is kept. A later correction is a new
+ * anchor and not an edit, because "why did this balance change in March" has no
+ * answer left once the March anchor has been written over.
+ */
+export type AyqBalanceAnchor = {
+  id: string;
+  accountId: string;
+  /** Signed integer cents: the absolute balance on `coverageDate`. */
+  amountCents: number;
+  /** The day the balance is true on, YYYY-MM-DD. */
+  coverageDate: string;
+  /** The import this came out of, when it came out of one. */
+  importId: string | null;
+  /** The bank stated it, or the owner did. */
+  source: 'bank' | 'manual';
+  createdAt: string;
+};
+
+/**
+ * That AYQ has read one account's movements over one interval (03 §8).
+ *
+ * Coverage and balance are separate facts, and version 7 conflated them: it
+ * recorded coverage only where the bank had stated a closing balance, so a
+ * statement that proved a whole month of movements proved nothing at all. Here
+ * the closing balance is optional and the interval is the point.
+ *
+ * `fromDate` is null when the file did not say where it began. Null is not a
+ * gap to be filled in later from the first transaction imported — a statement
+ * of unknown start proves no complete month, and being able to say so is the
+ * whole reason the field can be null.
+ */
+export type AyqCoverageEvidence = {
+  accountId: string;
+  /** The import that read it. `legacy-v7` for evidence carried up from v7. */
+  importId: string;
+  /** YYYY-MM-DD, or null when the bank file does not prove it. */
+  fromDate: string | null;
+  toDate: string;
+  /** Optional: coverage does not depend on it. */
+  closingBalanceCents: number | null;
+  /** Base name only, never a full path. */
+  file: string | null;
+  readAt: string;
+};
+
+/**
+ * What the owner decided one counterparty is called.
+ *
+ * Kept apart from the alias table on purpose: an alias answers *who is this*
+ * and merges two identities; a display name answers *what do we call it* and
+ * merges nothing. Renaming a counterparty to `Maas` must not change the
+ * canonical key, must not move a category rule, and must not be undone by the
+ * next import — which is what keeping it here, rather than in the budget's own
+ * payee table, is for.
+ */
+export type AyqCounterpartyNameDecision = {
+  counterpartyKey: string;
+  displayName: string;
+  decidedAt: string;
+};
+
+/**
+ * The starter taxonomy this AYQ knows how to provision (11 §11.1).
+ *
+ * A store whose marker is below this has not had it; one at this value has,
+ * and is never provisioned again — so a category the owner later deletes or
+ * renames stays deleted or renamed.
+ */
+export const AYQ_STARTER_TAXONOMY_VERSION = 1;
 
 /** What AYQ knows about an account that Actual has no field for. */
 export type AyqAccountFlags = {
@@ -164,8 +241,15 @@ const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
  *      gains an empty one — which is the truth about it, because nothing was
  *      recorded at import time and inventing it from the ledger would be
  *      AYQ agreeing with itself.
+ *   8  the four facts build 005 needs and no earlier version could state:
+ *      balance anchors as a history rather than a figure, statement coverage
+ *      as intervals that do not depend on the bank having stated a closing
+ *      balance, the owner's own name for a counterparty, and how far the
+ *      starter taxonomy has been provisioned. The version 7 coverage map is
+ *      carried into the new evidence with its start date left **unknown**,
+ *      because unknown is what it is: version 7 never recorded one.
  */
-export const AYQ_STORE_VERSION = 7;
+export const AYQ_STORE_VERSION = 8;
 
 export type AyqStore = {
   version: number;
@@ -194,8 +278,29 @@ export type AyqStore = {
   accountFlags: Record<string, AyqAccountFlags>;
   /** What the owner chose about the interface, since version 5. */
   settings: AyqSettings;
-  /** How far each account's statements reach, since version 7 (03 §8.1). */
-  coverage: Record<string, AyqStatementCoverage>;
+  /**
+   * Every absolute balance reading AYQ has been given, since version 8.
+   *
+   * A history, never a current value: `ayqActiveAnchor` decides which one
+   * stands, and a correction adds rather than replaces.
+   */
+  anchors: AyqBalanceAnchor[];
+  /**
+   * Every interval of movements AYQ has read, since version 8 (03 §8).
+   *
+   * Rows rather than one per account, because coverage is a union of intervals
+   * and the union is what proves a complete month.
+   */
+  evidence: AyqCoverageEvidence[];
+  /** The owner's own name for a counterparty, keyed by canonical key. */
+  counterpartyNames: Record<string, AyqCounterpartyNameDecision>;
+  /**
+   * How far the starter taxonomy has been provisioned, since version 8.
+   *
+   * 0 is a budget that has never had it — which every migrated store is, and
+   * which is not the same as one that has had it and been pruned since.
+   */
+  starterTaxonomyVersion: number;
 };
 
 /**
@@ -226,7 +331,13 @@ function empty(): AyqStore {
     occurrences: [],
     accountFlags: {},
     settings: { ...AYQ_DEFAULT_SETTINGS },
-    coverage: {},
+    anchors: [],
+    evidence: [],
+    counterpartyNames: {},
+    // A fresh store belongs to a budget AYQ is about to create, and the
+    // creation path provisions the taxonomy and writes the marker itself. It
+    // starts at nought here because nothing has been written yet.
+    starterTaxonomyVersion: 0,
   };
 }
 
@@ -354,7 +465,60 @@ const AYQ_MIGRATIONS: readonly AyqMigration[] = [
     // itself rather than with the bank.
     change: store => ({ ...store, coverage: record(store.coverage) }),
   },
+  {
+    to: 8,
+    what: 'balance anchors, coverage intervals, owner names and the taxonomy marker',
+    // Four fields, and every one of them added empty or unknown, because that
+    // is what the file it is reading actually proves.
+    //
+    // No anchor is invented. A version 7 store recorded a closing balance
+    // where the bank happened to state one, and a closing balance in a file is
+    // not the owner having said what the account holds — §4.4 is what turns one
+    // into an anchor, and it runs at import, not here.
+    //
+    // The coverage it did record is carried across with its `toDate`, its
+    // closing balance, its file and its read time intact, and with `fromDate`
+    // null. Null is the honest answer: version 7 stored no start date, and
+    // deriving one from the first transaction in the ledger would be AYQ
+    // manufacturing the very evidence 03 §8.2 forbids it to manufacture. The
+    // consequence is deliberate and is pinned by a test — legacy evidence
+    // proves no complete month on its own (§6.3), so Plan suggestions do not
+    // count months that only legacy coverage reaches.
+    change: store => ({
+      ...store,
+      anchors: array(store.anchors),
+      evidence: [
+        ...(array(store.evidence) as AyqCoverageEvidence[]),
+        ...Object.entries(record(store.coverage)).map(([accountId, held]) => {
+          const one = held as unknown as AyqStatementCoverage;
+          return {
+            accountId,
+            importId: AYQ_LEGACY_EVIDENCE,
+            fromDate: null,
+            toDate: String(one?.toDate ?? ''),
+            closingBalanceCents:
+              typeof one?.closingBalanceCents === 'number'
+                ? one.closingBalanceCents
+                : null,
+            file: one?.file ?? null,
+            readAt: String(one?.readAt ?? ''),
+          } satisfies AyqCoverageEvidence;
+        }),
+      ].filter(one => typeof one?.toDate === 'string' && one.toDate !== ''),
+      counterpartyNames: record(store.counterpartyNames),
+      // Nought, not one: a budget that predates the taxonomy has not had it.
+      starterTaxonomyVersion: 0,
+    }),
+  },
 ];
+
+/**
+ * The import id evidence carried up from version 7 is filed under.
+ *
+ * Not an import that ever happened, and deliberately recognisable as such: it
+ * says the row came from the old coverage map rather than from a file AYQ read.
+ */
+export const AYQ_LEGACY_EVIDENCE = 'legacy-v7';
 
 function array(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -418,11 +582,27 @@ export function ayqMigrate(raw: unknown): AyqStore {
       AyqAccountFlags
     >,
     settings: ayqNormaliseSettings(held.settings),
-    coverage: record(held.coverage) as unknown as Record<
+    anchors: array(held.anchors) as AyqBalanceAnchor[],
+    evidence: array(held.evidence) as AyqCoverageEvidence[],
+    counterpartyNames: record(held.counterpartyNames) as unknown as Record<
       string,
-      AyqStatementCoverage
+      AyqCounterpartyNameDecision
     >,
+    starterTaxonomyVersion: taxonomyVersionOf(held.starterTaxonomyVersion),
   };
+}
+
+/**
+ * The taxonomy marker, read defensively.
+ *
+ * Anything that is not a whole number at or above nought reads as nought — the
+ * state of never having been provisioned — because provisioning again is
+ * idempotent and harmless, and skipping it on a garbled value would leave a
+ * budget without the categories it was promised.
+ */
+function taxonomyVersionOf(value: unknown): number {
+  const claimed = Number(value ?? 0);
+  return Number.isInteger(claimed) && claimed >= 0 ? claimed : 0;
 }
 
 function decisionsOf(value: unknown): Record<string, AyqCategoryDecision[]> {

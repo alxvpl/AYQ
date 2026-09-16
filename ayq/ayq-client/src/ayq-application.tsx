@@ -75,6 +75,8 @@ export function AyqApplication(): ReactNode {
     AYQ_FIRST_DESTINATION,
   );
   const [settingsTab, setSettingsTab] = useState<AyqSettingsTab>('appearance');
+  /** Which account's detail Today opened, if it opened one (7 §7.3). */
+  const [account, setAccount] = useState<string | null>(null);
   const [status, setStatus] = useState<AyqEngineStatus | null>(null);
   const [summary, setSummary] = useState<AyqSummary | null>(null);
   // Two different things, and conflating them would be a defect rather than an
@@ -219,7 +221,21 @@ export function AyqApplication(): ReactNode {
       />
     );
   } else if (destination === 'accounts') {
-    body = <AyqAccountsScreen onFailure={say} round={round} />;
+    // Not a workspace: a detail surface Today opens, which is why it is reached
+    // through a route the rail never draws (7 §7.1). `account` narrows it to
+    // the one that was clicked; without it, it lists them all.
+    body = (
+      <AyqAccountsScreen
+        onFailure={say}
+        round={round}
+        accountId={account}
+        onChanged={reload}
+        onBack={() => {
+          setAccount(null);
+          setDestination('today');
+        }}
+      />
+    );
   } else if (destination === 'upcoming') {
     body = (
       <AyqUpcomingScreen
@@ -234,8 +250,13 @@ export function AyqApplication(): ReactNode {
       <AyqTodayScreen
         onFailure={say}
         onOpen={next => {
+          setAccount(null);
           setDestination(next);
           reload();
+        }}
+        onOpenAccount={accountId => {
+          setAccount(accountId);
+          setDestination('accounts');
         }}
         round={round}
       />

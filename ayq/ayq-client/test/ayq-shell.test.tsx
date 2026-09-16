@@ -314,3 +314,80 @@ test('opening the Register republishes what the window is holding', async () => 
 
   await window.close();
 });
+
+/* ------------------------------------------------------------ 7 §7.1, exactly
+
+   The rail is written out here as a literal rather than read from
+   `AYQ_DESTINATIONS`, and deliberately: the test above proves the rail draws
+   what the module says, and this one proves the module says what 04 A20 says.
+   A test that reads its expectation from the code it is checking would have
+   passed just as happily on build 004's nine destinations.                   */
+
+test('the rail is the eight destinations of A20, and Accounts is not one', async () => {
+  const window = await ayqOpenWindow(engine);
+  await window.render(application);
+
+  const rail = window.container.querySelector('[data-ayq-rail]');
+  assert.ok(rail);
+
+  const items = [...rail.querySelectorAll('[data-ayq-tab]')].map(one =>
+    one.getAttribute('data-ayq-tab'),
+  );
+
+  assert.deepEqual(items, [
+    'today',
+    'register',
+    'review',
+    'upcoming',
+    'plan',
+    'reports',
+    'import',
+    'settings',
+  ]);
+
+  // Eight visible destinations, Settings included. The Windows acceptance run
+  // measures the same number on the drawn window.
+  assert.equal(items.length, 8, 'the rail does not hold eight destinations');
+
+  // An account is not a place a person goes.
+  assert.ok(
+    !items.includes('accounts'),
+    'Accounts is back in the rail',
+  );
+  assert.equal(
+    window.container.querySelector('[data-ayq-tab="accounts"]'),
+    null,
+  );
+
+  await window.close();
+});
+
+test('the rail carries no version or build number anywhere in it (12 §12.3)', async () => {
+  const window = await ayqOpenWindow(engine);
+  await window.render(application);
+
+  // Not in the rail, not in the status bar, not in the title. About is the one
+  // place a build number belongs, and it is a Settings tab.
+  for (const mark of ['[data-ayq-rail]', '[data-ayq-status-bar]', '[data-ayq-window]']) {
+    const part = window.container.querySelector(mark);
+    if (part === null) continue;
+    const said = part.textContent ?? '';
+    assert.ok(!said.includes('0.2.0'), `${mark} carries the product version`);
+    assert.ok(
+      !/\bbuild\s*005\b/i.test(said),
+      `${mark} carries the build number`,
+    );
+  }
+
+  await window.close();
+});
+
+test('Today is where the application opens (04 A21)', async () => {
+  const window = await ayqOpenWindow(engine);
+  await window.render(application);
+
+  const open = window.container.querySelector('[data-ayq-tab][aria-current]');
+  assert.equal(open?.getAttribute('data-ayq-tab'), 'today');
+
+  await window.close();
+});

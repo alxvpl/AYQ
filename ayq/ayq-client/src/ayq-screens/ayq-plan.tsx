@@ -26,8 +26,9 @@ import {
 
 import { ayqAsk } from '../ayq-bridge.ts';
 import type { AyqPlanSheet, AyqPlanSheetRow } from '../ayq-ipc-contract.ts';
-import { ayqMonthName, ayqText } from '../ayq-strings.ts';
+import { ayqCount, ayqMonthName, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
+import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorder } from '../ayq-ui/ayq-css.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
@@ -48,7 +49,13 @@ const useStyles = makeStyles({
   note: { margin: '0', color: 'var(--ayq-ink-quiet)' },
   said: { marginLeft: 'auto', color: 'var(--ayq-ink-quiet)' },
   cell: { width: '110px' },
-  quiet: { color: 'var(--ayq-ink-faint)' },
+  quiet: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
+  suggestion: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: '2px',
+  },
   totals: {
     display: 'flex',
     gap: `${AYQ_METRIC.space.wide}px`,
@@ -120,9 +127,42 @@ export function AyqPlanScreen({
     [sheet, onFailure],
   );
 
+  const use = useCallback(
+    (scope: { categoryId: string } | { all: true }) => {
+      void (async () => {
+        const answer = await ayqAsk(
+          'all' in scope
+            ? { kind: 'plan.useAllSuggestions', month: sheet?.month ?? '' }
+            : {
+                kind: 'plan.useSuggestion',
+                month: sheet?.month ?? '',
+                categoryId: scope.categoryId,
+              },
+        );
+        if (!answer.ok) throw new Error(answer.message);
+        setRound(one => one + 1);
+      })().catch((error: unknown) => {
+        onFailure(error instanceof Error ? error.message : String(error));
+      });
+    },
+    [sheet, onFailure],
+  );
+
   if (sheet === null) {
     return <p className={styles.note}>{ayqText('common.loading')}</p>;
   }
+
+  const suggestions = new Map(
+    sheet.suggestions.map(one => [one.categoryId, one] as const),
+  );
+  // What a bulk acceptance would actually do: fill the empty rows, and only
+  // those. If there are none, the control is not offered.
+  const usable = sheet.rows.filter(
+    row =>
+      row.planCents === 0 &&
+      (suggestions.get(row.categoryId)?.suggestedCents ?? 0) > 0,
+  ).length;
+  const basis = sheet.suggestions.find(one => one.monthsUsed > 0) ?? null;
 
   const columns: readonly AyqColumn<AyqPlanSheetRow>[] = [
     {
@@ -204,6 +244,47 @@ export function AyqPlanScreen({
         </span>
       ),
     },
+    {
+      // 10 §10.3: visibly distinct from the four columns above, because it is a
+      // different kind of thing. Planned, Actual, Left and Still expected are
+      // facts about this month; this is what history suggests, and it becomes a
+      // plan only when somebody says so.
+      id: 'suggested',
+      header: ayqText('plan.column.suggested'),
+      cell: row => {
+        const suggestion = suggestions.get(row.categoryId);
+        if (suggestion === undefined || suggestion.suggestedCents === null) {
+          return (
+            <span className={styles.quiet} data-ayq-suggestion="none">
+              {ayqText('plan.suggestion.none')}
+            </span>
+          );
+        }
+        return (
+          <span
+            className={styles.suggestion}
+            data-ayq-suggestion={String(suggestion.suggestedCents)}
+            data-ayq-suggestion-months={String(suggestion.monthsUsed)}
+          >
+            <AyqFigure cents={suggestion.suggestedCents} />
+            <span className={styles.quiet}>
+              {ayqText('plan.suggestion.basis', {
+                months: ayqCount(suggestion.monthsUsed),
+              })}
+            </span>
+            {sheet.editable ? (
+              <AyqButton
+                size="small"
+                mark={`plan-use-${row.categoryId}`}
+                onClick={() => use({ categoryId: row.categoryId })}
+              >
+                {ayqText('plan.suggestion.use')}
+              </AyqButton>
+            ) : null}
+          </span>
+        );
+      },
+    },
   ];
 
   return (
@@ -224,6 +305,13 @@ export function AyqPlanScreen({
             </option>
           ))}
         </Select>
+        {/* Fills only the rows that carry no plan. Never a figure somebody
+            typed (10 §10.3). */}
+        {sheet.editable && usable > 0 ? (
+          <AyqButton mark="plan-use-all" onClick={() => use({ all: true })}>
+            {ayqText('plan.suggestion.useAll')}
+          </AyqButton>
+        ) : null}
         <span className={styles.said} data-ayq-plan-editable={String(sheet.editable)}>
           {sheet.editable ? '' : ayqText('plan.notEditable')}
         </span>
@@ -260,6 +348,15 @@ export function AyqPlanScreen({
         />
         <p className={`${styles.note} ${styles.foot}`} data-ayq-plan-rule="">
           {ayqText('plan.expectedNote')}
+        </p>
+        <p className={`${styles.note} ${styles.foot}`} data-ayq-plan-basis="">
+          {basis === null
+            ? ayqText('plan.suggestion.noBasis')
+            : ayqText('plan.suggestion.wholeBasis', {
+                months: ayqCount(basis.monthsUsed),
+                from: ayqMonthName(basis.fromMonth ?? ''),
+                to: ayqMonthName(basis.toMonth ?? ''),
+              })}
         </p>
       </AyqPane>
     </>
