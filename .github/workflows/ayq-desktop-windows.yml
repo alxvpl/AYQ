@@ -34,7 +34,13 @@ jobs:
     runs-on: windows-latest
     # Raised with the engine suite and the Register measurement. The steps are
     # what is really being bounded; this is the ceiling over all of them.
-    timeout-minutes: 90
+    #
+    # 150 since build 005. Measured on run 73: the engine suite is about 21
+    # seconds per test on this runner — budget creation is disk, and the disk
+    # scans everything written to it — and build 005 took the engine tests from
+    # 82 to 110 of them. The suite alone is now near 40 minutes, and the twenty
+    # acceptance steps, the packaging and the installed run follow it.
+    timeout-minutes: 150
 
     steps:
       - uses: actions/checkout@v4
@@ -96,10 +102,24 @@ jobs:
           npm --prefix ../ayq-client run typecheck
           if ($LASTEXITCODE -ne 0) { throw 'the renderer does not typecheck' }
 
+      # Both suites. The engine one drives a real Actual budget per test, which
+      # is what makes it the longest step in the workflow by a wide margin.
+      #
+      # Run 73 died here with every assertion in it passing: `--test-timeout` is
+      # a *per file* limit, and `ayq-engine.test.ts` went past 25 minutes with
+      # 188 tests passed, none failed, and the file itself cancelled. Two things
+      # were done about it rather than one. The tests build 005 added moved into
+      # `ayq-build-005.test.ts`, because `node --test` gives each file its own
+      # process and the durable answer to a suite that keeps growing is another
+      # file. And the limits below were raised to fit what the suite actually
+      # costs now, which is measurement rather than indulgence: 84 tests at
+      # about 21 seconds each is half an hour, and the file's own comment has
+      # always said its limit sits far above its typical duration because this
+      # runner varies by more than a factor of two on identical code.
       - name: Tests
         working-directory: ayq/ayq-desktop
         shell: pwsh
-        timeout-minutes: 35
+        timeout-minutes: 75
         run: |
           npm test
           if ($LASTEXITCODE -ne 0) { throw 'the engine tests did not pass' }
