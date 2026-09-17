@@ -80,6 +80,24 @@ function compiled(): AyqCompiledBuild {
   };
 }
 
+/**
+ * The product version and delivery number this build was compiled with.
+ *
+ * For a check that wants to compare what About *draws* with what the build was
+ * made from, without reaching for the manifest — which lives inside the asar in
+ * a packaged application and is not the same question anyway.
+ */
+export function ayqCompiledIdentity(): {
+  productVersion: string;
+  buildNumber: string;
+} {
+  const build = compiled();
+  return {
+    productVersion: build.productVersion,
+    buildNumber: build.buildNumber,
+  };
+}
+
 /** Windows x64, said the way a person says it rather than the way node does. */
 function architecture(platform: string, arch: string): string {
   const named =

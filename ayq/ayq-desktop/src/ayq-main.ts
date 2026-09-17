@@ -48,6 +48,10 @@ import {
   AYQ_TOKENS,
   type AyqGroundResolved,
 } from '../../ayq-client/src/ayq-tokens.ts';
+// What the build was compiled with, for the same reason as the token module
+// above: the acceptance run compares the screen against the product's own
+// declared values rather than against a second copy written into a check.
+import { ayqCompiledIdentity } from './ayq-about.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -1618,8 +1622,22 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
 
   if (seen.version === undefined) return 'the About tab drew nothing';
 
-  if (seen.version !== '0.2.0') return `About says version ${seen.version}`;
-  if (seen.build !== '005') return `About says build ${seen.build}`;
+  // 06 §3.6, checked against what the manifest says rather than against a
+  // number written here. A check that carries its own expectation stops being a
+  // gate the moment the version moves: it goes red on a correct build and green
+  // on whatever it was last edited to. CI passes the expectation in; without
+  // one, the drawn value is compared with the constant the build baked in,
+  // which still proves About is wired to it.
+  const compiled = ayqCompiledIdentity();
+  const expectedVersion =
+    process.env.AYQ_EXPECT_VERSION ?? compiled.productVersion;
+  const expectedBuild = process.env.AYQ_EXPECT_BUILD ?? compiled.buildNumber;
+  if (seen.version !== expectedVersion) {
+    return `About says version ${seen.version}, expected ${expectedVersion}`;
+  }
+  if (seen.build !== expectedBuild) {
+    return `About says build ${seen.build}, expected ${expectedBuild}`;
+  }
   if (seen.author !== 'Plamen Alexandrov') return `About says author ${seen.author}`;
   if (seen.copyright !== '\u00a9 2026 Plamen Alexandrov.') {
     return `About says copyright ${seen.copyright}`;
@@ -1642,7 +1660,13 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
   }
 
   const technical = seen.technical ?? '';
-  for (const wanted of ['0.2.0', '005', 'db1b0ea9', 'Actual Budget 26.9.0', seen.revision]) {
+  for (const wanted of [
+    expectedVersion,
+    expectedBuild,
+    'db1b0ea9',
+    'Actual Budget 26.9.0',
+    seen.revision,
+  ]) {
     if (!technical.includes(wanted)) {
       return `the technical information leaves out ${wanted}`;
     }

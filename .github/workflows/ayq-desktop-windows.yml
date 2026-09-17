@@ -844,10 +844,28 @@ jobs:
           AYQ_SMOKE: '1'
           AYQ_SMOKE_REQUIRE_HOST: electron utilityProcess
         run: |
+          # What About must say, read from the manifest in the checkout rather
+          # than written into the check. 06 §3.6 wants the installed build to
+          # report its real identity, and a check that carries the expected
+          # version in its own source proves only that somebody remembered to
+          # edit it — run 75 went red for exactly that, on a version bump with
+          # nothing wrong in the product. This comes from outside the bundle, so
+          # it is still a gate, and it never needs editing again.
+          $manifest = Get-Content 'ayq\ayq-desktop\package.json' -Raw | ConvertFrom-Json
+          $env:AYQ_EXPECT_VERSION = $manifest.version
+          $env:AYQ_EXPECT_BUILD = $manifest.ayq.build
+          Write-Host "About must say version $env:AYQ_EXPECT_VERSION build $env:AYQ_EXPECT_BUILD"
+
           $setup = Get-ChildItem 'ayq\ayq-desktop\release' -Filter '*-setup.exe' |
             Select-Object -First 1
           if (-not $setup) { throw 'electron-builder produced no installer' }
           Write-Host "installer : $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
+
+          # And the installer's own name must agree with the manifest, so the
+          # two places a delivery number appears cannot drift apart.
+          if ($setup.Name -notmatch "build-$env:AYQ_EXPECT_BUILD-") {
+            throw "the installer is named $($setup.Name) but the manifest says build $env:AYQ_EXPECT_BUILD"
+          }
 
           # /S is NSIS's silent switch and /D names the directory. The
           # installer is per-user, so it needs no administrator; naming the
