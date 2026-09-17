@@ -41,6 +41,7 @@ import {
   ayqCreateCategory,
   ayqRenameCategory,
 } from './ayq-categories.ts';
+import { ayqRecoverCounterpartyNames } from './ayq-recover-names.ts';
 import { ayqProvisionTaxonomy } from './ayq-taxonomy.ts';
 import { ayqAbout, ayqRepositoryUrl } from './ayq-about.ts';
 import { ayqApplyAnchor, ayqRecordAnchor } from './ayq-anchors.ts';
@@ -1073,6 +1074,15 @@ channel.onMessage(message => {
 async function foldCounterparties(dataDir: string): Promise<void> {
   const store = ayqReadStore(dataDir);
   if (store.counterpartyFoldVersion >= AYQ_COUNTERPARTY_FOLD) return;
+
+  // Before anything is folded, the name a store written before build 006 never
+  // recorded is recovered from the description the bank wrote. Without it there
+  // is nothing to fold and nothing to file: the fold reads a stored key again
+  // through the name it came from, and the filing reads the counterparty the
+  // resolver pronounced. The owner's budget carried 567 records and not one of
+  // them had a name, so build 007 folded nothing and filed nothing on the only
+  // budget that mattered while every test passed.
+  if (ayqRecoverCounterpartyNames(store) > 0) ayqWriteStore(dataDir, store);
 
   try {
     await ayqApplyAliases(dataDir);

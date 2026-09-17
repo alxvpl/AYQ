@@ -1,6 +1,6 @@
 {
   "name": "ayq-desktop",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "AYQ Personal Finances \u2014 a local-first personal finance application for Windows.",
   "main": "dist/ayq-main.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "smoke": "node start.mjs --smoke --require-host \"electron utilityProcess\"",
     "start:debug-node-engine": "node start.mjs --engine node",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --test-reporter=spec --test-concurrency=1 --test-timeout=2700000 test/ayq-about.test.ts test/ayq-build-005.test.ts test/ayq-build-006.test.ts test/ayq-engine.test.ts test/ayq-evidence.test.ts test/ayq-filing.test.ts test/ayq-forecast.test.ts test/ayq-match.test.ts test/ayq-plan-series.test.ts test/ayq-reversal.test.ts test/ayq-series.test.ts test/ayq-smoke-scripts.test.ts test/ayq-store.test.ts",
+    "test": "npm run build && node --test --test-reporter=spec --test-concurrency=1 --test-timeout=2700000 test/ayq-about.test.ts test/ayq-build-005.test.ts test/ayq-build-006.test.ts test/ayq-build-008.test.ts test/ayq-engine.test.ts test/ayq-evidence.test.ts test/ayq-filing.test.ts test/ayq-forecast.test.ts test/ayq-match.test.ts test/ayq-plan-series.test.ts test/ayq-recover-names.test.ts test/ayq-reversal.test.ts test/ayq-series.test.ts test/ayq-smoke-scripts.test.ts test/ayq-store.test.ts",
     "icon": "node build-icon.mjs",
     "package": "npm run build && npm run icon && electron-builder --win nsis --x64 --publish=never"
   },
@@ -38,7 +38,7 @@
   },
   "productName": "AYQ",
   "ayq": {
-    "build": "007"
+    "build": "008"
   },
   "build": {
     "appId": "eu.ayq.desktop",

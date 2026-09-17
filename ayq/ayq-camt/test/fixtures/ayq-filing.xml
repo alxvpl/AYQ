@@ -4,9 +4,9 @@
 
   ## One counterparty printed two ways (03 §3.9, §3.13)
 
-  Two payments to a shop the bank names "Maas" on one line and
-  "Maas - 220722 Royal Fl" on the next, because it appended a reference to the
-  second. Build 005 read those as two counterparties and drew two names. They
+  Two payments to a shop the terminal names "TESTHOEK 13" on one line and
+  "TESTHOEK - 990311 Testref" on the next, because it appended a reference to
+  the second. Build 005 read those as two counterparties and drew two names. They
   are one, the reference is per-transaction material, and §3.9 is explicit that
   a resolver may ignore it when deciding whether two records are the same
   counterparty.
@@ -63,38 +63,37 @@
         <Dt><Dt>2026-06-30</Dt></Dt>
       </Bal>
 
-      <!-- The same shop, named two ways. One counterparty, one display name. -->
+      <!-- The same shop, named two ways, at a card terminal.
+           A terminal, not a transfer: the bank prints the whole string into the
+           free text there, and that text is the only place the separator before
+           a reference survives. A store written before build 006 kept no
+           counterparty name, so this is the shape the widened rule has to be
+           recovered from — a transfer would prove nothing about it. -->
       <Ntry>
-        <Amt Ccy="EUR">1.85</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <Amt Ccy="EUR">6.40</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-04</Dt></BookgDt><ValDt><Dt>2026-06-04</Dt></ValDt>
         <AcctSvcrRef>2026060400000301</AcctSvcrRef>
-        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>ICDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <NtryDtls><TxDtls>
-          <RltdPties><Cdtr><Nm>Maas</Nm></Cdtr></RltdPties>
-        </TxDtls></NtryDtls>
-        <AddtlNtryInf>SEPA Overboeking   Naam: Maas   Omschrijving: bestelling</AddtlNtryInf>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTHOEK 13,PAS118   NR:00T801, 04.06.26/17:12   TESTDORP</AddtlNtryInf>
       </Ntry>
       <Ntry>
-        <Amt Ccy="EUR">2.60</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <Amt Ccy="EUR">9.15</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-05</Dt></BookgDt><ValDt><Dt>2026-06-05</Dt></ValDt>
         <AcctSvcrRef>2026060500000302</AcctSvcrRef>
-        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>ICDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
-        <NtryDtls><TxDtls>
-          <RltdPties><Cdtr><Nm>Maas - 220722 Royal Fl</Nm></Cdtr></RltdPties>
-        </TxDtls></NtryDtls>
-        <AddtlNtryInf>SEPA Overboeking   Naam: Maas - 220722 Royal Fl   Omschrijving: bestelling</AddtlNtryInf>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <AddtlNtryInf>BEA, Betaalpas   TESTHOEK - 990311 Testref,PAS118   NR:00T802, 05.06.26/19:40   TESTDORP</AddtlNtryInf>
       </Ntry>
 
       <!-- A supermarket, twice, from two different terminals. -->
       <Ntry>
-        <Amt Ccy="EUR">79.67</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <Amt Ccy="EUR">61.20</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-07</Dt></BookgDt><ValDt><Dt>2026-06-07</Dt></ValDt>
         <AcctSvcrRef>2026060700000303</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
         <AddtlNtryInf>BEA, Betaalpas   ALBERT HEIJN 1234,PAS421 NR:00E101, 07.06.26/18:22   AMSTERDAM</AddtlNtryInf>
       </Ntry>
       <Ntry>
-        <Amt Ccy="EUR">23.41</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <Amt Ccy="EUR">18.05</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-14</Dt></BookgDt><ValDt><Dt>2026-06-14</Dt></ValDt>
         <AcctSvcrRef>2026061400000304</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>CCRD</Cd><SubFmlyCd>POSD</SubFmlyCd></Fmly></Domn></BkTxCd>
@@ -103,7 +102,7 @@
 
       <!-- A network operator, on a mandate. -->
       <Ntry>
-        <Amt Ccy="EUR">22.80</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <Amt Ccy="EUR">31.45</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-10</Dt></BookgDt><ValDt><Dt>2026-06-10</Dt></ValDt>
         <AcctSvcrRef>2026061000000305</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>RDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly></Domn></BkTxCd>
@@ -116,7 +115,7 @@
 
       <!-- The bank charging for its own services: no table is consulted. -->
       <Ntry>
-        <Amt Ccy="EUR">3.25</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+        <Amt Ccy="EUR">4.15</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
         <BookgDt><Dt>2026-06-30</Dt></BookgDt><ValDt><Dt>2026-06-30</Dt></ValDt>
         <AcctSvcrRef>2026063000000306</AcctSvcrRef>
         <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>MDOP</Cd><SubFmlyCd>COMM</SubFmlyCd></Fmly></Domn></BkTxCd>

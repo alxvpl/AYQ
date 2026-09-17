@@ -52,10 +52,10 @@ test('a bank reference does not make one shop two (03 §3.9, §3.13)', async () 
 
   const ledger = await ask(dataDir, { kind: 'transactions.list' });
   const names = ledger.rows
-    .filter(row => row.payee !== null && /maas/i.test(row.payee))
+    .filter(row => row.payee !== null && /testhoek/i.test(row.payee))
     .map(row => row.payee);
 
-  // The bank printed "Maas" on one line and "Maas - 220722 Royal Fl" on the
+  // The bank printed "TESTHOEK 13" on one line and "TESTHOEK - 990311 Testref" on the
   // next. Build 005 drew both, because the fallback was the row's own payee.
   assert.equal(names.length, 2, 'both payments to the shop are in the ledger');
   assert.equal(
@@ -63,16 +63,16 @@ test('a bank reference does not make one shop two (03 §3.9, §3.13)', async () 
     1,
     `one counterparty, two names on the screen: ${JSON.stringify(names)}`,
   );
-  assert.equal(names[0], 'Maas');
+  assert.equal(names[0], 'Testhoek');
 
   // And it is one counterparty underneath, not two that happen to be drawn
   // alike: the counterparties workspace counts it once.
   const counterparties = await ask(dataDir, {
     kind: 'counterparties.list',
-    filter: { search: 'Maas' },
+    filter: { search: 'Testhoek' },
   });
   assert.equal(counterparties.rows.length, 1, 'two keys survived the fold');
-  assert.equal(counterparties.rows[0].name, 'Maas');
+  assert.equal(counterparties.rows[0].name, 'Testhoek');
   assert.equal(counterparties.rows[0].transactions, 2);
 });
 
@@ -95,7 +95,7 @@ test('an import files what the evidence carries (03 §11.10, §11.12)', async ()
 
   // The bank's own charge needs no table: 03 §3.2 makes the bank the
   // counterparty, so the payment class settles it.
-  const fee = ledger.rows.find(row => row.amountCents === -325);
+  const fee = ledger.rows.find(row => row.amountCents === -415);
   assert.equal(fee?.category, 'Bank fees');
 
   // Every automatic filing says so, and says why (§11.11).
@@ -222,8 +222,8 @@ test('a store written under the older folding rule still opens', async () => {
   // `wantedPayees` decided a row was right by comparing its payee with the
   // *key* recorded for it. That holds only while a name and a key are folded by
   // the same rule, and 03 §3.9 widened the name's. A counterparty the bank had
-  // printed with a reference then wanted the payee `Maas` while its recorded
-  // key was still `MAAS 220722 ROYAL FL`, the row could never satisfy the test,
+  // printed with a reference then wanted the payee `Testhoek 13` while its recorded
+  // key was still `TESTHOEK 990311 TESTREF`, the row could never satisfy the test,
   // and the pass asked sixty times and threw — out of the launch.
   //
   // Reproduced by putting the store back the way build 005 wrote it: the key
@@ -253,11 +253,11 @@ test('a store written under the older folding rule still opens', async () => {
 
   const ledger = await ask(dataDir, { kind: 'transactions.list' });
   const names = ledger.rows
-    .filter(row => row.payee !== null && /maas/i.test(row.payee))
+    .filter(row => row.payee !== null && /testhoek/i.test(row.payee))
     .map(row => row.payee);
   assert.equal(names.length, 2);
   assert.equal(new Set(names).size, 1, JSON.stringify(names));
-  assert.equal(names[0], 'Maas');
+  assert.equal(names[0], 'Testhoek');
 
   // And the pass says it is done, so the next launch does not pay for it again.
   const after = JSON.parse(await readFile(path, 'utf8')) as {

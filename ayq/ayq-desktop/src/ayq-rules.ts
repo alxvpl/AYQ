@@ -401,7 +401,12 @@ export async function ayqApplyFiling(
     const provenance = store.provenance[key];
     const filing = ayqProposedCategory({
       kind: provenance?.kind ?? null,
-      counterpartyName: provenance?.counterpartyName ?? null,
+      // The key when there is no name. A record whose name came from a
+      // structured XML field never put it in the description, so it cannot be
+      // recovered — but the key is that same name folded, and this reads it
+      // folded anyway. Half the owner's budget is in this case.
+      counterpartyName:
+        provenance?.counterpartyName ?? provenance?.counterpartyKey ?? null,
       amountCents: Number(row.amount ?? 0),
       reversal: ayqHasReversalEvidence(provenance),
       transfer:

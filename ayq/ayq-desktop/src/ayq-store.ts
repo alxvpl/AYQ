@@ -568,8 +568,14 @@ export const AYQ_LEGACY_EVIDENCE = 'legacy-v7';
  * Bump this when `ayqNormaliseKey` changes what it treats as per-transaction
  * material, and every store written under the older rule brings its payees up
  * to date once, on the next launch.
+ *
+ * Two since build 008. One ran, marked itself done and had folded nothing: it
+ * reads a stored key again through the name provenance kept, and a store
+ * written before build 006 kept no name. The pass has to run a second time,
+ * after those names are recovered, on the stores that already believe it is
+ * finished.
  */
-export const AYQ_COUNTERPARTY_FOLD = 1;
+export const AYQ_COUNTERPARTY_FOLD = 2;
 
 function array(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
