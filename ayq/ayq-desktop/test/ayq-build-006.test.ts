@@ -16,9 +16,11 @@
 // Every account, counterparty, amount and date below is invented.
 
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
+
+import { ayqLegacyNormaliseKey } from '../../ayq-camt/src/counterparty/ayq-description.ts';
 
 import { ask, budget, here, restart } from './ayq-engine-harness.ts';
 
@@ -210,4 +212,56 @@ test('running it twice files nothing twice (03 §11.12)', async () => {
     // decision, and a log of AYQ agreeing with itself is not a record.
     assert.equal(history.length, 1, JSON.stringify(history));
   }
+});
+
+test('a store written under the older folding rule still opens', async () => {
+  // The defect build 006 shipped, and the owner found on his own budget within
+  // minutes: "the counterparty names did not reach the budget within 1.5s", a
+  // red banner, and a Today that said `Reading…` and never stopped.
+  //
+  // `wantedPayees` decided a row was right by comparing its payee with the
+  // *key* recorded for it. That holds only while a name and a key are folded by
+  // the same rule, and 03 §3.9 widened the name's. A counterparty the bank had
+  // printed with a reference then wanted the payee `Maas` while its recorded
+  // key was still `MAAS 220722 ROYAL FL`, the row could never satisfy the test,
+  // and the pass asked sixty times and threw — out of the launch.
+  //
+  // Reproduced by putting the store back the way build 005 wrote it: the key
+  // the old rule produced, and the fold marker unset so the pass runs.
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [filing] });
+
+  const path = join(dataDir, 'ayq-store.json');
+  const store = JSON.parse(await readFile(path, 'utf8')) as {
+    counterpartyFoldVersion: number;
+    provenance: Record<string, { counterpartyKey: string | null; counterpartyName?: string | null }>;
+  };
+
+  let putBack = 0;
+  for (const entry of Object.values(store.provenance)) {
+    const legacy = ayqLegacyNormaliseKey(entry.counterpartyName ?? null);
+    if (legacy === null || legacy === entry.counterpartyKey) continue;
+    entry.counterpartyKey = legacy;
+    putBack += 1;
+  }
+  assert.ok(putBack > 0, 'the fixture no longer holds a name the rules fold differently');
+  store.counterpartyFoldVersion = 0;
+  await writeFile(path, JSON.stringify(store, null, 2));
+
+  // The launch that used to throw.
+  await restart(dataDir);
+
+  const ledger = await ask(dataDir, { kind: 'transactions.list' });
+  const names = ledger.rows
+    .filter(row => row.payee !== null && /maas/i.test(row.payee))
+    .map(row => row.payee);
+  assert.equal(names.length, 2);
+  assert.equal(new Set(names).size, 1, JSON.stringify(names));
+  assert.equal(names[0], 'Maas');
+
+  // And the pass says it is done, so the next launch does not pay for it again.
+  const after = JSON.parse(await readFile(path, 'utf8')) as {
+    counterpartyFoldVersion: number;
+  };
+  assert.ok(after.counterpartyFoldVersion >= 1, 'the fold left itself unmarked');
 });

@@ -1056,12 +1056,31 @@ channel.onMessage(message => {
  * The marker is written only after the pass returns, so an interrupted run is
  * finished by the next launch (03 §5.5, and the same discipline the taxonomy
  * marker keeps).
+ *
+ * ## It may not stop the application from opening
+ *
+ * Build 006 shipped it able to. The pass reads its own writes back through
+ * `ayqSettle`, that read could not converge on the owner's own budget, and the
+ * exception came out of `openBudget` — so a cosmetic tidying of names left him
+ * with a red banner and a screen that said `Reading…` and never stopped.
+ *
+ * The defect that caused it is fixed, and this is the second half of the
+ * answer: a pass whose whole job is to make names agree does not get to decide
+ * whether AYQ opens. If it cannot finish, the names stay exactly as they were —
+ * which is the state the owner already had, so nothing is lost and nothing is
+ * claimed — the marker stays unset, and the next launch tries again.
  */
 async function foldCounterparties(dataDir: string): Promise<void> {
   const store = ayqReadStore(dataDir);
   if (store.counterpartyFoldVersion >= AYQ_COUNTERPARTY_FOLD) return;
 
-  await ayqApplyAliases(dataDir);
+  try {
+    await ayqApplyAliases(dataDir);
+  } catch {
+    // Left unmarked on purpose: not finished is not the same as done, and the
+    // next launch is the retry.
+    return;
+  }
 
   const after = ayqReadStore(dataDir);
   after.counterpartyFoldVersion = AYQ_COUNTERPARTY_FOLD;

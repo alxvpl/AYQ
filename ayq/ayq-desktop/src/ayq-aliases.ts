@@ -161,9 +161,19 @@ async function payeeNames(): Promise<Map<string, string>> {
  * The payee every transaction AYQ imported ought to carry.
  *
  * The comparison is on identity, not on spelling: a transaction whose payee
- * already normalises to the counterparty it belongs to is right, whatever case
- * Actual chose to store it in, and is left alone. That is what keeps applying
- * an alias to one counterparty from rewriting the name of every other one.
+ * already normalises to the name its counterparty ought to have is right,
+ * whatever case Actual chose to store it in, and is left alone. That is what
+ * keeps applying an alias to one counterparty from rewriting the name of every
+ * other one.
+ *
+ * It compares the row's payee with the *name it wants* — like with like. It
+ * used to compare a name with a **key**, which worked only while the two were
+ * folded by the same rule. Build 006 widened what the name drops (03 §3.9) and
+ * left the stored key alone, so a counterparty the bank had printed with a
+ * reference wanted the payee `Maas` while its recorded key was still
+ * `MAAS 220722 ROYAL FL`: the row could never satisfy the test, `ayqSettle`
+ * asked sixty times and gave up, and the application refused to open over the
+ * owner's own budget. A key is not a name and must not be measured against one.
  *
  * An aliased transaction wants the target's name; every other one wants the
  * name the resolver pronounced for it, canonicalised as the import did — which
@@ -199,8 +209,13 @@ async function wantedPayees(
     if (!resolvedKey) continue;
 
     const alias = aliases.get(resolvedKey);
-    const wantedKey = alias?.counterpartyKey ?? resolvedKey;
-    if (ayqNormaliseKey(row.payee) === wantedKey) continue;
+    // The counterparty the row belongs to, read the way every other surface
+    // reads it — the owner's alias first, then the key folded by the rule that
+    // stands today rather than the one it was written under.
+    const wantedKey =
+      alias?.counterpartyKey ??
+      ayqCanonicalKey(store, resolvedKey, provenance?.counterpartyName) ??
+      resolvedKey;
 
     const payeeName =
       named.get(wantedKey) ??
@@ -211,17 +226,33 @@ async function wantedPayees(
           (ayqCanonicalName(provenance?.counterpartyName ?? null) ??
           wantedKey));
 
+    if (ayqNormaliseKey(row.payee) === ayqNormaliseKey(payeeName)) continue;
+
     wanted.push({ id: String(row.id), payeeName });
   }
 
   return wanted;
 }
 
-/** The payee by that name, created if the budget has not got one. */
-async function payeeIdFor(name: string): Promise<string> {
-  const existing = (await api.getPayees()).find(payee => payee.name === name);
-  if (existing) return existing.id;
-  return api.createPayee({ name });
+/**
+ * The ids of the payees these names want, creating only what is missing.
+ *
+ * One read of the budget's payees for the whole batch. It was one read *per
+ * name*, which is fine for the handful an alias moves and is not fine for the
+ * first launch after a folding rule changes, where every counterparty in a
+ * six-year budget can want a name at once.
+ */
+async function payeeIdsFor(names: Iterable<string>): Promise<Map<string, string>> {
+  const existing = new Map(
+    (await api.getPayees()).map(payee => [String(payee.name), String(payee.id)]),
+  );
+
+  const ids = new Map<string, string>();
+  for (const name of names) {
+    const found = existing.get(name);
+    ids.set(name, found ?? (await api.createPayee({ name })));
+  }
+  return ids;
 }
 
 /**
@@ -240,10 +271,7 @@ export async function ayqApplyAliases(
   const wanted = await wantedPayees(store, named);
   if (wanted.length === 0) return { moved: 0 };
 
-  const ids = new Map<string, string>();
-  for (const name of new Set(wanted.map(one => one.payeeName))) {
-    ids.set(name, await payeeIdFor(name));
-  }
+  const ids = await payeeIdsFor(new Set(wanted.map(one => one.payeeName)));
 
   await ayqSetPayees(
     wanted.map(one => ({ id: one.id, payee: ids.get(one.payeeName)! })),
