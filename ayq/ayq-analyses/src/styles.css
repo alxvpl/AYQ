@@ -92,12 +92,12 @@ body {
 }
 
 .rail-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--rail-hover);
 }
 
 .rail-item.active {
   box-shadow: inset var(--marker-width) 0 0 var(--accent);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--rail-active);
   color: var(--accent-on-dark);
   font-weight: 600;
 }

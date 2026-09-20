@@ -34,6 +34,33 @@ export const ACCENT = {
 } as const;
 
 /**
+ * The sixteen-slot Fluent brand ramp the theme is built from (T1: relocated
+ * here verbatim from theme.ts; no slot was regenerated). Slot 80 is the
+ * accepted on-light value and slot 110 the accepted fill, by identity; the
+ * other fourteen are the same hue at other lightnesses and are what Fluent
+ * reads for control hover, pressed, selected and border treatments. Every
+ * slot is pinned to its exact value by test/tokens.test.ts.
+ */
+export const VIOLET_RAMP = {
+  10: '#0e042f',
+  20: '#17074b',
+  30: '#200967',
+  40: '#2a0c88',
+  50: '#340fa8',
+  60: '#3e12c9',
+  70: '#4c1aea',
+  80: ACCENT.onLight,
+  90: '#744def',
+  100: '#7a54ef',
+  110: ACCENT.fill,
+  120: '#a085f4',
+  130: '#b6a2f6',
+  140: '#ccbef9',
+  150: '#ded5fb',
+  160: '#f0ecfd',
+} as const;
+
+/**
  * The dark ground shared by the filled primary button (04_DESIGN A18; r05 §3)
  * and the navigation rail (A2 decision K-2). One dark neutral, so the two
  * dark surfaces in the window are the same surface.
@@ -49,6 +76,17 @@ export const DARK = {
   inkMuted: '#7b838a',
   /** The hairline between the rail and the body. */
   edge: '#10141a',
+} as const;
+
+/**
+ * The two washes a rail tile takes over the dark ground: a translucent white,
+ * which no opaque token can say (T1: relocated here verbatim from styles.css
+ * at their current alpha). Composited over DARK.ground they are #292c31
+ * (hover) and #2d3136 (active).
+ */
+export const RAIL_OVERLAY = {
+  hover: 'rgba(255, 255, 255, 0.06)',
+  active: 'rgba(255, 255, 255, 0.08)',
 } as const;
 
 /** The light surfaces. Neutral, not warm (A2 decision K-9). */
@@ -109,6 +147,8 @@ export function cssVariables(): Record<string, string> {
     '--dark-ink': DARK.ink,
     '--dark-ink-muted': DARK.inkMuted,
     '--dark-edge': DARK.edge,
+    '--rail-hover': RAIL_OVERLAY.hover,
+    '--rail-active': RAIL_OVERLAY.active,
     '--ground': SURFACE.ground,
     '--surface': SURFACE.pane,
     '--line': SURFACE.line,

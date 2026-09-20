@@ -9,35 +9,19 @@
 // window chrome drawn by Windows is outside this rule.
 
 import { createLightTheme, type BrandVariants, type Theme } from '@fluentui/react-components';
-import { ACCENT, DARK } from './tokens.js';
+import { ACCENT, DARK, VIOLET_RAMP } from './tokens.js';
 
 /** Kept for callers and tests that name the accent; the ramp is the source. */
 export const PRIMARY_GROUND = DARK.ground;
 
 /**
- * The brand ramp around the accent. 110 is the fill; 80 is the on-light text
- * value, which is where Fluent's light theme reads links, compound brand
- * foreground and brand strokes from; the steps between and beyond are the
- * same hue at other lightnesses, so every derived token stays violet.
+ * The brand ramp around the accent, owned by the token module (T1). 110 is
+ * the fill; 80 is the on-light text value, which is where Fluent's light
+ * theme reads links, compound brand foreground and brand strokes from; the
+ * steps between and beyond are the same hue at other lightnesses, so every
+ * derived token stays violet. Nothing is derived or generated here.
  */
-export const VIOLET: BrandVariants = {
-  10: '#0e042f',
-  20: '#17074b',
-  30: '#200967',
-  40: '#2a0c88',
-  50: '#340fa8',
-  60: '#3e12c9',
-  70: '#4c1aea',
-  80: ACCENT.onLight,
-  90: '#744def',
-  100: '#7a54ef',
-  110: ACCENT.fill,
-  120: '#a085f4',
-  130: '#b6a2f6',
-  140: '#ccbef9',
-  150: '#ded5fb',
-  160: '#f0ecfd',
-};
+export const VIOLET: BrandVariants = VIOLET_RAMP;
 
 export const analysesTheme: Theme = {
   ...createLightTheme(VIOLET),
