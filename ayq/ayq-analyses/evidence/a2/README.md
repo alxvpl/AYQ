@@ -35,7 +35,52 @@ This directory is not part of the packaged application.
 All of it flows from one token module, `src/ui/tokens.ts`; the stylesheet
 holds no colour of its own (`test/tokens.test.ts`).
 
-## Capture record
+## PC-A2-10 — the current tile's foreground, and three images recaptured
+
+After T1 (`61bca92a5`) the token test measured the current rail tile's label
+(`ACCENT.onDark` `#9580ff`) on the active wash composited over the rail
+ground (`rgba(255,255,255,0.08)` over `#1b1f24` = `#2d3136`) at 4.24:1. 016
+set the gate for the current-location treatment at 5.0:1; 017 / 017A / 017B
+directed the correction. At `a3956ca97` the current tile's label and icon
+take `RAIL_CURRENT` = `VIOLET_RAMP[130]` = `#b6a2f6`, a slot of the pinned
+ramp, in every state in which the tile is current — including an
+unavailable destination that is the current one (image 13), where current
+now beats unavailable for foreground and wash (017A). The sixteen ramp
+slots, both overlays, `ACCENT.onDark` (still the primary button's label)
+and everything else are unchanged.
+
+Measured, foreground on the actual composited surface (gate 5.0:1):
+
+| state of the current tile | surface | ratio |
+|---|---|---|
+| current (Explore) | `#2d3136` | **5.91:1** |
+| current + hover | `#2d3136` (the active wash wins over the hover wash) | 5.91:1 |
+| current + focused | `#2d3136` (the ring is outside the tile) | 5.91:1 |
+| current + unavailable | `#2d3136` | 5.91:1 |
+| current + unavailable + hover | `#2d3136` | 5.91:1 |
+| current + unavailable + focused | `#2d3136` | 5.91:1 |
+| current + unavailable + focused + hover | `#2d3136` | 5.91:1 |
+
+Rendered pixels sampled from the images: label `#b6a2f6`, wash `#2d3135`
+(one channel rounds by 1 in rendering; 5.92:1), ground `#1b1f24`. For
+comparison, slot 120 would measure 4.46:1 and the former `#9580ff` 4.24:1.
+
+Images **01, 03 and 13** were recaptured from the installed candidate of
+`a3956ca97`: installer `release/AYQ Analyses-0.1.0-windows-x64-setup.exe`,
+139 216 269 bytes, SHA-256
+`A186D94B769D047CABE1232A8A164E3B39E6C60211673FF9E1CE8AA743C9CF8B`; installed
+and packaged `app.asar` SHA-256
+`74331D1B56E795F55D757DEF8F37F5D3537A00D04FE260BCB29725DE25CB6383`; silent
+install exit 0; 108 tests, typecheck, build and package pass. The method is
+the one below. Image 13 was again reached by keyboard (the Explore tile
+clicked, one ArrowDown), so it shows the current + unavailable + focused
+state; the pointer was moved off the rail before capture. Images 02 and
+04–12 remain those of the `2c4f27fbe` candidate: no surface they show
+changed — T1 moved no value, and PC-A2-10 changed only the current rail
+tile's foreground, which they show in the Explore state that 01 and 03 now
+document.
+
+## Capture record (the set of `2c4f27fbe`; 01, 03 and 13 superseded above)
 
 **All thirteen `.png` files are present and were taken from one installed
 build.** Each is the real window of the NSIS-installed build, running on
