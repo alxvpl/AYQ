@@ -1,0 +1,38 @@
+name: AYQ Analyses Windows
+
+on:
+  push:
+    branches:
+      - 'claude/ayq-analyses-*'
+      - 'claude/ayq-develop'
+    paths:
+      - 'ayq/ayq-analyses/**'
+      - '.github/workflows/ayq-analyses-windows.yml'
+  pull_request:
+    paths:
+      - 'ayq/ayq-analyses/**'
+      - '.github/workflows/ayq-analyses-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ayq/ayq-analyses
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Unit tests
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build Electron application
+        run: npm run build

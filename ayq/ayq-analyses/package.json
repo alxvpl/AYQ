@@ -1,0 +1,64 @@
+{
+  "name": "ayq-analyses",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only analytical companion for AYQ Personal Finances.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "node build-tests.mjs && node --test --test-reporter=spec \"dist-test/*.test.mjs\"",
+    "package": "npm run build && electron-builder --win nsis --x64 --publish=never"
+  },
+  "dependencies": {
+    "@fluentui/react-components": "9.74.7",
+    "@fluentui/react-icons": "2.0.341",
+    "echarts": "5.5.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "43.4.0",
+    "electron-builder": "26.8.1",
+    "esbuild": "0.24.2",
+    "typescript": "5.9.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "productName": "AYQ Analyses",
+  "build": {
+    "appId": "eu.ayq.analyses",
+    "productName": "AYQ Analyses",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-${version}-windows-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AYQ Analyses"
+    },
+    "publish": null
+  }
+}
