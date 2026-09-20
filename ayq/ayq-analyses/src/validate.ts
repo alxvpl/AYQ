@@ -39,6 +39,16 @@ const RECONCILIATION_STATES: readonly ReconciliationStateToken[] = ['agrees', 'd
 
 const CATEGORISATION_SOURCES = ['manual', 'rule', 'none'];
 
+/** The sources that are provenance of a category that is set (r003 I14). */
+const PROVENANCE_SOURCES = ['manual', 'rule'];
+
+/**
+ * The UTC representation the frozen contract requires for generatedAt (r003
+ * §6.1, "RFC 3339 UTC"): a full date-time with the offset written as `Z` or
+ * `+00:00`. A merely parseable local-offset instant is not that (011 §7).
+ */
+const RFC3339_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)$/;
+
 function fail(reason: SnapshotInvalidReason, message: string): never {
   throw new SnapshotValidationError(reason, message);
 }
@@ -92,9 +102,10 @@ export function validateSnapshot(raw: unknown): AyqAnalyticalSnapshot {
     typeof raw.meta.snapshotId === 'string' && (raw.meta.snapshotId as string).length > 0,
     'meta.snapshotId is required',
   );
-  malformed(
-    typeof raw.meta.generatedAt === 'string' && !Number.isNaN(Date.parse(raw.meta.generatedAt as string)),
-    'meta.generatedAt must be an ISO date-time',
+  malformed(typeof raw.meta.generatedAt === 'string', 'meta.generatedAt must be a string');
+  invariant(
+    RFC3339_UTC.test(raw.meta.generatedAt as string) && !Number.isNaN(Date.parse(raw.meta.generatedAt as string)),
+    'meta.generatedAt must be an RFC 3339 UTC date-time',
   );
   malformed(
     Array.isArray(raw.meta.currencies) && (raw.meta.currencies as unknown[]).length > 0,
@@ -181,6 +192,14 @@ export function validateSnapshot(raw: unknown): AyqAnalyticalSnapshot {
     assertMoney(account.openingBalance, currencies, `${path}.openingBalance`);
     assertMoney(account.ledgerBalance, currencies, `${path}.ledgerBalance`);
     assertMoney(account.statementCoverage.closingBalance, currencies, `${path}.statementCoverage.closingBalance`);
+    // Every money field of an account is stated in that account's own currency
+    // (r003 I5; 011 §7 T2.3).
+    invariant(account.openingBalance.currency === account.currency, `${path}.openingBalance is not in the account currency`);
+    invariant(account.ledgerBalance.currency === account.currency, `${path}.ledgerBalance is not in the account currency`);
+    invariant(
+      account.statementCoverage.closingBalance.currency === account.currency,
+      `${path}.statementCoverage.closingBalance is not in the account currency`,
+    );
 
     // Reconciliation is a fact carried by the snapshot, never recomputed here.
     // The frozen r003 baseline defines two states and no other, so an unknown
@@ -208,13 +227,15 @@ export function validateSnapshot(raw: unknown): AyqAnalyticalSnapshot {
       account.reconciliation.statementClosingBalance.currency,
       account.reconciliation.difference.currency,
     ]);
-    invariant(reconciliationCurrencies.size === 1, `${path}.reconciliation mixes currencies`);
+    invariant(reconciliationCurrencies.size === 1, `${path}.reconciliation is not in the account currency`);
 
+    // Two safe integers can differ by more than a Number holds exactly, so the
+    // comparison is made in bigint, never through Number subtraction (011 §6).
     const stated =
-      account.reconciliation.statementClosingBalance.amount -
-      account.reconciliation.ledgerBalanceAtCoverageDate.amount;
+      BigInt(account.reconciliation.statementClosingBalance.amount) -
+      BigInt(account.reconciliation.ledgerBalanceAtCoverageDate.amount);
     invariant(
-      account.reconciliation.difference.amount === stated,
+      BigInt(account.reconciliation.difference.amount) === stated,
       `${path}.reconciliation.difference does not follow from the balances it compares`,
     );
     invariant(
@@ -223,10 +244,19 @@ export function validateSnapshot(raw: unknown): AyqAnalyticalSnapshot {
     );
   }
 
+  const accountByKey = new Map(snapshot.accounts.map(account => [account.accountKey, account] as const));
+
   for (const transaction of snapshot.transactions) {
     const path = `transactions[${transaction.transactionKey}]`;
     invariant(accountKeys.has(transaction.accountKey), `${path} references unknown account`);
     assertMoney(transaction.amount, currencies, `${path}.amount`);
+    // A transaction is stated in the currency of the account it sits on (r003
+    // I5; 011 §7 T2.2). A EUR account carrying a USD amount is an invalid file,
+    // not a multi-currency analytical state.
+    invariant(
+      transaction.amount.currency === accountByKey.get(transaction.accountKey)!.currency,
+      `${path}.amount is not in the currency of its account`,
+    );
     assertDate(transaction.bookingDate, `${path}.bookingDate`);
     if (transaction.valueDate !== null) assertDate(transaction.valueDate, `${path}.valueDate`);
     invariant(
@@ -248,6 +278,27 @@ export function validateSnapshot(raw: unknown): AyqAnalyticalSnapshot {
         CATEGORISATION_SOURCES.includes(transaction.categorisation.source),
         `${path}.categorisation.source is not a source of the frozen baseline`,
       );
+    }
+    // A category that is set carries the provenance that set it, and a rule
+    // names itself (r003 I14; 011 §7 T2.4). A1 shows this provenance, so its
+    // absence may never read as "No category set".
+    if (transaction.categoryId !== null) {
+      invariant(
+        transaction.categorisation !== null && PROVENANCE_SOURCES.includes(transaction.categorisation.source),
+        `${path} is categorised but carries no categorisation provenance`,
+      );
+    }
+    if (transaction.categorisation !== null && transaction.categorisation.source === 'rule') {
+      invariant(
+        typeof transaction.categorisation.ruleKey === 'string' && transaction.categorisation.ruleKey.length > 0,
+        `${path} was categorised by a rule that is not named`,
+      );
+    }
+    // A movement between the owner's own accounts carries neither a category
+    // nor a canonical counterparty (r003 I7; 011 §7 T2.5).
+    if (transaction.isInternalTransfer) {
+      invariant(transaction.categoryId === null, `${path} is an internal transfer carrying a category`);
+      invariant(transaction.counterpartyKey === null, `${path} is an internal transfer carrying a counterparty`);
     }
 
     // A reference that does not resolve is not a user-facing state: it makes

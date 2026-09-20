@@ -225,11 +225,18 @@ export type OriginalOutsideReason =
   | 'filter'
   | 'selection';
 
-/** One transaction's contribution to A1 money-out. The single source of truth. */
+/**
+ * One transaction's contribution to A1 money-out. The single source of truth.
+ *
+ * Every financial value from here on is a bigint. A snapshot amount is a safe
+ * JSON integer on its own, but the sum of two can exceed what a Number holds
+ * exactly, so the contribution boundary is where money becomes exact
+ * arithmetic and stays that way through every row, total and delta (r004 §6.3).
+ */
 export interface Contribution {
   transactionKey: string;
   /** Signed minor units: positive for money-out, negative for a reversal. */
-  amountMinor: number;
+  amountMinor: bigint;
   currency: Currency;
   subject: ContributionSubject;
   transaction: Transaction;
@@ -248,10 +255,10 @@ export interface CounterpartyRow {
   counterpartyKey: string;
   displayName: string;
   transactionCount: number;
-  moneyOutMinor: number;
+  moneyOutMinor: bigint;
   currency: Currency;
-  previousMinor: number | null;
-  changeMinor: number | null;
+  previousMinor: bigint | null;
+  changeMinor: bigint | null;
   contributions: Contribution[];
 }
 
@@ -259,7 +266,7 @@ export interface ExclusionGroup {
   exclusion: ExclusionClass;
   transactionCount: number;
   /** `null` when the population is not single-currency. */
-  amountMinor: number | null;
+  amountMinor: bigint | null;
   currency: Currency | null;
   contributions: Contribution[];
 }
@@ -298,7 +305,7 @@ export interface ReconciliationFact {
   name: string;
   displayIdentifier: string | null;
   state: ReconciliationStateToken;
-  differenceMinor: number;
+  differenceMinor: bigint;
   currency: Currency;
 }
 
@@ -312,7 +319,7 @@ export interface ComparisonFacts {
   clamped: { requestedDate: IsoDate; clampedDate: IsoDate; year: number } | null;
   coverage: CoverageFacts;
   /** `null` when the comparison is unavailable. */
-  totalMinor: number | null;
+  totalMinor: bigint | null;
   currency: Currency | null;
   unavailable: ComparisonUnavailableReason | null;
   /** Currencies found in the comparison population, for the currency reason. */
@@ -333,7 +340,7 @@ export interface AnalysisResult {
   coverage: CoverageFacts;
   reconciliation: ReconciliationFact[];
   /** `null` for insufficient, empty and unsupported. */
-  totalMinor: number | null;
+  totalMinor: bigint | null;
   currency: Currency | null;
   /** Every currency present in the current contributing population. */
   currencies: Currency[];
@@ -341,7 +348,7 @@ export interface AnalysisResult {
   exclusions: ExclusionGroup[];
   comparison: ComparisonFacts | null;
   /** Delta = current supported total − comparison supported total. */
-  deltaMinor: number | null;
+  deltaMinor: bigint | null;
   /** Every contribution of the current population, rows and exclusions alike. */
   contributions: Contribution[];
 }

@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { Button } from '@fluentui/react-components';
+import { reversalEvidence } from '../evidence.js';
 import { formatDate } from '../format.js';
 import { formatMoney } from '../money.js';
 import { useLocale, useText } from './text.js';
@@ -8,7 +9,6 @@ import type {
   AnalysisResult,
   Contribution,
   ExclusionClass,
-  OriginalOutsideReason,
   TransactionClass,
 } from '../types.js';
 
@@ -25,13 +25,6 @@ const PROVENANCE_KEYS: Record<string, StringKey> = {
   manual: 'evidence.provenance.manual',
   rule: 'evidence.provenance.rule',
   none: 'evidence.provenance.none',
-};
-
-const OUTSIDE_KEYS: Record<OriginalOutsideReason, StringKey> = {
-  period: 'evidence.reversesOutsidePeriod',
-  accounts: 'evidence.reversesOutsideAccounts',
-  filter: 'evidence.reversesOutsideFilter',
-  selection: 'evidence.reversesOutsideSelection',
 };
 
 export const EXCLUSION_KEYS: Record<ExclusionClass, StringKey> = {
@@ -77,38 +70,9 @@ function ContributionRow({ contribution, result }: { contribution: Contribution;
           </p>
         )}
         <p>{t(provenanceKey)}</p>
-        {/*
-          The original is named in human terms — date, amount, counterparty.
-          When the original itself has no canonical counterparty the reversal
-          appears under an exclusion whose own label already states that, and
-          r03 gives no wording for an absent counterparty inside this sentence,
-          so nothing is invented here. OPEN: returned to the joint leads.
-        */}
-        {contribution.original !== null && contribution.original.counterpartyName !== null && (
-          <>
-            <p>
-              {t('evidence.reverses', {
-                date: formatDate(contribution.original.transaction.bookingDate, locale),
-                amount: formatMoney(
-                  contribution.original.transaction.amount.amount,
-                  contribution.original.transaction.amount.currency,
-                  locale,
-                ),
-                counterparty: contribution.original.counterpartyName,
-              })}
-            </p>
-            {contribution.original.outsideReason !== null && (
-              <p>
-                {contribution.original.outsideReason === 'period'
-                  ? t('evidence.reversesOutsidePeriod', {
-                      from: formatDate(result.coverage.fromDate, locale),
-                      to: formatDate(result.coverage.toDate, locale),
-                    })
-                  : t(OUTSIDE_KEYS[contribution.original.outsideReason])}
-              </p>
-            )}
-          </>
-        )}
+        {reversalEvidence(contribution, result.coverage, t, locale).map((line, index) => (
+          <p key={index}>{line}</p>
+        ))}
       </div>
     </li>
   );

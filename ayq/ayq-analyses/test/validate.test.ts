@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseAndValidateSnapshot, SnapshotValidationError, validateSnapshot } from '../src/validate.js';
+import { utcCalendarDate } from '../src/dates.js';
 import { readFixture } from './helpers.js';
 
 const VALID = [
@@ -121,4 +122,97 @@ test('a transaction class outside the frozen baseline is refused, so every class
     () => validateSnapshot(mutate(s => { s.transactions[0].transactionClass = 'crypto_transfer'; })),
     (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
   );
+});
+
+// ---------------------------------------------------------------------------
+// A1-relevant frozen-r003 validation (011 §7 T2.1–T2.5; r004 §8.11 item 11).
+// Each refusal is an internal inconsistency of the file and carries the
+// `invariant` reason, so the screen says the existing sentence and nothing new.
+// ---------------------------------------------------------------------------
+
+function refusedAsInvariant(raw: unknown, label: string): void {
+  assert.throws(
+    () => validateSnapshot(raw),
+    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
+    label,
+  );
+}
+
+test('T2.1 — generatedAt must be RFC 3339 UTC; a local-offset or offset-less instant is refused', () => {
+  for (const generatedAt of [
+    '2026-03-05T06:00:00+02:00',
+    '2026-03-05T06:00:00-00:00',
+    '2026-03-05T06:00:00',
+    '2026-03-05 06:00:00Z',
+    '2026-03-05',
+    'March 5, 2026 06:00 UTC',
+  ]) {
+    refusedAsInvariant(mutate(s => { s.meta.generatedAt = generatedAt; }), generatedAt);
+  }
+  for (const generatedAt of ['2026-03-05T06:00:00Z', '2026-03-05T06:00:00.250Z', '2026-03-05T06:00:00+00:00']) {
+    assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.meta.generatedAt = generatedAt; })), generatedAt);
+  }
+  // The date helper stays independently usable on any instant; the snapshot
+  // rule is the validator's, not the helper's.
+  assert.equal(utcCalendarDate('2026-03-01T23:30:00+02:00'), '2026-03-01');
+});
+
+test('T2.2 — a transaction in a currency other than its account\'s is an invalid file, not a multi-currency result', () => {
+  refusedAsInvariant(
+    mutate(s => {
+      s.meta.currencies = ['EUR', 'USD'];
+      s.transactions[0].amount.currency = 'USD'; // on acc-daily, a EUR account
+    }),
+    'USD on a EUR account',
+  );
+});
+
+test('T2.3 — every money field of an account is in that account\'s currency', () => {
+  for (const change of [
+    (s: any) => { s.accounts[0].openingBalance.currency = 'USD'; },
+    (s: any) => { s.accounts[0].ledgerBalance.currency = 'USD'; },
+    (s: any) => { s.accounts[0].statementCoverage.closingBalance.currency = 'USD'; },
+    (s: any) => { s.accounts[0].reconciliation.ledgerBalanceAtCoverageDate.currency = 'USD'; },
+    (s: any) => { s.accounts[0].reconciliation.statementClosingBalance.currency = 'USD'; },
+    (s: any) => { s.accounts[0].reconciliation.difference.currency = 'USD'; },
+  ]) {
+    refusedAsInvariant(
+      mutate(s => {
+        s.meta.currencies = ['EUR', 'USD'];
+        change(s);
+      }),
+      change.toString(),
+    );
+  }
+});
+
+test('T2.4 — a categorised transaction carries provenance, and a rule names itself', () => {
+  // transactions[0] is categorised by rule-001.
+  for (const change of [
+    (s: any) => { s.transactions[0].categorisation = null; },
+    (s: any) => { s.transactions[0].categorisation = { source: 'none' }; },
+    (s: any) => { s.transactions[0].categorisation = { source: 'rule', ruleKey: null }; },
+    (s: any) => { s.transactions[0].categorisation = { source: 'rule', ruleKey: '' }; },
+    (s: any) => { s.transactions[0].categorisation = { source: 'rule' }; },
+  ]) {
+    refusedAsInvariant(mutate(change), change.toString());
+  }
+  // A manual decision needs no rule; a named rule is provenance.
+  assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'manual' }; })));
+  assert.doesNotThrow(() =>
+    validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'rule', ruleKey: 'rule-002' }; })),
+  );
+});
+
+test('T2.5 — an internal transfer carrying a category or a canonical counterparty is refused', () => {
+  // transactions[7] is the internal transfer f01-t08.
+  assert.equal((readFixture('a1-result.json') as any).transactions[7].isInternalTransfer, true);
+  refusedAsInvariant(
+    mutate(s => {
+      s.transactions[7].categoryId = 'cat-groceries';
+      s.transactions[7].categorisation = { source: 'manual' };
+    }),
+    'transfer with a category',
+  );
+  refusedAsInvariant(mutate(s => { s.transactions[7].counterpartyKey = 'cp-superstore'; }), 'transfer with a counterparty');
 });

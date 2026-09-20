@@ -84,6 +84,11 @@ export interface TransactionSpec {
 
 export function transaction(spec: TransactionSpec): Transaction {
   const currency = spec.currency ?? 'EUR';
+  // An internal transfer carries neither a category nor a canonical
+  // counterparty (r003 I7), so the helper never invents one for it.
+  const transfer = spec.transfer ?? false;
+  const counterpartyKey = transfer ? null : spec.counterparty === undefined ? 'cp-a' : spec.counterparty;
+  const categoryId = transfer ? null : spec.category === undefined ? 'cat-groceries' : spec.category;
   return {
     transactionKey: spec.key,
     accountKey: spec.account ?? 'acc-a',
@@ -91,10 +96,10 @@ export function transaction(spec: TransactionSpec): Transaction {
     valueDate: spec.date,
     amount: { amount: spec.amount, currency },
     transactionClass: spec.class ?? 'card_payment',
-    counterpartyKey: spec.counterparty === undefined ? 'cp-a' : spec.counterparty,
-    categoryId: spec.category === undefined ? 'cat-groceries' : spec.category,
-    categorisation: spec.category === null ? null : { source: 'rule', ruleKey: 'rule-1' },
-    isInternalTransfer: spec.transfer ?? false,
+    counterpartyKey,
+    categoryId,
+    categorisation: categoryId === null ? null : { source: 'rule', ruleKey: 'rule-1' },
+    isInternalTransfer: transfer,
     internalTransferPairKey: null,
     counterAccountKey: null,
     isReversal: spec.reversalOf !== undefined,

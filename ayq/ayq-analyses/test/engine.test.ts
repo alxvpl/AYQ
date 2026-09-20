@@ -1,5 +1,9 @@
 // The A1 regression matrix: r003 §11 cases 1–25 and r03 §13 case 27, inside
 // the real `npm test`. Case 26 lives in truth-manifest.test.ts.
+//
+// Every expected money value is written as a bigint literal: the engine's
+// financial values are exact bigint, and the tests state their expectations in
+// that type rather than weakening it (011 §6).
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -10,8 +14,8 @@ import type { AnalysisResult } from '../src/types.js';
 
 const FEBRUARY = { fromDate: '2026-02-01', toDate: '2026-02-28' } as const;
 
-function rowOf(result: AnalysisResult, counterpartyKey: string): number {
-  return result.rows.find(x => x.counterpartyKey === counterpartyKey)?.moneyOutMinor ?? 0;
+function rowOf(result: AnalysisResult, counterpartyKey: string): bigint {
+  return result.rows.find(x => x.counterpartyKey === counterpartyKey)?.moneyOutMinor ?? 0n;
 }
 
 function exclusion(result: AnalysisResult, kind: 'notApplicable' | 'notIdentified') {
@@ -29,7 +33,7 @@ test('case 1 — a transaction exactly on fromDate and one exactly on toDate are
     ],
   });
   const result = analyse(held, context({ ...FEBRUARY }));
-  assert.equal(result.totalMinor, 3000);
+  assert.equal(result.totalMinor, 3000n);
   assert.equal(result.rows[0].transactionCount, 2);
 });
 
@@ -87,7 +91,7 @@ test('case 6 — a period straddling an openingDate is coverage-limited, never I
   const result = analyse(held, context({ ...FEBRUARY }));
   assert.equal(result.state, 'coverageLimited');
   assert.notEqual(result.state, 'insufficient');
-  assert.equal(result.totalMinor, 1000);
+  assert.equal(result.totalMinor, 1000n);
 });
 
 test('case 7 — different opening dates with tied end dates report both limits with the right accounts', () => {
@@ -127,7 +131,7 @@ test('case 9 — a partly covered comparison period produces no delta, with the 
   assert.equal(result.comparison?.unavailable, 'coverage');
   assert.equal(result.comparison?.totalMinor, null);
   assert.equal(result.state, 'result');
-  assert.equal(result.totalMinor, 1000);
+  assert.equal(result.totalMinor, 1000n);
 });
 
 test('case 10 — a comparison period covered by one account but not another is limited, not "no data"', () => {
@@ -164,7 +168,7 @@ test('case 12 — a reversal whose original is outside the period, the accounts 
     context({ ...FEBRUARY, accountKeys: ['acc-a'], categoryKeys: ['cat-groceries'] }),
   );
   // 20000 − 5000 − 1000 − 500, all under the original's counterparty.
-  assert.equal(rowOf(result, 'cp-b'), 13500);
+  assert.equal(rowOf(result, 'cp-b'), 13500n);
   const reasons = result.contributions
     .filter(x => x.original !== null)
     .map(x => x.original!.outsideReason)
@@ -183,8 +187,8 @@ test('case 13 — a reversal of an original with no canonical counterparty inher
     ],
   });
   const result = analyse(held, context({ ...FEBRUARY }));
-  assert.equal(exclusion(result, 'notApplicable')?.amountMinor, -2500);
-  assert.equal(exclusion(result, 'notIdentified')?.amountMinor, -1500);
+  assert.equal(exclusion(result, 'notApplicable')?.amountMinor, -2500n);
+  assert.equal(exclusion(result, 'notIdentified')?.amountMinor, -1500n);
   assert.equal(result.rows.length, 0);
 });
 
@@ -265,7 +269,7 @@ test('cases 18 and 19 — a comparison in other currencies leaves the current re
     context({ ...FEBRUARY, comparison: 'previous', accountKeys: ['acc-a', 'acc-usd'] }),
   );
   assert.equal(mixed.state, 'result');
-  assert.equal(mixed.totalMinor, 1000);
+  assert.equal(mixed.totalMinor, 1000n);
   assert.equal(mixed.deltaMinor, null);
   assert.equal(mixed.comparison?.unavailable, 'currency');
 
@@ -285,9 +289,9 @@ test('case 20 — a fully covered comparison period that is empty is an exact ze
   });
   const result = analyse(held, context({ ...FEBRUARY, comparison: 'previous' }));
   assert.equal(result.comparison?.unavailable, null);
-  assert.equal(result.comparison?.totalMinor, 0);
+  assert.equal(result.comparison?.totalMinor, 0n);
   assert.equal(result.comparison?.currency, 'EUR');
-  assert.equal(result.deltaMinor, 1000);
+  assert.equal(result.deltaMinor, 1000n);
 });
 
 test('case 21 — the five money-out rules, each on its own', () => {
@@ -296,12 +300,12 @@ test('case 21 — the five money-out rules, each on its own', () => {
   const transfer = transaction({ key: 'c', date: '2026-02-01', amount: -4500, transfer: true });
   const reversal = transaction({ key: 'd', date: '2026-02-02', amount: 4500, reversalOf: 'a' });
 
-  assert.equal(moneyOutContribution(transfer, null), 0);
-  assert.equal(moneyOutContribution(ordinaryOut, null), 4500);
-  assert.equal(moneyOutContribution(ordinaryIn, null), 0);
-  assert.equal(moneyOutContribution(reversal, ordinaryOut), -4500);
-  assert.equal(moneyOutContribution(reversal, ordinaryIn), 0);
-  assert.equal(moneyOutContribution(reversal, transfer), 0);
+  assert.equal(moneyOutContribution(transfer, null), 0n);
+  assert.equal(moneyOutContribution(ordinaryOut, null), 4500n);
+  assert.equal(moneyOutContribution(ordinaryIn, null), 0n);
+  assert.equal(moneyOutContribution(reversal, ordinaryOut), -4500n);
+  assert.equal(moneyOutContribution(reversal, ordinaryIn), 0n);
+  assert.equal(moneyOutContribution(reversal, transfer), 0n);
 });
 
 test('case 22 — the exclusion counts are result-scoped, split, and reconcile with their own evidence lists', () => {
@@ -317,9 +321,9 @@ test('case 22 — the exclusion counts are result-scoped, split, and reconcile w
 
   const whole = analyse(held, context({ ...FEBRUARY, categoryKeys: allCategories() }));
   assert.equal(exclusion(whole, 'notApplicable')?.transactionCount, 1);
-  assert.equal(exclusion(whole, 'notApplicable')?.amountMinor, 10000);
+  assert.equal(exclusion(whole, 'notApplicable')?.amountMinor, 10000n);
   assert.equal(exclusion(whole, 'notIdentified')?.transactionCount, 1);
-  assert.equal(exclusion(whole, 'notIdentified')?.amountMinor, 7500);
+  assert.equal(exclusion(whole, 'notIdentified')?.amountMinor, 7500n);
   // The snapshot-wide counters are larger: they are not the filtered result.
   assert.equal(held.meta.counts.counterpartyNotApplicable, 2);
   assert.equal(held.meta.counts.unresolvedCounterparties, 2);
@@ -330,7 +334,7 @@ test('case 22 — the exclusion counts are result-scoped, split, and reconcile w
 
   for (const group of whole.exclusions) {
     assert.equal(group.transactionCount, group.contributions.length);
-    assert.equal(group.amountMinor, group.contributions.reduce((sum, x) => sum + x.amountMinor, 0));
+    assert.equal(group.amountMinor, group.contributions.reduce((sum, x) => sum + x.amountMinor, 0n));
   }
 });
 
@@ -352,14 +356,14 @@ test('case 24 — a reconciliation mismatch is stated and still produces the res
   });
   const result = analyse(held, context({ ...FEBRUARY }));
   assert.equal(result.state, 'result');
-  assert.equal(result.totalMinor, 1000);
+  assert.equal(result.totalMinor, 1000n);
   assert.deepEqual(result.reconciliation, [
     {
       accountKey: 'acc-a',
       name: 'acc-a',
       displayIdentifier: null,
       state: 'differs',
-      differenceMinor: -1500,
+      differenceMinor: -1500n,
       currency: 'EUR',
     },
   ]);
@@ -378,14 +382,14 @@ test('case 25 — headline, rows, drill-down, exclusions and chart order are one
   });
   const result = analyse(held, context({ ...FEBRUARY }));
 
-  const rowSum = result.rows.reduce((sum, row) => sum + row.moneyOutMinor, 0);
+  const rowSum = result.rows.reduce((sum, row) => sum + row.moneyOutMinor, 0n);
   assert.equal(result.totalMinor, rowSum);
   for (const row of result.rows) {
-    assert.equal(row.moneyOutMinor, row.contributions.reduce((sum, x) => sum + x.amountMinor, 0));
+    assert.equal(row.moneyOutMinor, row.contributions.reduce((sum, x) => sum + x.amountMinor, 0n));
     assert.equal(row.transactionCount, row.contributions.length);
   }
-  const excluded = result.exclusions.reduce((sum, group) => sum + (group.amountMinor ?? 0), 0);
-  assert.equal(excluded, 10000);
+  const excluded = result.exclusions.reduce((sum, group) => sum + (group.amountMinor ?? 0n), 0n);
+  assert.equal(excluded, 10000n);
   assert.notEqual(result.totalMinor, rowSum + excluded);
 
   // The chart draws the table's rows in the table's order from the table's
@@ -393,7 +397,7 @@ test('case 25 — headline, rows, drill-down, exclusions and chart order are one
   const ordered = sortRows(result.rows, DEFAULT_SORT);
   assert.deepEqual(
     ordered.map(row => row.moneyOutMinor),
-    [10750, 10000],
+    [10750n, 10000n],
   );
 });
 
@@ -408,13 +412,13 @@ test('case 27 — the category filter is tested on the transaction being filtere
 
   // The filter admits the original and excludes the refund.
   const groceries = analyse(held, context({ ...FEBRUARY, categoryKeys: ['cat-groceries'] }));
-  assert.equal(rowOf(groceries, 'cp-b'), 9000);
+  assert.equal(rowOf(groceries, 'cp-b'), 9000n);
   assert.equal(groceries.contributions.length, 1);
 
   // The filter admits the refund and excludes the original, and the refund is
   // still attributed to the original's counterparty.
   const utilities = analyse(held, context({ ...FEBRUARY, categoryKeys: ['cat-utilities'] }));
-  assert.equal(rowOf(utilities, 'cp-b'), -2000);
+  assert.equal(rowOf(utilities, 'cp-b'), -2000n);
   assert.equal(utilities.contributions[0].original?.outsideReason, 'filter');
   assert.equal(utilities.rows.find(x => x.counterpartyKey === 'cp-a'), undefined);
 });

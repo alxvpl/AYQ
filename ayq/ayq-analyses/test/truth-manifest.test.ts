@@ -1,6 +1,10 @@
 // Case 26 — the engine's counterparty totals against an independent truth
 // manifest, in integer minor units. The manifest is hand-authored from the
 // fixture construction and is never produced by the code under test.
+//
+// The manifest states ordinary small integers; the engine's values are exact
+// bigint. The test converts the manifest's expectation explicitly, so the
+// engine's type is never weakened to meet a fixture (011 §6).
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -41,6 +45,13 @@ interface ManifestView {
     reconciliation?: Array<{ accountKey: string; state: string; differenceMinor: number }>;
     snapshotCounters?: { counterpartyNotApplicable: number; unresolvedCounterparties: number };
   };
+}
+
+/** A manifest integer, stated in the engine's exact type. */
+function exact(value: number): bigint;
+function exact(value: number | null): bigint | null;
+function exact(value: number | null): bigint | null {
+  return value === null ? null : BigInt(value);
 }
 
 const manifest = JSON.parse(readFileSync(join(FIXTURE_DIRECTORY, 'truth-manifest.json'), 'utf8')) as {
@@ -88,7 +99,7 @@ for (const view of manifest.views) {
     assert.equal(result.state, expected.state, 'state');
     assert.equal(result.coverage.status, expected.coverage, 'coverage');
     assert.equal(result.currency, expected.currency, 'currency');
-    assert.equal(result.totalMinor, expected.totalMinor, 'total');
+    assert.equal(result.totalMinor, exact(expected.totalMinor), 'total');
     if (expected.currencies) assert.deepEqual(result.currencies, expected.currencies);
 
     const rows = [...result.rows].sort((a, b) => (a.counterpartyKey < b.counterpartyKey ? -1 : 1));
@@ -98,7 +109,7 @@ for (const view of manifest.views) {
       assert.equal(row.counterpartyKey, wanted[index].counterpartyKey);
       assert.equal(row.displayName, wanted[index].displayName);
       assert.equal(row.transactionCount, wanted[index].transactionCount, `${row.counterpartyKey} count`);
-      assert.equal(row.moneyOutMinor, wanted[index].moneyOutMinor, `${row.counterpartyKey} money out`);
+      assert.equal(row.moneyOutMinor, exact(wanted[index].moneyOutMinor), `${row.counterpartyKey} money out`);
     }
 
     // The headline is the sum of the rows the manifest states, exactly.
@@ -117,7 +128,7 @@ for (const view of manifest.views) {
         assert.equal(group, null, `${kind} should be absent`);
       } else {
         assert.equal(group?.transactionCount, want.count, `${kind} count`);
-        assert.equal(group?.amountMinor ?? null, want.amountMinor, `${kind} amount`);
+        assert.equal(group?.amountMinor ?? null, exact(want.amountMinor), `${kind} amount`);
       }
     }
 
@@ -127,9 +138,9 @@ for (const view of manifest.views) {
     } else {
       assert.equal(result.comparison?.fromDate, expected.comparison.fromDate);
       assert.equal(result.comparison?.toDate, expected.comparison.toDate);
-      assert.equal(result.comparison?.totalMinor ?? null, expected.comparison.totalMinor);
+      assert.equal(result.comparison?.totalMinor ?? null, exact(expected.comparison.totalMinor));
       assert.equal(result.comparison?.unavailable ?? null, expected.comparison.unavailable);
-      assert.equal(result.deltaMinor, expected.comparison.deltaMinor);
+      assert.equal(result.deltaMinor, exact(expected.comparison.deltaMinor));
     }
 
     if (expected.startLimit) assert.deepEqual(result.coverage.startLimit, expected.startLimit);
@@ -141,7 +152,7 @@ for (const view of manifest.views) {
       for (const [index, fact] of facts.entries()) {
         assert.equal(fact.accountKey, expected.reconciliation[index].accountKey);
         assert.equal(fact.state, expected.reconciliation[index].state);
-        assert.equal(fact.differenceMinor, expected.reconciliation[index].differenceMinor);
+        assert.equal(fact.differenceMinor, exact(expected.reconciliation[index].differenceMinor));
       }
     }
 

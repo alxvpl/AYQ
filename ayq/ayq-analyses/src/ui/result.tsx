@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import { formatDate, formatList } from '../format.js';
+import { chartGeometry } from '../geometry.js';
 import { formatCount, formatMoney, formatSignedMoney } from '../money.js';
 import { nextSortState, sortRows, type SortColumn, type SortState } from '../sort.js';
 import { useLocale, useText } from './text.js';
@@ -26,8 +27,10 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
     if (host.current === null) return undefined;
     const chart = echarts.init(host.current);
     // The chart follows the table's order and the table's values. Bar length is
-    // geometry, so a Number is fine there; every printed figure is not.
+    // geometry, so a bounded display-only Number is derived for it; every
+    // printed figure is the exact bigint row value.
     const ordered = [...rows].reverse();
+    const lengths = chartGeometry(ordered.map(row => row.moneyOutMinor));
     chart.setOption({
       grid: { left: 8, right: 24, top: 8, bottom: 24, containLabel: true },
       tooltip: {
@@ -43,7 +46,7 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
       series: [
         {
           type: 'bar',
-          data: ordered.map(row => row.moneyOutMinor),
+          data: lengths,
           itemStyle: { color: '#22D3A6' },
           label: {
             show: true,
@@ -260,10 +263,10 @@ export function ResultView({
               <td className="numeric figure">{formatCount(row.transactionCount, locale)}</td>
               <td className="numeric figure">{formatMoney(row.moneyOutMinor, row.currency, locale)}</td>
               {hasComparisonValue && (
-                <td className="numeric figure">{formatMoney(row.previousMinor ?? 0, row.currency, locale)}</td>
+                <td className="numeric figure">{formatMoney(row.previousMinor ?? 0n, row.currency, locale)}</td>
               )}
               {hasComparisonValue && (
-                <td className="numeric figure">{formatSignedMoney(row.changeMinor ?? 0, row.currency, locale)}</td>
+                <td className="numeric figure">{formatSignedMoney(row.changeMinor ?? 0n, row.currency, locale)}</td>
               )}
             </tr>
           ))}

@@ -27,7 +27,16 @@ export function nextSortState(current: SortState, column: SortColumn): SortState
   return DEFAULT_SORT;
 }
 
-function value(row: CounterpartyRow, column: SortColumn): number | null {
+/**
+ * Money is bigint and counts are Number. Neither is ever subtracted to decide
+ * an order: the comparison itself is the comparator, which stays exact for
+ * money beyond the safe integer range (011 §6).
+ */
+function compareValues<T extends number | bigint>(a: T, b: T): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function value(row: CounterpartyRow, column: SortColumn): number | bigint | null {
   switch (column) {
     case 'transactions':
       return row.transactionCount;
@@ -57,7 +66,9 @@ export function sortRows(rows: readonly CounterpartyRow[], sort: SortState): Cou
     const left = value(a, sort.column);
     const right = value(b, sort.column);
     if (left === null || right === null) return tieBreak(a, b);
-    if (left !== right) return (left - right) * factor;
+    // Both sides of one column share one type, so this compares like with like.
+    const ordered = compareValues(left as bigint, right as bigint);
+    if (ordered !== 0) return ordered * factor;
     return tieBreak(a, b);
   });
 }

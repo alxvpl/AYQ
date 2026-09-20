@@ -22,6 +22,7 @@ import type {
   ExclusionClass,
   ExclusionGroup,
   IsoDate,
+  Money,
   OriginalOutsideReason,
   ReconciliationFact,
   ResultState,
@@ -42,6 +43,19 @@ function categoryToken(categoryId: string | null): CategoryToken {
 }
 
 /**
+ * A validated snapshot amount, made exact. The validator admits only safe JSON
+ * integers, and this is the one place a Number becomes money the engine adds:
+ * from here on every sum, difference and comparison is bigint (r004 §6.3).
+ */
+function exactMinor(money: Money): bigint {
+  return BigInt(money.amount);
+}
+
+function absolute(value: bigint): bigint {
+  return value < 0n ? -value : value;
+}
+
+/**
  * The single A1 money-out contribution function (r003 §8.4). Every total, row
  * value, exclusion amount, comparison value and drill-down figure derives from
  * it, and no component reads an amount's sign for itself.
@@ -49,20 +63,22 @@ function categoryToken(categoryId: string | null): CategoryToken {
 export function moneyOutContribution(
   transaction: Transaction,
   original: Transaction | null,
-): number {
+): bigint {
   // 1. an internal transfer is a movement of the owner's own money.
-  if (transaction.isInternalTransfer) return 0;
+  if (transaction.isInternalTransfer) return 0n;
+
+  const amount = exactMinor(transaction.amount);
 
   if (transaction.isReversal) {
-    if (original === null) return 0;
+    if (original === null) return 0n;
     // 5. a reversal of something that was not money-out is not money-out.
-    if (original.isInternalTransfer || original.amount.amount >= 0) return 0;
+    if (original.isInternalTransfer || exactMinor(original.amount) >= 0n) return 0n;
     // 4. a reversal of money-out reduces that counterparty's spend.
-    return -Math.abs(transaction.amount.amount);
+    return -absolute(amount);
   }
 
   // 2. and 3. an ordinary transaction contributes only what left the account.
-  return transaction.amount.amount < 0 ? Math.abs(transaction.amount.amount) : 0;
+  return amount < 0n ? absolute(amount) : 0n;
 }
 
 /**
@@ -115,7 +131,7 @@ function buildContributions(input: PopulationInput): Contribution[] {
     if (!inCategories(transaction)) continue;
 
     const amountMinor = moneyOutContribution(transaction, original);
-    if (amountMinor === 0) continue;
+    if (amountMinor === 0n) continue;
 
     // A reversal is attributed to the counterparty of the transaction it
     // reverses, however that original is filtered; where the original has no
@@ -228,8 +244,8 @@ export function coverageFor(accounts: readonly Account[], period: Period): Cover
   };
 }
 
-function counterpartyTotal(contributions: readonly Contribution[]): number {
-  let total = 0;
+function counterpartyTotal(contributions: readonly Contribution[]): bigint {
+  let total = 0n;
   for (const contribution of contributions) {
     if (contribution.subject.kind === 'counterparty') total += contribution.amountMinor;
   }
@@ -239,7 +255,7 @@ function counterpartyTotal(contributions: readonly Contribution[]): number {
 function buildRows(
   snapshot: AyqAnalyticalSnapshot,
   contributions: readonly Contribution[],
-  previousByCounterparty: ReadonlyMap<string, number> | null,
+  previousByCounterparty: ReadonlyMap<string, bigint> | null,
   currency: Currency,
 ): CounterpartyRow[] {
   const displayNames = new Map(snapshot.counterparties.map(x => [x.counterpartyKey, x.displayName] as const));
@@ -255,8 +271,8 @@ function buildRows(
 
   const rows: CounterpartyRow[] = [];
   for (const [counterpartyKey, bucket] of grouped) {
-    const moneyOutMinor = bucket.reduce((sum, x) => sum + x.amountMinor, 0);
-    const previousMinor = previousByCounterparty ? previousByCounterparty.get(counterpartyKey) ?? 0 : null;
+    const moneyOutMinor = bucket.reduce((sum, x) => sum + x.amountMinor, 0n);
+    const previousMinor = previousByCounterparty ? previousByCounterparty.get(counterpartyKey) ?? 0n : null;
     rows.push({
       counterpartyKey,
       displayName: displayNames.get(counterpartyKey) ?? counterpartyKey,
@@ -287,7 +303,7 @@ function buildExclusions(
     groups.push({
       exclusion,
       transactionCount: bucket.length,
-      amountMinor: currency === null ? null : bucket.reduce((sum, x) => sum + x.amountMinor, 0),
+      amountMinor: currency === null ? null : bucket.reduce((sum, x) => sum + x.amountMinor, 0n),
       currency,
       contributions: [...bucket].sort(
         (a, b) =>
@@ -305,7 +321,7 @@ function reconciliationFacts(accounts: readonly Account[]): ReconciliationFact[]
     name: account.name,
     displayIdentifier: account.displayIdentifier,
     state: account.reconciliation.state,
-    differenceMinor: account.reconciliation.difference.amount,
+    differenceMinor: exactMinor(account.reconciliation.difference),
     currency: account.reconciliation.difference.currency,
   }));
 }
@@ -339,8 +355,8 @@ export function analyse(snapshot: AyqAnalyticalSnapshot, context: AnalysisContex
   // The comparison is evaluated independently of the current result, against
   // its own period and its own coverage.
   let comparison: ComparisonFacts | null = null;
-  let deltaMinor: number | null = null;
-  let previousByCounterparty: Map<string, number> | null = null;
+  let deltaMinor: bigint | null = null;
+  let previousByCounterparty: Map<string, bigint> | null = null;
 
   if (context.comparison !== 'none') {
     const resolved = comparisonPeriod(period, context.comparison);
@@ -377,11 +393,11 @@ export function analyse(snapshot: AyqAnalyticalSnapshot, context: AnalysisContex
     };
 
     if (comparable) {
-      previousByCounterparty = new Map<string, number>();
+      previousByCounterparty = new Map<string, bigint>();
       for (const contribution of comparisonContributions) {
         if (contribution.subject.kind !== 'counterparty') continue;
         const key = contribution.subject.counterpartyKey;
-        previousByCounterparty.set(key, (previousByCounterparty.get(key) ?? 0) + contribution.amountMinor);
+        previousByCounterparty.set(key, (previousByCounterparty.get(key) ?? 0n) + contribution.amountMinor);
       }
     }
   }

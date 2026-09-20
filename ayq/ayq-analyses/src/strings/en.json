@@ -103,6 +103,7 @@
   "evidence.provenance.rule": "Category set by a rule",
   "evidence.provenance.none": "No category set",
   "evidence.reverses": "Reverses {date}, {amount}, {counterparty}",
+  "evidence.reversesNoCounterparty": "Reverses {date}, {amount}",
   "evidence.reversesOutsidePeriod": "The original falls outside {from} – {to}.",
   "evidence.reversesOutsideAccounts": "The original is in an account you have not selected.",
   "evidence.reversesOutsideFilter": "The original is excluded by the category filter.",
