@@ -1,0 +1,252 @@
+{
+  "meta": {
+    "contractVersion": "1.3.0",
+    "snapshotId": "snap-a1-coverage-limited",
+    "generatedAt": "2026-03-05T06:00:00Z",
+    "budgetKey": "budget-synthetic",
+    "producer": {
+      "productVersion": "0.3.1",
+      "buildNumber": 7,
+      "commitSha": "0000000000000000000000000000000000000000"
+    },
+    "currencies": [
+      "EUR"
+    ],
+    "coverage": {
+      "reliabilityBoundary": "2026-02-10",
+      "reliabilityBoundaryBasis": [
+        "acc-card"
+      ]
+    },
+    "counts": {
+      "accounts": 2,
+      "transactions": 3,
+      "counterparties": 5,
+      "categories": 3,
+      "uncategorisedTransactions": 0,
+      "unresolvedCounterparties": 0,
+      "counterpartyNotApplicable": 0,
+      "expectedOccurrences": 0
+    }
+  },
+  "accounts": [
+    {
+      "accountKey": "acc-daily",
+      "name": "Everyday account",
+      "type": "current",
+      "displayIdentifier": "NL…0708",
+      "countsTowardAvailableFunds": true,
+      "currency": "EUR",
+      "openingDate": "2026-02-05",
+      "openingBalance": {
+        "amount": 0,
+        "currency": "EUR"
+      },
+      "ledgerBalance": {
+        "amount": 250000,
+        "currency": "EUR"
+      },
+      "statementCoverage": {
+        "lastStatementDate": "2026-02-20",
+        "closingBalance": {
+          "amount": 250000,
+          "currency": "EUR"
+        }
+      },
+      "reconciliation": {
+        "state": "agrees",
+        "ledgerBalanceAtCoverageDate": {
+          "amount": 250000,
+          "currency": "EUR"
+        },
+        "statementClosingBalance": {
+          "amount": 250000,
+          "currency": "EUR"
+        },
+        "difference": {
+          "amount": 0,
+          "currency": "EUR"
+        }
+      }
+    },
+    {
+      "accountKey": "acc-card",
+      "name": "Card account",
+      "type": "current",
+      "displayIdentifier": "NL…1142",
+      "countsTowardAvailableFunds": true,
+      "currency": "EUR",
+      "openingDate": "2026-01-10",
+      "openingBalance": {
+        "amount": 0,
+        "currency": "EUR"
+      },
+      "ledgerBalance": {
+        "amount": 80000,
+        "currency": "EUR"
+      },
+      "statementCoverage": {
+        "lastStatementDate": "2026-02-10",
+        "closingBalance": {
+          "amount": 80000,
+          "currency": "EUR"
+        }
+      },
+      "reconciliation": {
+        "state": "agrees",
+        "ledgerBalanceAtCoverageDate": {
+          "amount": 80000,
+          "currency": "EUR"
+        },
+        "statementClosingBalance": {
+          "amount": 80000,
+          "currency": "EUR"
+        },
+        "difference": {
+          "amount": 0,
+          "currency": "EUR"
+        }
+      }
+    }
+  ],
+  "counterparties": [
+    {
+      "counterpartyKey": "cp-superstore",
+      "displayName": "Superstore"
+    },
+    {
+      "counterpartyKey": "cp-northwind",
+      "displayName": "Northwind Energy"
+    },
+    {
+      "counterpartyKey": "cp-harbour",
+      "displayName": "Harbour Café"
+    },
+    {
+      "counterpartyKey": "cp-employer",
+      "displayName": "Meridian Studios"
+    },
+    {
+      "counterpartyKey": "cp-overseas",
+      "displayName": "Overseas Supplies"
+    }
+  ],
+  "categoryGroups": [
+    {
+      "categoryGroupId": "grp-daily",
+      "name": "Daily living"
+    },
+    {
+      "categoryGroupId": "grp-home",
+      "name": "Home & bills"
+    }
+  ],
+  "categories": [
+    {
+      "categoryId": "cat-groceries",
+      "name": "Groceries",
+      "categoryGroupId": "grp-daily"
+    },
+    {
+      "categoryId": "cat-eating",
+      "name": "Eating out",
+      "categoryGroupId": "grp-daily"
+    },
+    {
+      "categoryId": "cat-utilities",
+      "name": "Utilities",
+      "categoryGroupId": "grp-home"
+    }
+  ],
+  "transactions": [
+    {
+      "transactionKey": "f02-t01",
+      "accountKey": "acc-daily",
+      "bookingDate": "2026-02-06",
+      "valueDate": "2026-02-06",
+      "amount": {
+        "amount": -2500,
+        "currency": "EUR"
+      },
+      "transactionClass": "card_payment",
+      "counterpartyKey": "cp-superstore",
+      "categoryId": "cat-groceries",
+      "categorisation": {
+        "source": "rule",
+        "ruleKey": "rule-001"
+      },
+      "isInternalTransfer": false,
+      "internalTransferPairKey": null,
+      "counterAccountKey": null,
+      "isReversal": false,
+      "reversalOfTransactionKey": null,
+      "evidenceText": "Superstore, Amsterdam"
+    },
+    {
+      "transactionKey": "f02-t02",
+      "accountKey": "acc-card",
+      "bookingDate": "2026-02-09",
+      "valueDate": "2026-02-09",
+      "amount": {
+        "amount": -9000,
+        "currency": "EUR"
+      },
+      "transactionClass": "direct_debit",
+      "counterpartyKey": "cp-northwind",
+      "categoryId": "cat-utilities",
+      "categorisation": {
+        "source": "manual",
+        "ruleKey": null
+      },
+      "isInternalTransfer": false,
+      "internalTransferPairKey": null,
+      "counterAccountKey": null,
+      "isReversal": false,
+      "reversalOfTransactionKey": null,
+      "evidenceText": "Northwind Energy monthly instalment"
+    },
+    {
+      "transactionKey": "f02-t03",
+      "accountKey": "acc-card",
+      "bookingDate": "2026-01-20",
+      "valueDate": "2026-01-20",
+      "amount": {
+        "amount": -1500,
+        "currency": "EUR"
+      },
+      "transactionClass": "card_payment",
+      "counterpartyKey": "cp-harbour",
+      "categoryId": "cat-eating",
+      "categorisation": {
+        "source": "rule",
+        "ruleKey": "rule-001"
+      },
+      "isInternalTransfer": false,
+      "internalTransferPairKey": null,
+      "counterAccountKey": null,
+      "isReversal": false,
+      "reversalOfTransactionKey": null,
+      "evidenceText": "Harbour Café"
+    }
+  ],
+  "categoryPlans": [],
+  "expectationRecords": [],
+  "expectedOccurrences": [],
+  "forecast": {
+    "kind": "canonical_ayq_forecast",
+    "asOfDate": "2026-03-05",
+    "horizonMonths": 12,
+    "horizonEnd": "2027-03-05",
+    "currency": "EUR",
+    "basisAccountKeys": [
+      "acc-daily",
+      "acc-card"
+    ],
+    "openingPosition": {
+      "amount": 250000,
+      "currency": "EUR"
+    },
+    "series": [],
+    "unavailableReason": null
+  }
+}

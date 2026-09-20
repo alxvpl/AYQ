@@ -1,0 +1,318 @@
+{
+  "note": "A1 truth manifest. Hand-authored from the construction of the fixtures in build-fixtures.mjs, never computed by the analysis implementation under test. Every amount is integer minor units. Every value is invented: no real banking data appears here.",
+  "views": [
+    {
+      "id": "f01-default",
+      "fixture": "a1-result.json",
+      "description": "Ordinary Result over the default period, with the previous period as comparison.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "previous",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 24625,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 2, "moneyOutMinor": 10750 },
+          { "counterpartyKey": "cp-northwind", "displayName": "Northwind Energy", "transactionCount": 1, "moneyOutMinor": 12000 },
+          { "counterpartyKey": "cp-harbour", "displayName": "Harbour Café", "transactionCount": 1, "moneyOutMinor": 1875 }
+        ],
+        "exclusions": {
+          "notApplicable": { "count": 1, "amountMinor": 10000 },
+          "notIdentified": { "count": 1, "amountMinor": 3300 }
+        },
+        "comparison": {
+          "fromDate": "2026-01-01",
+          "toDate": "2026-01-31",
+          "totalMinor": 18600,
+          "deltaMinor": 6025,
+          "unavailable": null
+        }
+      }
+    },
+    {
+      "id": "f01-zero-comparison",
+      "fixture": "a1-result.json",
+      "description": "A fully covered comparison period that holds nothing reads as an exact zero, and the change is the whole current amount.",
+      "context": {
+        "fromDate": "2025-06-01",
+        "toDate": "2025-06-30",
+        "comparison": "previous",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 3000,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 1, "moneyOutMinor": 3000 }
+        ],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": {
+          "fromDate": "2025-05-01",
+          "toDate": "2025-05-31",
+          "totalMinor": 0,
+          "deltaMinor": 3000,
+          "unavailable": null
+        }
+      }
+    },
+    {
+      "id": "f01-uncategorised-only",
+      "fixture": "a1-result.json",
+      "description": "Everything that contributes is excluded from counterparty rows, so the headline is an exact zero and the exclusion line carries the whole of it.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": ["__uncategorised__"]
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 0,
+        "counterparties": [],
+        "exclusions": {
+          "notApplicable": { "count": 1, "amountMinor": 10000 },
+          "notIdentified": { "count": 1, "amountMinor": 3300 }
+        },
+        "comparison": null
+      }
+    },
+    {
+      "id": "f02-default",
+      "fixture": "a1-coverage-limited.json",
+      "description": "A result over the requested dates, limited at the start by one account and at the end by another.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "coverageLimited",
+        "coverage": "limited",
+        "currency": "EUR",
+        "totalMinor": 11500,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 1, "moneyOutMinor": 2500 },
+          { "counterpartyKey": "cp-northwind", "displayName": "Northwind Energy", "transactionCount": 1, "moneyOutMinor": 9000 }
+        ],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null,
+        "startLimit": { "date": "2026-02-05", "accountKeys": ["acc-daily"] },
+        "endLimit": { "date": "2026-02-10", "accountKeys": ["acc-card"] }
+      }
+    },
+    {
+      "id": "f03-default",
+      "fixture": "a1-empty.json",
+      "description": "The period is covered and nothing in it is money-out.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "empty",
+        "coverage": "full",
+        "currency": null,
+        "totalMinor": null,
+        "counterparties": [],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null
+      }
+    },
+    {
+      "id": "f04-default",
+      "fixture": "a1-insufficient.json",
+      "description": "The requested period lies wholly outside every selected account's coverage.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "insufficient",
+        "coverage": "insufficient",
+        "currency": null,
+        "totalMinor": null,
+        "counterparties": [],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null
+      }
+    },
+    {
+      "id": "f05-default",
+      "fixture": "a1-comparison-unavailable-currency.json",
+      "description": "The current result stands in euro; the comparison period is in dollars and produces no delta.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "previous",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 12000,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 1, "moneyOutMinor": 4000 },
+          { "counterpartyKey": "cp-northwind", "displayName": "Northwind Energy", "transactionCount": 1, "moneyOutMinor": 8000 }
+        ],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": {
+          "fromDate": "2026-01-01",
+          "toDate": "2026-01-31",
+          "totalMinor": null,
+          "deltaMinor": null,
+          "unavailable": "currency"
+        }
+      }
+    },
+    {
+      "id": "f06-default",
+      "fixture": "a1-unsupported-multicurrency.json",
+      "description": "The selection spans two currencies, so nothing is summed, ranked or placed on a shared scale, and the exclusion line keeps its count without an amount.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "unsupported",
+        "coverage": "full",
+        "currency": null,
+        "totalMinor": null,
+        "currencies": ["EUR", "USD"],
+        "counterparties": [],
+        "exclusions": {
+          "notApplicable": { "count": 1, "amountMinor": null },
+          "notIdentified": null
+        },
+        "comparison": null
+      }
+    },
+    {
+      "id": "f08-default",
+      "fixture": "a1-reconciliation-difference.json",
+      "description": "A reconciliation mismatch is a reliability fact beside the result; it never gates the arithmetic.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 9750,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 1, "moneyOutMinor": 7300 },
+          { "counterpartyKey": "cp-harbour", "displayName": "Harbour Café", "transactionCount": 1, "moneyOutMinor": 2450 }
+        ],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null,
+        "reconciliation": [
+          { "accountKey": "acc-card", "state": "agrees", "differenceMinor": 0 },
+          { "accountKey": "acc-daily", "state": "differs", "differenceMinor": -1500 }
+        ]
+      }
+    },
+    {
+      "id": "f09-default",
+      "fixture": "a1-reversal-detail.json",
+      "description": "A refund inside the period reduces the spend of the counterparty of the transaction it reverses, although that original lies outside the period.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 17100,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 2, "moneyOutMinor": 5100 },
+          { "counterpartyKey": "cp-northwind", "displayName": "Northwind Energy", "transactionCount": 1, "moneyOutMinor": 12000 }
+        ],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null
+      }
+    },
+    {
+      "id": "f10-default",
+      "fixture": "a1-not-identified.json",
+      "description": "Both exclusion classes are present and are separate numbers; neither equals the snapshot-wide counter.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 5000,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 1, "moneyOutMinor": 5000 }
+        ],
+        "exclusions": {
+          "notApplicable": { "count": 1, "amountMinor": 20000 },
+          "notIdentified": { "count": 2, "amountMinor": 10000 }
+        },
+        "comparison": null,
+        "snapshotCounters": { "counterpartyNotApplicable": 2, "unresolvedCounterparties": 3 }
+      }
+    },
+    {
+      "id": "f10-groceries-only",
+      "fixture": "a1-not-identified.json",
+      "description": "Under a category filter the result-scoped exclusions fall to nothing while the snapshot-wide counters stand unchanged.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "none",
+        "accounts": "all",
+        "categories": ["cat-groceries"]
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 5000,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 1, "moneyOutMinor": 5000 }
+        ],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null,
+        "snapshotCounters": { "counterpartyNotApplicable": 2, "unresolvedCounterparties": 3 }
+      }
+    }
+  ]
+}
