@@ -89,6 +89,18 @@ export const RAIL_OVERLAY = {
   active: 'rgba(255, 255, 255, 0.08)',
 } as const;
 
+/**
+ * The foreground of the current destination's rail tile — its label and icon
+ * — in every state in which the tile is current: on the active wash, hovered,
+ * focused, and when the destination is unavailable in this version
+ * (PC-A2-10; 017A: current beats unavailable for foreground). Slot 130 of the
+ * pinned ramp, not a fourth violet: 5.91:1 on the active composite #2d3136,
+ * where ACCENT.onDark measured 4.24:1; the current-location gate is 5.0:1.
+ * ACCENT.onDark remains the on-dark text token everywhere else it already
+ * passes (the primary button).
+ */
+export const RAIL_CURRENT = VIOLET_RAMP[130];
+
 /** The light surfaces. Neutral, not warm (A2 decision K-9). */
 export const SURFACE = {
   ground: '#f6f7f9',
@@ -149,6 +161,7 @@ export function cssVariables(): Record<string, string> {
     '--dark-edge': DARK.edge,
     '--rail-hover': RAIL_OVERLAY.hover,
     '--rail-active': RAIL_OVERLAY.active,
+    '--rail-current': RAIL_CURRENT,
     '--ground': SURFACE.ground,
     '--surface': SURFACE.pane,
     '--line': SURFACE.line,

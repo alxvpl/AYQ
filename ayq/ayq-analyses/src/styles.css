@@ -98,7 +98,7 @@ body {
 .rail-item.active {
   box-shadow: inset var(--marker-width) 0 0 var(--accent);
   background: var(--rail-active);
-  color: var(--accent-on-dark);
+  color: var(--rail-current);
   font-weight: 600;
 }
 
@@ -108,6 +108,16 @@ body {
 
 .rail-item.unavailable:hover {
   background: transparent;
+}
+
+/* Current beats unavailable, for foreground and wash alike (PC-A2-10, 017A):
+   the tile you are standing on keeps the current treatment whether or not the
+   destination exists in this version, hovered or focused or not. The body
+   says "Not in this version."; the rail says where you are. */
+.rail-item.active.unavailable,
+.rail-item.active.unavailable:hover {
+  color: var(--rail-current);
+  background: var(--rail-active);
 }
 
 /* One scroller per screen. */
