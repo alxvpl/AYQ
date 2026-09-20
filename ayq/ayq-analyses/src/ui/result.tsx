@@ -40,8 +40,14 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
       },
       // Axis ticks are geometry the chart chooses, not values the result
       // holds, so they are not printed as figures. Every figure the chart
-      // prints — bar label and tooltip — is an exact row value.
-      xAxis: { type: 'value', axisLabel: { show: false } },
+      // prints — bar label and tooltip — is an exact row value. The axis ends
+      // a quarter beyond the longest bar so that bar's label has room and is
+      // never clipped at the edge of the chart.
+      xAxis: {
+        type: 'value',
+        axisLabel: { show: false },
+        max: (extent: { max: number }) => (extent.max > 0 ? extent.max * 1.25 : 0),
+      },
       yAxis: { type: 'category', data: ordered.map(row => row.displayName) },
       series: [
         {

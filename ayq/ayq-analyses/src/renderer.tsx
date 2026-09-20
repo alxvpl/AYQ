@@ -229,7 +229,11 @@ function Root(): JSX.Element {
   }, []);
   return (
     <LocaleContext.Provider value={locale}>
-      <FluentProvider theme={webLightTheme}>
+      {/*
+        The provider is the shell's parent, so it must span the window for the
+        rail and the status bar to reach the bottom edge on every screen.
+      */}
+      <FluentProvider theme={webLightTheme} style={{ height: '100%' }}>
         <App />
       </FluentProvider>
     </LocaleContext.Provider>
