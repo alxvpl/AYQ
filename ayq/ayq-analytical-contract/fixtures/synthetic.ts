@@ -6,7 +6,7 @@
 // No account, transaction, merchant, balance, path, user or banking datum
 // here is real.
 
-import type { AnalyticalSnapshotV1 } from '../src/types.js';
+import type { AnalyticalSnapshotV1 } from '../src/types.ts';
 
 export const GENERATED_AT = '2026-03-05T06:00:00Z';
 export const TODAY = '2026-03-05';

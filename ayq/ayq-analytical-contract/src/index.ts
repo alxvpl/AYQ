@@ -5,7 +5,7 @@
 // 03_DATA r017 §13). Synthetic fixture helpers live under `fixtures/` and are
 // not part of this production surface.
 
-export * from './types.js';
+export * from './types.ts';
 export {
   CONTRACT_MAJOR,
   CONTRACT_MINOR,
@@ -13,5 +13,5 @@ export {
   FORBIDDEN_KEYS,
   parseContractVersion,
   validateAnalyticalSnapshot,
-} from './validate.js';
-export type { ContractIssue } from './validate.js';
+} from './validate.ts';
+export type { ContractIssue } from './validate.ts';

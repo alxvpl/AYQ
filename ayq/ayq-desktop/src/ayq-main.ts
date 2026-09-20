@@ -33,6 +33,7 @@ import {
   type AyqPickedFile,
   type AyqRequest,
   type AyqResponse,
+  type AyqSnapshotTarget,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 // The token module itself, so that the acceptance run compares the screen
 // against the product's own declared values rather than against a second copy
@@ -250,9 +251,54 @@ async function pickCamtFile(): Promise<AyqPickedFile> {
   return { paths: chosen.canceled ? [] : chosen.filePaths };
 }
 
+/**
+ * Asks where the analytical snapshot should be written (03 §13.10).
+ *
+ * The host's job for the same reason as the picker above: the renderer has no
+ * filesystem and the engine has no window. A dismissed dialog is a null path,
+ * and nothing is written. AYQ_SMOKE_SNAPSHOT names the target in smoke mode,
+ * where no dialog can be answered.
+ */
+async function pickSnapshotTarget(suggestedName: string): Promise<AyqSnapshotTarget> {
+  const smokeTarget = process.env.AYQ_SMOKE_SNAPSHOT ?? '';
+  if (process.env.AYQ_SMOKE === '1' && smokeTarget !== '') {
+    return { path: smokeTarget };
+  }
+
+  const chosen = await dialog.showSaveDialog({
+    title: 'Export analytical snapshot',
+    defaultPath: join(app.getPath('documents'), suggestedName),
+    filters: [
+      { name: 'AYQ analytical snapshot', extensions: ['json'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    properties: ['createDirectory', 'showOverwriteConfirmation'],
+  });
+
+  return { path: chosen.canceled || !chosen.filePath ? null : chosen.filePath };
+}
+
 async function ask(request: AyqRequest): Promise<AyqResponse> {
-  // The one request the host answers itself, because it is about this window
-  // and not about the budget. Everything else is relayed untouched.
+  // The two requests the host answers itself, because they are about this
+  // window and not about the budget. Everything else is relayed untouched.
+  if (request?.kind === 'snapshot.pickTarget') {
+    try {
+      return {
+        id: request.id,
+        ok: true,
+        kind: 'snapshot.pickTarget',
+        result: await pickSnapshotTarget(request.suggestedName),
+      };
+    } catch (error) {
+      return {
+        id: request.id,
+        ok: false,
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   if (request?.kind === 'import.pick') {
     try {
       return {

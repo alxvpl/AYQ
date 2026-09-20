@@ -11,8 +11,8 @@ import {
   FORBIDDEN_KEYS,
   parseContractVersion,
   validateAnalyticalSnapshot,
-} from '../src/index.js';
-import { baseline, baselineJson, clone, setAt } from '../fixtures/synthetic.js';
+} from '../src/index.ts';
+import { baseline, baselineJson, clone, setAt } from '../fixtures/synthetic.ts';
 
 function refused(input: unknown, code: string, pathPart?: string): ContractValidationError {
   let error: unknown = null;
@@ -354,6 +354,9 @@ test('F24 — internal-transfer consistency: two sides, opposite signs, each the
   const categorised = baselineJson();
   setAt(categorised, 'transactions.5.category', { state: 'categorised', categoryId: 'cat-groceries', source: 'manual' });
   refused(categorised, 'transfer_categorised');
+  const withCounterparty = baselineJson();
+  setAt(withCounterparty, 'transactions.5.counterparty', { state: 'identified', counterpartyKey: 'cp-superstore' });
+  refused(withCounterparty, 'transfer_with_counterparty');
   const orphanNotApplicable = baselineJson();
   setAt(orphanNotApplicable, 'transactions.0.category', { state: 'not_applicable' });
   refused(orphanNotApplicable, 'not_applicable_without_transfer');

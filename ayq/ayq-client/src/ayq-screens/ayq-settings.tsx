@@ -1,10 +1,10 @@
 // Settings.
 //
-// Five surfaces, and each owns its question outright: which accounts count
+// Six surfaces, and each owns its question outright: which accounts count
 // toward available funds (03 §7.6), the categories (the only place they are
 // created, renamed, grouped or archived), the rules that will act from now on
-// (04 A7), the ground the window is drawn in (A23), and which build this is
-// (12 §12).
+// (04 A7), the ground the window is drawn in (A23), what AYQ writes out for
+// AYQ Analyses (03 §13), and which build this is (12 §12).
 //
 // About is a tab here and nowhere else. It is not a rail destination, and the
 // version and build number it carries appear on no other screen — a product
@@ -18,6 +18,7 @@ import { AyqAboutScreen } from './ayq-about.tsx';
 import { AyqAppearanceScreen } from './ayq-appearance.tsx';
 import { AyqSettingsAccounts } from './ayq-settings-accounts.tsx';
 import { AyqSettingsCategories } from './ayq-settings-categories.tsx';
+import { AyqSettingsData } from './ayq-settings-data.tsx';
 import { AyqSettingsRules } from './ayq-settings-rules.tsx';
 
 export type AyqSettingsTab =
@@ -25,6 +26,7 @@ export type AyqSettingsTab =
   | 'categories'
   | 'rules'
   | 'appearance'
+  | 'data'
   | 'about';
 
 export const AYQ_SETTINGS_TABS: readonly {
@@ -35,6 +37,7 @@ export const AYQ_SETTINGS_TABS: readonly {
   { id: 'categories', key: 'settings.tab.categories' },
   { id: 'rules', key: 'settings.tab.rules' },
   { id: 'appearance', key: 'settings.tab.appearance' },
+  { id: 'data', key: 'settings.tab.data' },
   { id: 'about', key: 'settings.tab.about' },
 ];
 
@@ -52,6 +55,8 @@ export function AyqSettingsScreen({
   if (tab === 'appearance') return <AyqAppearanceScreen />;
 
   if (tab === 'about') return <AyqAboutScreen onFailure={onFailure} />;
+
+  if (tab === 'data') return <AyqSettingsData onFailure={onFailure} />;
 
   if (tab === 'accounts') {
     return (

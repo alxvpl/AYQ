@@ -34,7 +34,7 @@ import type {
   Transaction,
   TransactionCategory,
   TransactionCounterparty,
-} from './types.js';
+} from './types.ts';
 
 export const CONTRACT_MAJOR = 1;
 export const CONTRACT_MINOR = 0;
@@ -496,6 +496,7 @@ function validateTransaction(
       if (pairKey !== null && counterAccountKey !== null) internalTransfer = { pairKey, counterAccountKey };
     }
     if (category !== null && category.state !== 'not_applicable') c.fail(`${path}.category.state`, 'transfer_categorised', 'an internal transfer carries no ordinary spending category');
+    if (counterparty !== null && counterparty.state !== 'not_applicable') c.fail(`${path}.counterparty.state`, 'transfer_with_counterparty', 'a movement between the owner\'s own accounts has no counterparty by nature (03 §13.14)');
   } else if (category !== null && category.state === 'not_applicable') {
     c.fail(`${path}.category.state`, 'not_applicable_without_transfer', 'category not_applicable is reserved for internal transfers');
   }
