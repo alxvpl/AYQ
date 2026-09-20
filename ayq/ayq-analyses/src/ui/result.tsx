@@ -7,7 +7,7 @@ import { chartGeometry } from '../geometry.js';
 import { formatCount, formatMoney, formatSignedMoney } from '../money.js';
 import { nextSortState, sortRows, type SortColumn, type SortState } from '../sort.js';
 import { useLocale, useText } from './text.js';
-import { accountsOfLimit } from './coverage.js';
+import { accountsOfLimit, namesOf } from './coverage.js';
 import { EXCLUSION_COUNT_ONLY_KEYS, EXCLUSION_KEYS, type DetailSelection } from './detail.js';
 import type { StringKey } from '../strings.js';
 import type { AnalysisResult, CounterpartyRow } from '../types.js';
@@ -105,11 +105,18 @@ export function ResultView({
         <ul className="state-detail">
           {result.coverage.accounts.map(account => (
             <li key={account.accountKey}>
-              {t('explore.insufficient.detail', {
-                account: account.name,
-                openingDate: formatDate(account.openingDate, locale),
-                lastStatementDate: formatDate(account.lastStatementDate, locale),
-              })}
+              {account.coverageStartDate === null
+                ? // The flyout's unknown-start form, rather than an interval
+                  // with a missing end (010 §3).
+                  t('coverage.flyout.account.unknownStart', {
+                    account: account.name,
+                    lastStatementDate: formatDate(account.lastStatementDate, locale),
+                  })
+                : t('explore.insufficient.detail', {
+                    account: account.name,
+                    openingDate: formatDate(account.coverageStartDate, locale),
+                    lastStatementDate: formatDate(account.lastStatementDate, locale),
+                  })}
             </li>
           ))}
         </ul>
@@ -154,10 +161,19 @@ export function ResultView({
     );
   }
 
+  const unknownStart = result.coverage.unknownStartAccountKeys;
+
   if (result.state === 'empty') {
     return (
       <section className="result">
-        <p className="state-line">{t('explore.empty')}</p>
+        <p className="state-line">
+          {unknownStart.length > 0
+            ? // Replaces the ordinary sentence, never appears beside it
+              // (010 §3): it states what was found and refuses the claim
+              // the ordinary sentence would make.
+              t('explore.empty.unknownStart', { accounts: namesOf(result, unknownStart, locale) })
+            : t('explore.empty')}
+        </p>
       </section>
     );
   }
@@ -198,6 +214,11 @@ export function ResultView({
           })}
         </p>
       )}
+      {unknownStart.length > 0 && (
+        <p className="coverage-sentence">
+          {t('explore.coverage.unknownStart', { accounts: namesOf(result, unknownStart, locale) })}
+        </p>
+      )}
 
       {hasComparisonValue && (
         <p className="comparison">
@@ -218,6 +239,10 @@ export function ResultView({
                       from: formatDate(comparison.fromDate, locale),
                       to: formatDate(comparison.toDate, locale),
                     })
+                  : comparison.unavailable === 'unknownStart'
+                    ? t('explore.comparison.reason.unknownStart', {
+                        accounts: namesOf(result, comparison.coverage.unknownStartAccountKeys, locale),
+                      })
                   : t('explore.comparison.reason.coverage', {
                       accounts: formatList(
                         (comparison.coverage.startLimit?.accountKeys ?? [])

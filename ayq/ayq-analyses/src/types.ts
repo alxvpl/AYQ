@@ -1,193 +1,59 @@
-// AYQ Analyses — A1.
+// AYQ Analyses — types.
 //
-// Contract types for the frozen r003 synthetic-input baseline, plus the
-// structured A1 analysis result. Nothing here describes A2, A3 or A4.
+// The snapshot is the executable contract 1.0 (ayq/ayq-analytical-contract):
+// its types are re-exported here unchanged, so the consumer's model of the
+// input is the producer's model, not a second description of it. What follows
+// the re-exports is the structured A1 analysis result. Nothing here describes
+// A2, A3 or A4.
 
-export type Currency = string;
+export type {
+  Account,
+  AccountType,
+  AbsoluteBalance,
+  AnalyticalSnapshotV1,
+  CanonicalForecast,
+  Category,
+  CategoryGroup,
+  CategoryPlan,
+  CategorySource,
+  Counterparty,
+  CoverageMeta,
+  Currency,
+  ExpectationRecord,
+  ExpectedOccurrence,
+  ForecastPoint,
+  InternalTransfer,
+  IsoDate,
+  Money,
+  ProducerInfo,
+  Reconciliation,
+  Reversal,
+  SnapshotCounts,
+  SnapshotMeta,
+  StatementCoverage,
+  Transaction,
+  TransactionCategory,
+  TransactionClass,
+  TransactionCounterparty,
+} from '../../ayq-analytical-contract/src/types.ts';
 
-/** An inclusive calendar date, `YYYY-MM-DD`. */
-export type IsoDate = string;
+import type { AnalyticalSnapshotV1, Currency, IsoDate, Reconciliation, Transaction } from '../../ayq-analytical-contract/src/types.ts';
 
-export interface Money {
-  amount: number;
-  currency: Currency;
-}
+/** The snapshot, under the name the consumer has always used for it. */
+export type AyqAnalyticalSnapshot = AnalyticalSnapshotV1;
 
-export interface ProducerInfo {
-  productVersion: string;
-  buildNumber: number;
-  commitSha: string;
-}
-
-export interface CoverageMeta {
-  reliabilityBoundary: IsoDate;
-  reliabilityBoundaryBasis: string[];
-}
-
-export interface SnapshotCounts {
-  accounts: number;
-  transactions: number;
-  counterparties: number;
-  categories: number;
-  uncategorisedTransactions: number;
-  unresolvedCounterparties: number;
-  counterpartyNotApplicable: number;
-  expectedOccurrences: number;
-}
-
-export interface SnapshotMeta {
-  contractVersion: string;
-  snapshotId: string;
-  generatedAt: string;
-  budgetKey: string;
-  producer: ProducerInfo;
-  currencies: Currency[];
-  coverage: CoverageMeta;
-  counts: SnapshotCounts;
-}
+export type ReconciliationStateToken = Reconciliation['state'];
 
 /**
- * The frozen r003 baseline defines two reconciliation states and no other.
- * An unknown token is a validation failure (007 §6), not a third A1 sentence.
+ * The provenance the evidence view states for a contribution (03 §4.3,
+ * §11.11): the three sources of a set category, or none when no category is
+ * set. A transfer's `not_applicable` never reaches the evidence view, because
+ * a transfer contributes nothing (r004 §8.4 step 1).
  */
-export type ReconciliationStateToken = 'agrees' | 'differs';
+export type CategorisationSource = 'manual' | 'learned_rule' | 'automatic' | 'none';
 
-export interface ReconciliationState {
-  state: ReconciliationStateToken;
-  ledgerBalanceAtCoverageDate: Money;
-  statementClosingBalance: Money;
-  difference: Money;
-}
-
-export interface Account {
-  accountKey: string;
-  name: string;
-  type: string;
-  displayIdentifier: string | null;
-  countsTowardAvailableFunds: boolean;
-  currency: Currency;
-  openingDate: IsoDate;
-  openingBalance: Money;
-  ledgerBalance: Money;
-  statementCoverage: {
-    lastStatementDate: IsoDate;
-    closingBalance: Money;
-  };
-  reconciliation: ReconciliationState;
-}
-
-export interface Counterparty {
-  counterpartyKey: string;
-  displayName: string;
-  evidenceClass?: string;
-}
-
-export interface CategoryGroup {
-  categoryGroupId: string;
-  name: string;
-}
-
-export interface Category {
-  categoryId: string;
-  name: string;
-  categoryGroupId: string | null;
-}
-
-export type CategorisationSource = 'manual' | 'rule' | 'none';
-
-/**
- * Decision provenance, present on every transaction (r002 §6.5, I14). The
- * validator admits only the three tokens, so a validated snapshot never
- * carries a fourth case for the interface to fall back on.
- */
-export interface Categorisation {
-  source: CategorisationSource;
-  ruleKey?: string | null;
-  [key: string]: unknown;
-}
-
-export type TransactionClass =
-  | 'credit_transfer'
-  | 'direct_debit'
-  | 'card_payment'
-  | 'bank_fee'
-  | 'cash_withdrawal'
-  | 'other';
-
-export interface Transaction {
-  transactionKey: string;
-  accountKey: string;
-  bookingDate: IsoDate;
-  valueDate: IsoDate | null;
-  amount: Money;
-  transactionClass: string;
-  counterpartyKey: string | null;
-  categoryId: string | null;
-  categorisation: Categorisation;
-  isInternalTransfer: boolean;
-  internalTransferPairKey: string | null;
-  counterAccountKey: string | null;
-  isReversal: boolean;
-  reversalOfTransactionKey: string | null;
-  evidenceText: string | null;
-}
-
-export interface CategoryPlan {
-  categoryId: string;
-  month: string;
-  plannedAmount: Money;
-}
-
-export interface ExpectationRecord {
-  recordKey: string;
-  accountKey: string | null;
-  kind: string;
-  name: string;
-  categoryId: string | null;
-  counterpartyKey: string | null;
-  amount: Money;
-  recurrence: { type: string; [key: string]: unknown };
-  state: string;
-  stateSince: string;
-}
-
-export interface ExpectedOccurrence {
-  occurrenceKey: string;
-  recordKey: string;
-  expectedDate: IsoDate;
-  amount: Money;
-  state: string;
-  match: null | { transactionKey: string; source: string; matchedOn: string };
-}
-
-export interface ForecastPoint {
-  date: IsoDate;
-  projectedPosition: Money;
-}
-
-export interface CanonicalForecast {
-  kind: string;
-  asOfDate: IsoDate;
-  horizonMonths: number;
-  horizonEnd: IsoDate;
-  currency: Currency;
-  basisAccountKeys: string[];
-  openingPosition: Money;
-  series: ForecastPoint[];
-  unavailableReason: string | null;
-}
-
-export interface AyqAnalyticalSnapshot {
-  meta: SnapshotMeta;
-  accounts: Account[];
-  counterparties: Counterparty[];
-  categoryGroups: CategoryGroup[];
-  categories: Category[];
-  transactions: Transaction[];
-  categoryPlans: CategoryPlan[];
-  expectationRecords: ExpectationRecord[];
-  expectedOccurrences: ExpectedOccurrence[];
-  forecast: CanonicalForecast;
+export function categorisationSourceOf(transaction: Transaction): CategorisationSource {
+  return transaction.category.state === 'categorised' ? transaction.category.source : 'none';
 }
 
 // ---------------------------------------------------------------------------
@@ -286,8 +152,13 @@ export interface ExclusionGroup {
 export interface AccountCoverageInterval {
   accountKey: string;
   name: string;
-  displayIdentifier: string | null;
-  openingDate: IsoDate;
+  displayIdentifier: string;
+  /**
+   * The proven coverage start, or `null` for UNKNOWN_START (03 §8.7; 010 §2):
+   * the end of this account's coverage is known, the beginning is not
+   * established. Never replaced by the earliest transaction.
+   */
+  coverageStartDate: IsoDate | null;
   lastStatementDate: IsoDate;
 }
 
@@ -310,25 +181,38 @@ export interface CoverageFacts {
   endLimit: CoverageLimit | null;
   /** The covered end of the selected scope; `null` when no account covers anything. */
   coveredThrough: IsoDate | null;
+  /**
+   * The selected accounts whose coverage start is not established, in the
+   * same deterministic order as `accounts`. Non-empty qualifies a Result and
+   * replaces the empty sentence (010 §3); it is not a coverage limit.
+   */
+  unknownStartAccountKeys: string[];
 }
 
-export interface ReconciliationFact {
+export type ReconciliationFact = {
   accountKey: string;
   name: string;
-  displayIdentifier: string | null;
-  state: ReconciliationStateToken;
-  /** The exact signed difference the snapshot supplied, kept as supplied. */
-  differenceMinor: bigint;
-  /**
-   * Its magnitude, taken in exact integer arithmetic here rather than in a
-   * component: the flyout sentence states how far the statement and the
-   * ledger differ and deliberately not which is higher (r05 §6, PC4).
-   */
-  differenceMagnitudeMinor: bigint;
-  currency: Currency;
-}
+  displayIdentifier: string;
+} & (
+  | {
+      /** The bank stated no closing balance at the coverage date (03 §13.3). */
+      state: 'unavailable';
+    }
+  | {
+      state: 'agrees' | 'differs';
+      /** The exact signed difference the snapshot supplied, kept as supplied. */
+      differenceMinor: bigint;
+      /**
+       * Its magnitude, taken in exact integer arithmetic here rather than in a
+       * component: the flyout sentence states how far the statement and the
+       * ledger differ and deliberately not which is higher (r05 §6, PC4).
+       */
+      differenceMagnitudeMinor: bigint;
+      currency: Currency;
+    }
+);
 
-export type ComparisonUnavailableReason = 'coverage' | 'noData' | 'currency';
+export type ComparisonUnavailableReason = 'coverage' | 'noData' | 'currency' | 'unknownStart';
 
 export interface ComparisonFacts {
   mode: ComparisonMode;

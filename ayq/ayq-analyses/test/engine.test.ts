@@ -211,7 +211,6 @@ test('case 14 — a reversal of something that was not money-out contributes not
 
 test('case 15 — a current population in more than one currency is refused before anything is summed', () => {
   const held = snapshot({
-    currencies: ['EUR', 'USD'],
     accounts: [
       account({ key: 'acc-a', from: '2025-01-01', to: '2026-03-04' }),
       account({ key: 'acc-usd', currency: 'USD', counts: false, from: '2025-01-01', to: '2026-03-04' }),
@@ -246,8 +245,7 @@ test('case 16 — every aggregate of a single-currency population carries that c
 test('cases 18 and 19 — a comparison in other currencies leaves the current result standing with no delta', () => {
   const build = (comparisonCurrencies: string[]) =>
     snapshot({
-      currencies: ['EUR', 'USD'],
-      accounts: [
+        accounts: [
         account({ key: 'acc-a', from: '2025-01-01', to: '2026-03-04' }),
         account({ key: 'acc-usd', currency: 'USD', counts: false, from: '2025-01-01', to: '2026-03-04' }),
       ],
@@ -363,7 +361,7 @@ test('case 24 — a reconciliation mismatch is stated and still produces the res
     {
       accountKey: 'acc-a',
       name: 'acc-a',
-      displayIdentifier: null,
+      displayIdentifier: held.accounts[0].displayIdentifier,
       state: 'differs',
       differenceMinor: -1500n,
       differenceMagnitudeMinor: 1500n,

@@ -42,7 +42,8 @@ interface ManifestView {
     comparison: { fromDate: string; toDate: string; totalMinor: number | null; deltaMinor: number | null; unavailable: string | null } | null;
     startLimit?: { date: string; accountKeys: string[] };
     endLimit?: { date: string; accountKeys: string[] };
-    reconciliation?: Array<{ accountKey: string; state: string; differenceMinor: number }>;
+    reconciliation?: Array<{ accountKey: string; state: string; differenceMinor: number | null }>;
+    unknownStartAccountKeys?: string[];
     snapshotCounters?: { counterpartyNotApplicable: number; unresolvedCounterparties: number };
   };
 }
@@ -144,6 +145,7 @@ for (const view of manifest.views) {
     }
 
     if (expected.startLimit) assert.deepEqual(result.coverage.startLimit, expected.startLimit);
+    if (expected.unknownStartAccountKeys) assert.deepEqual(result.coverage.unknownStartAccountKeys, expected.unknownStartAccountKeys);
     if (expected.endLimit) assert.deepEqual(result.coverage.endLimit, expected.endLimit);
 
     if (expected.reconciliation) {
@@ -152,7 +154,11 @@ for (const view of manifest.views) {
       for (const [index, fact] of facts.entries()) {
         assert.equal(fact.accountKey, expected.reconciliation[index].accountKey);
         assert.equal(fact.state, expected.reconciliation[index].state);
-        assert.equal(fact.differenceMinor, exact(expected.reconciliation[index].differenceMinor));
+        if (fact.state === 'unavailable') {
+          assert.equal(expected.reconciliation[index].differenceMinor, null, 'unavailable carries no difference');
+        } else {
+          assert.equal(fact.differenceMinor, exact(expected.reconciliation[index].differenceMinor));
+        }
       }
     }
 

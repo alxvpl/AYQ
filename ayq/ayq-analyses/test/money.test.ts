@@ -23,6 +23,7 @@ const FIXTURES = [
   'a1-reconciliation-difference.json',
   'a1-reversal-detail.json',
   'a1-not-identified.json',
+  'a1-unknown-start.json',
 ];
 
 const LOCALES = ['en-US', 'nl-NL', 'de-DE'];
@@ -45,14 +46,11 @@ test('every fixture amount round-trips through the display path, in every tested
     const snapshot = loadFixture(name);
     const amounts: Array<{ amount: number; currency: string }> = [];
     for (const account of snapshot.accounts) {
-      amounts.push(
-        account.openingBalance,
-        account.ledgerBalance,
-        account.statementCoverage.closingBalance,
-        account.reconciliation.ledgerBalanceAtCoverageDate,
-        account.reconciliation.statementClosingBalance,
-        account.reconciliation.difference,
-      );
+      if (account.statementCoverage.bankClosingBalance) amounts.push(account.statementCoverage.bankClosingBalance);
+      if (account.absoluteBalance.state === 'known') amounts.push(account.absoluteBalance.amount);
+      if (account.reconciliation.state !== 'unavailable') {
+        amounts.push(account.reconciliation.ledgerBalanceAtCoverageDate, account.reconciliation.difference);
+      }
     }
     for (const transaction of snapshot.transactions) amounts.push(transaction.amount);
 

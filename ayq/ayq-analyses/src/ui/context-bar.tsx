@@ -201,9 +201,9 @@ export function ContextBar({ snapshot, context, result, anchor, onChange }: Cont
           }}
         >
           {snapshot.accounts.map(account => {
-            const label = account.displayIdentifier === null
-              ? account.name
-              : t('context.accounts.entry', { name: account.name, identifier: account.displayIdentifier });
+            // The identifier is masked at the source (03 §13.8): the country
+            // code, the ellipsis and the final four, never more.
+            const label = t('context.accounts.entry', { name: account.name, identifier: account.displayIdentifier });
             return (
               <Option key={account.accountKey} value={account.accountKey} text={label}>
                 {label}

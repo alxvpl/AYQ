@@ -1,9 +1,10 @@
-// AYQ Analyses — A1 synthetic fixture builder.
+// AYQ Analyses — A1 synthetic fixture builder, contract 1.0.
 //
 // Every value here is invented. No real banking or personally identifying
 // financial data may ever enter this directory.
 //
-// This builder assembles snapshot JSON from explicit literal data. It imports
+// This builder assembles snapshot JSON from explicit literal data in the
+// executable contract 1.0 shape (ayq/ayq-analytical-contract). It imports
 // nothing from ../../../src and performs no analysis: the only arithmetic it
 // does is counting records for `meta.counts`. Run it with
 // `node test/fixtures/a1/build-fixtures.mjs` after changing the data below.
@@ -44,11 +45,15 @@ function account(options) {
     displayIdentifier,
     currency = 'EUR',
     countsTowardAvailableFunds = true,
+    // The proven coverage start; omitted (undefined) is UNKNOWN_START.
     openingDate,
     lastStatementDate,
     ledgerAtCoverage = 250000,
+    // null: the bank stated no closing balance at the coverage date, so the
+    // reconciliation is unavailable and no absolute balance is known.
     statementClosing = 250000,
   } = options;
+  const unavailable = statementClosing === null;
   return {
     accountKey,
     name,
@@ -56,19 +61,19 @@ function account(options) {
     displayIdentifier,
     countsTowardAvailableFunds,
     currency,
-    openingDate,
-    openingBalance: money(0, currency),
-    ledgerBalance: money(ledgerAtCoverage, currency),
     statementCoverage: {
+      ...(openingDate === undefined ? {} : { coverageStartDate: openingDate }),
       lastStatementDate,
-      closingBalance: money(statementClosing, currency),
+      ...(unavailable ? {} : { bankClosingBalance: money(statementClosing, currency) }),
     },
-    reconciliation: {
-      state: statementClosing - ledgerAtCoverage === 0 ? 'agrees' : 'differs',
-      ledgerBalanceAtCoverageDate: money(ledgerAtCoverage, currency),
-      statementClosingBalance: money(statementClosing, currency),
-      difference: money(statementClosing - ledgerAtCoverage, currency),
-    },
+    absoluteBalance: unavailable ? { state: 'unknown' } : { state: 'known', amount: money(ledgerAtCoverage, currency) },
+    reconciliation: unavailable
+      ? { state: 'unavailable' }
+      : {
+          state: statementClosing - ledgerAtCoverage === 0 ? 'agrees' : 'differs',
+          ledgerBalanceAtCoverageDate: money(ledgerAtCoverage, currency),
+          difference: money(statementClosing - ledgerAtCoverage, currency),
+        },
   };
 }
 
@@ -82,32 +87,40 @@ function tx(options) {
     transactionClass,
     counterpartyKey = null,
     categoryId = null,
-    // Provenance follows the category, never the counterparty (r002 I14; 013
-    // §4 T3): a set category was set by a rule unless the row says manual, and
-    // a transaction with no category claims none.
-    source = categoryId === null ? 'none' : 'rule',
+    // Provenance follows the category, never the counterparty (03 §4.3,
+    // §11.11): a set category was set by a learned rule unless the row says
+    // otherwise, and a transaction with no category claims none.
+    source = 'learned_rule',
     isInternalTransfer = false,
     internalTransferPairKey = null,
     counterAccountKey = null,
-    isReversal = false,
     reversalOfTransactionKey = null,
     evidenceText,
   } = options;
+  // The three counterparty states (03 §13.14): a cash withdrawal and an
+  // internal transfer have no counterparty by nature; a transaction that
+  // should have one and does not is unresolved.
+  const counterparty =
+    isInternalTransfer || transactionClass === 'cash_withdrawal'
+      ? { state: 'not_applicable' }
+      : counterpartyKey === null
+        ? { state: 'unresolved' }
+        : { state: 'identified', counterpartyKey };
+  const category = isInternalTransfer
+    ? { state: 'not_applicable' }
+    : categoryId === null
+      ? { state: 'uncategorised' }
+      : { state: 'categorised', categoryId, source, ...(source === 'learned_rule' ? { ruleKey: 'rule-001' } : {}) };
   return {
     transactionKey,
     accountKey,
     bookingDate,
-    valueDate: bookingDate,
     amount: money(amount, currency),
     transactionClass,
-    counterpartyKey,
-    categoryId,
-    categorisation: { source, ruleKey: source === 'rule' ? 'rule-001' : null },
-    isInternalTransfer,
-    internalTransferPairKey,
-    counterAccountKey,
-    isReversal,
-    reversalOfTransactionKey,
+    counterparty,
+    category,
+    ...(isInternalTransfer ? { internalTransfer: { pairKey: internalTransferPairKey, counterAccountKey } } : {}),
+    ...(reversalOfTransactionKey === null ? {} : { reversal: { originalTransactionKey: reversalOfTransactionKey } }),
     evidenceText,
   };
 }
@@ -127,16 +140,15 @@ function snapshot(options) {
     .map(x => x.statementCoverage.lastStatementDate)
     .sort()[0];
 
-  const notApplicable = transactions.filter(
-    x => x.counterpartyKey === null && x.transactionClass === 'cash_withdrawal',
-  ).length;
-  const unresolved = transactions.filter(
-    x => x.counterpartyKey === null && x.transactionClass !== 'cash_withdrawal',
-  ).length;
+  // Integrity counts over the content (017 §3): the counterparty tallies are
+  // over the transactions that are not internal transfers.
+  const nonTransfer = transactions.filter(x => x.internalTransfer === undefined);
+  const notApplicable = nonTransfer.filter(x => x.counterparty.state === 'not_applicable').length;
+  const unresolved = nonTransfer.filter(x => x.counterparty.state === 'unresolved').length;
 
   return {
     meta: {
-      contractVersion: '1.3.0',
+      contractVersion: '1.0',
       snapshotId,
       generatedAt,
       budgetKey: 'budget-synthetic',
@@ -153,7 +165,7 @@ function snapshot(options) {
         transactions: transactions.length,
         counterparties: COUNTERPARTIES.length,
         categories: CATEGORIES.length,
-        uncategorisedTransactions: transactions.filter(x => x.categoryId === null).length,
+        uncategorisedTransactions: transactions.filter(x => x.category.state === 'uncategorised').length,
         unresolvedCounterparties: unresolved,
         counterpartyNotApplicable: notApplicable,
         expectedOccurrences: 0,
@@ -168,15 +180,15 @@ function snapshot(options) {
     expectationRecords: [],
     expectedOccurrences: [],
     forecast: {
+      state: 'available',
       kind: 'canonical_ayq_forecast',
       asOfDate: generatedAt.slice(0, 10),
       horizonMonths: 12,
-      horizonEnd: '2027-03-05',
+      horizonEnd: '2027-03-04',
       currency: forecastCurrency,
       basisAccountKeys: fundsAccounts.map(x => x.accountKey),
       openingPosition: money(250000, forecastCurrency),
       series: [],
-      unavailableReason: null,
     },
   };
 }
@@ -330,7 +342,7 @@ const f07 = snapshot({
   ],
   transactions: [
     tx({ transactionKey: 'f07-t01', accountKey: 'acc-daily', bookingDate: '2026-02-10', amount: -5500, transactionClass: 'card_payment', counterpartyKey: 'cp-superstore', categoryId: 'cat-groceries', evidenceText: 'Superstore, Amsterdam' }),
-    tx({ transactionKey: 'f07-t02', accountKey: 'acc-daily', bookingDate: '2026-02-18', amount: 5500, transactionClass: 'card_payment', counterpartyKey: 'cp-superstore', categoryId: 'cat-groceries', isReversal: true, reversalOfTransactionKey: 'f07-does-not-exist', evidenceText: 'Superstore refund' }),
+    tx({ transactionKey: 'f07-t02', accountKey: 'acc-daily', bookingDate: '2026-02-18', amount: 5500, transactionClass: 'card_payment', counterpartyKey: 'cp-superstore', categoryId: 'cat-groceries', reversalOfTransactionKey: 'f07-does-not-exist', evidenceText: 'Superstore refund' }),
   ],
 });
 
@@ -366,7 +378,7 @@ const f09 = snapshot({
     tx({ transactionKey: 'f09-orig', accountKey: 'acc-daily', bookingDate: '2026-01-20', amount: -9900, transactionClass: 'card_payment', counterpartyKey: 'cp-superstore', categoryId: 'cat-groceries', evidenceText: 'Superstore, Amsterdam' }),
     // The reversal carries no counterparty of its own: attribution comes from
     // the transaction it reverses, resolved against the whole snapshot.
-    tx({ transactionKey: 'f09-rev', accountKey: 'acc-daily', bookingDate: '2026-02-04', amount: 9900, transactionClass: 'card_payment', categoryId: 'cat-groceries', source: 'rule', isReversal: true, reversalOfTransactionKey: 'f09-orig', evidenceText: 'Superstore refund' }),
+    tx({ transactionKey: 'f09-rev', accountKey: 'acc-daily', bookingDate: '2026-02-04', amount: 9900, transactionClass: 'card_payment', categoryId: 'cat-groceries', reversalOfTransactionKey: 'f09-orig', evidenceText: 'Superstore refund' }),
     tx({ transactionKey: 'f09-t01', accountKey: 'acc-daily', bookingDate: '2026-02-12', amount: -15000, transactionClass: 'card_payment', counterpartyKey: 'cp-superstore', categoryId: 'cat-groceries', evidenceText: 'Superstore, Amsterdam' }),
     tx({ transactionKey: 'f09-t02', accountKey: 'acc-daily', bookingDate: '2026-02-14', amount: -12000, transactionClass: 'direct_debit', counterpartyKey: 'cp-northwind', categoryId: 'cat-utilities', source: 'manual', evidenceText: 'Northwind Energy monthly instalment' }),
   ],
@@ -395,6 +407,28 @@ const f10 = snapshot({
   ],
 });
 
+// ---------------------------------------------------------------------------
+// F11 — one of two accounts has no proven coverage start (UNKNOWN_START,
+// 03 §8.7) and no statement balance at its coverage date (reconciliation
+// unavailable, 03 §13.3). The other is ordinary. The result over both is
+// qualified, its comparison refused, and its empty form replaced (010 §3).
+// ---------------------------------------------------------------------------
+
+const f11 = snapshot({
+  snapshotId: 'snap-a1-unknown-start',
+  generatedAt: '2026-03-05T06:00:00Z',
+  accounts: [
+    account({ accountKey: 'acc-daily', name: 'Everyday account', displayIdentifier: 'NL…0708', openingDate: '2025-01-01', lastStatementDate: '2026-03-04' }),
+    account({ accountKey: 'acc-card', name: 'Card account', displayIdentifier: 'NL…1142', lastStatementDate: '2026-02-28', statementClosing: null }),
+  ],
+  transactions: [
+    tx({ transactionKey: 'f11-t01', accountKey: 'acc-daily', bookingDate: '2026-02-03', amount: -4500, transactionClass: 'card_payment', counterpartyKey: 'cp-superstore', categoryId: 'cat-groceries', evidenceText: 'Superstore, Amsterdam' }),
+    tx({ transactionKey: 'f11-t02', accountKey: 'acc-card', bookingDate: '2026-02-18', amount: -1875, transactionClass: 'card_payment', counterpartyKey: 'cp-harbour', categoryId: 'cat-eating', source: 'automatic', evidenceText: 'Harbour Café' }),
+    tx({ transactionKey: 'f11-t03', accountKey: 'acc-card', bookingDate: '2026-02-21', amount: -3000, transactionClass: 'card_payment', counterpartyKey: 'cp-harbour', categoryId: 'cat-eating', source: 'manual', evidenceText: 'Harbour Café' }),
+    tx({ transactionKey: 'f11-p01', accountKey: 'acc-daily', bookingDate: '2026-01-06', amount: -5000, transactionClass: 'card_payment', counterpartyKey: 'cp-superstore', categoryId: 'cat-groceries', evidenceText: 'Superstore, Amsterdam' }),
+  ],
+});
+
 const FIXTURES = [
   ['a1-result.json', f01],
   ['a1-coverage-limited.json', f02],
@@ -406,6 +440,7 @@ const FIXTURES = [
   ['a1-reconciliation-difference.json', f08],
   ['a1-reversal-detail.json', f09],
   ['a1-not-identified.json', f10],
+  ['a1-unknown-start.json', f11],
 ];
 
 for (const [name, data] of FIXTURES) {

@@ -1,10 +1,15 @@
 // Validation completes before analysis, and a snapshot that fails it produces
 // no analytical result.
+//
+// The rules themselves are the executable contract's (ayq/ayq-analytical-
+// contract) and are proven there, case by case. What is proven here is the
+// consumer's side of them: every intended-valid fixture passes; what the
+// contract refuses reaches the screen as one of the four bounded reasons, the
+// right one; and no detail ever becomes the reason.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseAndValidateSnapshot, SnapshotValidationError, validateSnapshot } from '../src/validate.js';
-import { utcCalendarDate } from '../src/dates.js';
+import { parseAndValidateSnapshot, reasonOf, SnapshotValidationError, validateSnapshot } from '../src/validate.js';
 import { readFixture } from './helpers.js';
 
 const VALID = [
@@ -17,6 +22,7 @@ const VALID = [
   'a1-reconciliation-difference.json',
   'a1-reversal-detail.json',
   'a1-not-identified.json',
+  'a1-unknown-start.json',
 ];
 
 test('every valid fixture passes the validator', () => {
@@ -37,72 +43,94 @@ test('case 17 — a reversal reference that does not resolve makes the snapshot 
   if (!result.ok) assert.equal(result.reason, 'invariant');
 });
 
-function mutate(change: (snapshot: any) => void): any {
-  const raw = readFixture('a1-result.json') as any;
+function mutate(change: (snapshot: any) => void, fixture = 'a1-result.json'): any {
+  const raw = readFixture(fixture) as any;
   change(raw);
   return raw;
 }
 
-test('a reconciliation state outside the frozen baseline is refused rather than shown', () => {
+function refusedAs(raw: unknown, reason: SnapshotValidationError['reason'], label: string): void {
   assert.throws(
-    () => validateSnapshot(mutate(s => { s.accounts[0].reconciliation.state = 'unavailable'; })),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
+    () => validateSnapshot(raw),
+    (error: unknown) => error instanceof SnapshotValidationError && error.reason === reason,
+    label,
   );
+}
+
+test('the four reasons fold the contract\'s issue codes, and shape never masquerades as inconsistency', () => {
+  assert.equal(reasonOf([{ path: 'meta.contractVersion', code: 'major_too_new', message: '' }]), 'contractMajor');
+  assert.equal(reasonOf([{ path: 'meta.contractVersion', code: 'major_too_old', message: '' }]), 'unknown');
+  assert.equal(reasonOf([{ path: 'accounts[0].iban', code: 'forbidden_key', message: '' }]), 'unknown');
+  assert.equal(reasonOf([{ path: 'transactions[0].evidenceText', code: 'iban_leak', message: '' }]), 'unknown');
+  assert.equal(reasonOf([{ path: 'accounts', code: 'not_array', message: '' }]), 'malformed');
+  assert.equal(reasonOf([{ path: 'accounts[0].name', code: 'not_string', message: '' }, { path: 'meta.snapshotId', code: 'empty_string', message: '' }]), 'malformed');
+  // A count that disagrees because a malformed record was dropped is a
+  // consequence of the shape fault, not a second reason.
+  assert.equal(reasonOf([{ path: 'transactions[0].amount.amount', code: 'not_safe_integer', message: '' }, { path: 'meta.counts.transactions', code: 'count_wrong', message: '' }]), 'malformed');
+  assert.equal(reasonOf([{ path: 'meta.counts.transactions', code: 'count_wrong', message: '' }, { path: 'transactions[0].amount.amount', code: 'not_safe_integer', message: '' }]), 'invariant');
+  assert.equal(reasonOf([{ path: 'transactions[1].reversal.originalTransactionKey', code: 'unresolved_reference', message: '' }]), 'invariant');
+  assert.equal(reasonOf([]), 'unknown');
 });
 
 test('a reconciliation state that contradicts its difference is refused', () => {
-  assert.throws(
-    () =>
-      validateSnapshot(
-        mutate(s => {
-          s.accounts[0].reconciliation.statementClosingBalance.amount += 500;
-          s.accounts[0].reconciliation.difference.amount = 500;
-          // state stays `agrees` while the difference is not zero
-        }),
-      ),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
+  refusedAs(
+    mutate(s => {
+      s.accounts[0].statementCoverage.bankClosingBalance.amount += 500;
+      s.accounts[0].reconciliation.difference.amount = 500;
+      // state stays `agrees` while the difference is not zero
+    }),
+    'invariant',
+    'agrees with a non-zero difference',
   );
 });
 
 test('a difference that does not follow from the balances it compares is refused', () => {
-  assert.throws(
-    () => validateSnapshot(mutate(s => { s.accounts[0].reconciliation.difference.amount = 77; })),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
+  refusedAs(
+    mutate(s => { s.accounts[0].reconciliation.difference.amount = 1; s.accounts[0].reconciliation.state = 'differs'; }),
+    'invariant',
+    'difference ≠ closing − ledger',
   );
+});
+
+test('reconciliation unavailable is a real state: no bank balance, no ledger figure, no difference', () => {
+  assert.doesNotThrow(() => validateSnapshot(readFixture('a1-unknown-start.json')));
+  refusedAs(
+    mutate(s => { s.accounts[0].reconciliation = { state: 'unavailable' }; }),
+    'invariant',
+    'unavailable while the statement still states a closing balance',
+  );
+  refusedAs(
+    mutate(s => { s.accounts[1].statementCoverage.bankClosingBalance = { amount: 1, currency: 'EUR' }; }, 'a1-unknown-start.json'),
+    'invariant',
+    'a closing balance beside an unavailable reconciliation',
+  );
+});
+
+test('a coverage start is optional and is never synthesised: absent stays absent through validation', () => {
+  const validated = validateSnapshot(readFixture('a1-unknown-start.json'));
+  const card = validated.accounts.find(a => a.accountKey === 'acc-card');
+  assert.ok(card);
+  assert.equal('coverageStartDate' in card.statementCoverage, false);
+  assert.equal(validated.accounts.find(a => a.accountKey === 'acc-daily')?.statementCoverage.coverageStartDate, '2025-01-01');
 });
 
 test('a money value that is not integer minor units is refused', () => {
-  assert.throws(
-    () => validateSnapshot(mutate(s => { s.transactions[0].amount.amount = -45.5; })),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
-  );
+  refusedAs(mutate(s => { s.transactions[0].amount.amount = 12.5; }), 'malformed', 'a fractional amount');
 });
 
 test('a currency that meta.currencies does not declare is refused', () => {
-  assert.throws(
-    () => validateSnapshot(mutate(s => { s.transactions[0].amount.currency = 'GBP'; })),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
-  );
+  refusedAs(mutate(s => { s.transactions[0].amount.currency = 'GBP'; }), 'invariant', 'an undeclared currency');
 });
 
 test('a reference to an account, category or counterparty that is not there is refused', () => {
-  for (const change of [
-    (s: any) => { s.transactions[0].accountKey = 'acc-nowhere'; },
-    (s: any) => { s.transactions[0].categoryId = 'cat-nowhere'; },
-    (s: any) => { s.transactions[0].counterpartyKey = 'cp-nowhere'; },
-  ]) {
-    assert.throws(
-      () => validateSnapshot(mutate(change)),
-      (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
-    );
-  }
+  refusedAs(mutate(s => { s.transactions[0].accountKey = 'acc-missing'; }), 'invariant', 'account');
+  refusedAs(mutate(s => { s.transactions[0].category.categoryId = 'cat-missing'; }), 'invariant', 'category');
+  refusedAs(mutate(s => { s.transactions[0].counterparty.counterpartyKey = 'cp-missing'; }), 'invariant', 'counterparty');
 });
 
-test('a newer contract major is refused as such', () => {
-  assert.throws(
-    () => validateSnapshot(mutate(s => { s.meta.contractVersion = '2.0.0'; })),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'contractMajor',
-  );
+test('a newer contract major is refused as such; an older one does not match the format', () => {
+  refusedAs(mutate(s => { s.meta.contractVersion = '2.0'; }), 'contractMajor', 'major 2');
+  refusedAs(mutate(s => { s.meta.contractVersion = '0.9'; }), 'unknown', 'major 0');
 });
 
 test('a file that is not a snapshot is malformed, and its detail never becomes the reason', () => {
@@ -117,139 +145,76 @@ test('a file that is not a snapshot is malformed, and its detail never becomes t
   if (!wrongShape.ok) assert.equal(wrongShape.reason, 'malformed');
 });
 
-test('a transaction class outside the frozen baseline is refused, so every class has a word', () => {
-  assert.throws(
-    () => validateSnapshot(mutate(s => { s.transactions[0].transactionClass = 'crypto_transfer'; })),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
-  );
+test('a transaction class outside the contract is refused, so every class has a word', () => {
+  refusedAs(mutate(s => { s.transactions[0].transactionClass = 'crypto_transfer'; }), 'malformed', 'an unknown class');
 });
 
-// ---------------------------------------------------------------------------
-// A1-relevant frozen-r003 validation (011 §7 T2.1–T2.5; r004 §8.11 item 11).
-// Each refusal is an internal inconsistency of the file and carries the
-// `invariant` reason, so the screen says the existing sentence and nothing new.
-// ---------------------------------------------------------------------------
-
-function refusedAsInvariant(raw: unknown, label: string): void {
-  assert.throws(
-    () => validateSnapshot(raw),
-    (error: unknown) => error instanceof SnapshotValidationError && error.reason === 'invariant',
-    label,
-  );
-}
+test('excluded data crossing the boundary makes the file unreadable, not merely inconsistent (03 §13.8)', () => {
+  refusedAs(mutate(s => { s.accounts[0].iban = 'NL00TEST0000000000'; }), 'unknown', 'a forbidden key');
+  refusedAs(mutate(s => { s.transactions[0].evidenceText = 'Paid to NL91ABNA0417164300 yesterday'; }), 'unknown', 'an IBAN in evidence');
+});
 
 test('T2.1 — generatedAt must be RFC 3339 UTC; a local-offset or offset-less instant is refused', () => {
-  for (const generatedAt of [
-    '2026-03-05T06:00:00+02:00',
-    '2026-03-05T06:00:00-00:00',
-    '2026-03-05T06:00:00',
-    '2026-03-05 06:00:00Z',
-    '2026-03-05',
-    'March 5, 2026 06:00 UTC',
-  ]) {
-    refusedAsInvariant(mutate(s => { s.meta.generatedAt = generatedAt; }), generatedAt);
-  }
-  for (const generatedAt of ['2026-03-05T06:00:00Z', '2026-03-05T06:00:00.250Z', '2026-03-05T06:00:00+00:00']) {
-    assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.meta.generatedAt = generatedAt; })), generatedAt);
-  }
-  // The date helper stays independently usable on any instant; the snapshot
-  // rule is the validator's, not the helper's.
-  assert.equal(utcCalendarDate('2026-03-01T23:30:00+02:00'), '2026-03-01');
+  refusedAs(mutate(s => { s.meta.generatedAt = '2026-03-05T06:00:00+01:00'; }), 'malformed', 'local offset');
+  refusedAs(mutate(s => { s.meta.generatedAt = '2026-03-05T06:00:00'; }), 'malformed', 'no offset');
+  assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.meta.generatedAt = '2026-03-05T06:00:00+00:00'; })));
 });
 
 test('T2.2 — a transaction in a currency other than its account\'s is an invalid file, not a multi-currency result', () => {
-  refusedAsInvariant(
+  refusedAs(
     mutate(s => {
       s.meta.currencies = ['EUR', 'USD'];
-      s.transactions[0].amount.currency = 'USD'; // on acc-daily, a EUR account
+      s.accounts.push({ ...s.accounts[1], accountKey: 'acc-x', name: 'X', displayIdentifier: 'US…0001', currency: 'USD', countsTowardAvailableFunds: false });
+      s.meta.counts.accounts += 1;
+      s.transactions[0].amount.currency = 'USD';
     }),
-    'USD on a EUR account',
+    'invariant',
+    'currency differs from the account',
   );
 });
 
-test('T2.3 — every money field of an account is in that account\'s currency', () => {
-  for (const change of [
-    (s: any) => { s.accounts[0].openingBalance.currency = 'USD'; },
-    (s: any) => { s.accounts[0].ledgerBalance.currency = 'USD'; },
-    (s: any) => { s.accounts[0].statementCoverage.closingBalance.currency = 'USD'; },
-    (s: any) => { s.accounts[0].reconciliation.ledgerBalanceAtCoverageDate.currency = 'USD'; },
-    (s: any) => { s.accounts[0].reconciliation.statementClosingBalance.currency = 'USD'; },
-    (s: any) => { s.accounts[0].reconciliation.difference.currency = 'USD'; },
-  ]) {
-    refusedAsInvariant(
-      mutate(s => {
-        s.meta.currencies = ['EUR', 'USD'];
-        change(s);
-      }),
-      change.toString(),
-    );
-  }
-});
-
-test('T2.4 — a categorised transaction carries provenance, and a rule names itself', () => {
-  // transactions[0] is categorised by rule-001.
-  for (const change of [
-    (s: any) => { s.transactions[0].categorisation = null; },
-    (s: any) => { s.transactions[0].categorisation = { source: 'none' }; },
-    (s: any) => { s.transactions[0].categorisation = { source: 'rule', ruleKey: null }; },
-    (s: any) => { s.transactions[0].categorisation = { source: 'rule', ruleKey: '' }; },
-    (s: any) => { s.transactions[0].categorisation = { source: 'rule' }; },
-  ]) {
-    refusedAsInvariant(mutate(change), change.toString());
-  }
-  // A manual decision needs no rule; a named rule is provenance.
-  assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'manual' }; })));
+test('T2.4 — a categorised transaction carries provenance, and a learned rule names itself (017 PC1)', () => {
+  refusedAs(mutate(s => { delete s.transactions[0].category.source; }), 'malformed', 'no source');
+  refusedAs(mutate(s => { s.transactions[0].category.source = 'rule'; }), 'malformed', 'an old token');
+  refusedAs(mutate(s => { delete s.transactions[0].category.ruleKey; }), 'malformed', 'a rule without its key');
+  refusedAs(mutate(s => { s.transactions[0].category.source = 'manual'; }), 'malformed', 'a manual decision carrying a rule key');
   assert.doesNotThrow(() =>
-    validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'rule', ruleKey: 'rule-002' }; })),
+    validateSnapshot(mutate(s => { s.transactions[0].category = { state: 'categorised', categoryId: 'cat-groceries', source: 'automatic' }; })),
   );
 });
 
 test('T2.5 — an internal transfer carrying a category or a canonical counterparty is refused', () => {
-  // transactions[7] is the internal transfer f01-t08.
-  assert.equal((readFixture('a1-result.json') as any).transactions[7].isInternalTransfer, true);
-  refusedAsInvariant(
-    mutate(s => {
-      s.transactions[7].categoryId = 'cat-groceries';
-      s.transactions[7].categorisation = { source: 'manual' };
-    }),
-    'transfer with a category',
+  const transferIndex = (s: any): number => s.transactions.findIndex((t: any) => t.internalTransfer !== undefined);
+  refusedAs(
+    mutate(s => { s.transactions[transferIndex(s)].category = { state: 'categorised', categoryId: 'cat-groceries', source: 'manual' }; }),
+    'invariant',
+    'a categorised transfer',
   );
-  refusedAsInvariant(mutate(s => { s.transactions[7].counterpartyKey = 'cp-superstore'; }), 'transfer with a counterparty');
+  refusedAs(
+    mutate(s => { s.transactions[transferIndex(s)].counterparty = { state: 'identified', counterpartyKey: 'cp-superstore' }; }),
+    'invariant',
+    'a transfer with a counterparty',
+  );
 });
 
-test('T3 — provenance is a required object, and an uncategorised transaction claims none', () => {
-  // transactions[4] is the cash withdrawal f01-t05: no category, no counterparty.
-  assert.equal((readFixture('a1-result.json') as any).transactions[4].categoryId, null);
-  for (const change of [
-    (s: any) => { s.transactions[4].categorisation = null; },
-    (s: any) => { delete s.transactions[4].categorisation; },
-    (s: any) => { s.transactions[4].categorisation = { source: 'manual' }; },
-    (s: any) => { s.transactions[4].categorisation = { source: 'rule', ruleKey: 'rule-001' }; },
-    (s: any) => { s.transactions[4].categorisation = { source: 'automatic' }; },
-  ]) {
-    refusedAsInvariant(mutate(change), change.toString());
-  }
-  assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.transactions[4].categorisation = { source: 'none' }; })));
-  assert.doesNotThrow(() =>
-    validateSnapshot(mutate(s => { s.transactions[4].categorisation = { source: 'none', ruleKey: null }; })),
+test('the three counterparty states are the contract\'s: a cash withdrawal never claims one (03 §13.14)', () => {
+  const cashIndex = (s: any): number => s.transactions.findIndex((t: any) => t.transactionClass === 'cash_withdrawal');
+  refusedAs(
+    mutate(s => { s.transactions[cashIndex(s)].counterparty = { state: 'unresolved' }; s.meta.counts.unresolvedCounterparties += 1; s.meta.counts.counterpartyNotApplicable -= 1; }),
+    'invariant',
+    'a cash withdrawal awaiting a counterparty',
   );
-  // The categorised cases of T2.4 still hold beside the reverse direction.
-  assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'manual' }; })));
-  assert.doesNotThrow(() =>
-    validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'rule', ruleKey: 'rule-002' }; })),
-  );
-  refusedAsInvariant(mutate(s => { s.transactions[0].categorisation = { source: 'none' }; }), 'categorised as none');
+  refusedAs(mutate(s => { s.transactions[0].counterparty = { state: 'pending' }; }), 'malformed', 'a fourth state');
 });
 
-test('T3 — every intended valid fixture carries provenance on every transaction', () => {
+test('every intended valid fixture carries a category state on every transaction, and a transfer carries none', () => {
   for (const name of VALID) {
     const snapshot = validateSnapshot(readFixture(name));
     for (const transaction of snapshot.transactions) {
-      assert.equal(typeof transaction.categorisation, 'object', `${name}: ${transaction.transactionKey}`);
-      if (transaction.categoryId === null) {
-        assert.equal(transaction.categorisation.source, 'none', `${name}: ${transaction.transactionKey}`);
-      } else {
-        assert.ok(['manual', 'rule'].includes(transaction.categorisation.source), `${name}: ${transaction.transactionKey}`);
+      assert.ok(['categorised', 'uncategorised', 'not_applicable'].includes(transaction.category.state), `${name}: ${transaction.transactionKey}`);
+      assert.equal(transaction.category.state === 'not_applicable', transaction.internalTransfer !== undefined, `${name}: ${transaction.transactionKey}`);
+      if (transaction.category.state === 'categorised') {
+        assert.equal(transaction.category.source === 'learned_rule', typeof transaction.category.ruleKey === 'string');
       }
     }
   }

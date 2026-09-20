@@ -1,7 +1,7 @@
 {
   "meta": {
     "contractVersion": "1.0",
-    "snapshotId": "snap-a1-unsupported-multicurrency",
+    "snapshotId": "snap-a1-unknown-start",
     "generatedAt": "2026-03-05T06:00:00Z",
     "budgetKey": "budget-synthetic",
     "producer": {
@@ -10,23 +10,22 @@
       "commitSha": "0000000000000000000000000000000000000000"
     },
     "currencies": [
-      "EUR",
-      "USD"
+      "EUR"
     ],
     "coverage": {
-      "reliabilityBoundary": "2026-03-04",
+      "reliabilityBoundary": "2026-02-28",
       "reliabilityBoundaryBasis": [
-        "acc-daily"
+        "acc-card"
       ]
     },
     "counts": {
       "accounts": 2,
-      "transactions": 3,
+      "transactions": 4,
       "counterparties": 5,
       "categories": 3,
-      "uncategorisedTransactions": 1,
+      "uncategorisedTransactions": 0,
       "unresolvedCounterparties": 0,
-      "counterpartyNotApplicable": 1,
+      "counterpartyNotApplicable": 0,
       "expectedOccurrences": 0
     }
   },
@@ -66,37 +65,20 @@
       }
     },
     {
-      "accountKey": "acc-usd",
-      "name": "Dollar account",
+      "accountKey": "acc-card",
+      "name": "Card account",
       "type": "current",
-      "displayIdentifier": "US…4417",
-      "countsTowardAvailableFunds": false,
-      "currency": "USD",
+      "displayIdentifier": "NL…1142",
+      "countsTowardAvailableFunds": true,
+      "currency": "EUR",
       "statementCoverage": {
-        "coverageStartDate": "2025-01-01",
-        "lastStatementDate": "2026-03-04",
-        "bankClosingBalance": {
-          "amount": 120000,
-          "currency": "USD"
-        }
+        "lastStatementDate": "2026-02-28"
       },
       "absoluteBalance": {
-        "state": "known",
-        "amount": {
-          "amount": 120000,
-          "currency": "USD"
-        }
+        "state": "unknown"
       },
       "reconciliation": {
-        "state": "agrees",
-        "ledgerBalanceAtCoverageDate": {
-          "amount": 120000,
-          "currency": "USD"
-        },
-        "difference": {
-          "amount": 0,
-          "currency": "USD"
-        }
+        "state": "unavailable"
       }
     }
   ],
@@ -151,11 +133,11 @@
   ],
   "transactions": [
     {
-      "transactionKey": "f06-t01",
+      "transactionKey": "f11-t01",
       "accountKey": "acc-daily",
-      "bookingDate": "2026-02-05",
+      "bookingDate": "2026-02-03",
       "amount": {
-        "amount": -4000,
+        "amount": -4500,
         "currency": "EUR"
       },
       "transactionClass": "card_payment",
@@ -172,17 +154,57 @@
       "evidenceText": "Superstore, Amsterdam"
     },
     {
-      "transactionKey": "f06-t02",
-      "accountKey": "acc-usd",
-      "bookingDate": "2026-02-11",
+      "transactionKey": "f11-t02",
+      "accountKey": "acc-card",
+      "bookingDate": "2026-02-18",
       "amount": {
-        "amount": -7000,
-        "currency": "USD"
+        "amount": -1875,
+        "currency": "EUR"
       },
       "transactionClass": "card_payment",
       "counterparty": {
         "state": "identified",
-        "counterpartyKey": "cp-overseas"
+        "counterpartyKey": "cp-harbour"
+      },
+      "category": {
+        "state": "categorised",
+        "categoryId": "cat-eating",
+        "source": "automatic"
+      },
+      "evidenceText": "Harbour Café"
+    },
+    {
+      "transactionKey": "f11-t03",
+      "accountKey": "acc-card",
+      "bookingDate": "2026-02-21",
+      "amount": {
+        "amount": -3000,
+        "currency": "EUR"
+      },
+      "transactionClass": "card_payment",
+      "counterparty": {
+        "state": "identified",
+        "counterpartyKey": "cp-harbour"
+      },
+      "category": {
+        "state": "categorised",
+        "categoryId": "cat-eating",
+        "source": "manual"
+      },
+      "evidenceText": "Harbour Café"
+    },
+    {
+      "transactionKey": "f11-p01",
+      "accountKey": "acc-daily",
+      "bookingDate": "2026-01-06",
+      "amount": {
+        "amount": -5000,
+        "currency": "EUR"
+      },
+      "transactionClass": "card_payment",
+      "counterparty": {
+        "state": "identified",
+        "counterpartyKey": "cp-superstore"
       },
       "category": {
         "state": "categorised",
@@ -190,24 +212,7 @@
         "source": "learned_rule",
         "ruleKey": "rule-001"
       },
-      "evidenceText": "Overseas Supplies"
-    },
-    {
-      "transactionKey": "f06-t03",
-      "accountKey": "acc-daily",
-      "bookingDate": "2026-02-19",
-      "amount": {
-        "amount": -2500,
-        "currency": "EUR"
-      },
-      "transactionClass": "cash_withdrawal",
-      "counterparty": {
-        "state": "not_applicable"
-      },
-      "category": {
-        "state": "uncategorised"
-      },
-      "evidenceText": "Cash withdrawal"
+      "evidenceText": "Superstore, Amsterdam"
     }
   ],
   "categoryPlans": [],
@@ -221,7 +226,8 @@
     "horizonEnd": "2027-03-04",
     "currency": "EUR",
     "basisAccountKeys": [
-      "acc-daily"
+      "acc-daily",
+      "acc-card"
     ],
     "openingPosition": {
       "amount": 250000,

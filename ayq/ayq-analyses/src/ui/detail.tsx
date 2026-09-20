@@ -5,12 +5,13 @@ import { formatDate } from '../format.js';
 import { formatMoney } from '../money.js';
 import { useLocale, useText } from './text.js';
 import type { StringKey } from '../strings.js';
-import type {
-  AnalysisResult,
-  CategorisationSource,
-  Contribution,
-  ExclusionClass,
-  TransactionClass,
+import {
+  categorisationSourceOf,
+  type AnalysisResult,
+  type CategorisationSource,
+  type Contribution,
+  type ExclusionClass,
+  type TransactionClass,
 } from '../types.js';
 
 const CLASS_KEYS: Record<TransactionClass, StringKey> = {
@@ -23,12 +24,15 @@ const CLASS_KEYS: Record<TransactionClass, StringKey> = {
 };
 
 /**
- * Exactly three mappings (r05 §9, T3). A validated snapshot carries one of
- * these on every transaction, so there is no fourth case and no fallback.
+ * Exactly four mappings (r05 §9, T3; 017 PC1): the three sources of a set
+ * category the contract admits, and none. A validated snapshot carries one of
+ * these on every contributing transaction, so there is no fifth case and no
+ * fallback.
  */
 const PROVENANCE_KEYS: Record<CategorisationSource, StringKey> = {
   manual: 'evidence.provenance.manual',
-  rule: 'evidence.provenance.rule',
+  learned_rule: 'evidence.provenance.learned_rule',
+  automatic: 'evidence.provenance.automatic',
   none: 'evidence.provenance.none',
 };
 
@@ -57,7 +61,7 @@ function ContributionRow({ contribution, result }: { contribution: Contribution;
   const locale = useLocale();
   const { transaction } = contribution;
 
-  const provenanceKey = PROVENANCE_KEYS[transaction.categorisation.source];
+  const provenanceKey = PROVENANCE_KEYS[categorisationSourceOf(transaction)];
 
   return (
     <li className="detail-row">
@@ -69,7 +73,7 @@ function ContributionRow({ contribution, result }: { contribution: Contribution;
         <span>{t(CLASS_KEYS[transaction.transactionClass as TransactionClass] ?? 'class.other')}</span>
       </div>
       <div className="detail-row-evidence">
-        {transaction.evidenceText !== null && (
+        {transaction.evidenceText !== '' && (
           <p>
             <span className="label">{t('evidence.text')}</span> {transaction.evidenceText}
           </p>

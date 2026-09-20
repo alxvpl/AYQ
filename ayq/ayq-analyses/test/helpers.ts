@@ -1,5 +1,9 @@
 // Shared synthetic material for the A1 regression matrix. Every value is
 // invented; no real banking data may appear in this directory.
+//
+// The builders speak the executable contract 1.0 (ayq/ayq-analytical-contract)
+// and what they build validates under it, so a test that constructs a
+// snapshot here exercises the same shape the producer writes.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +15,7 @@ import type {
   Category,
   Counterparty,
   Transaction,
+  TransactionClass,
 } from '../src/types.js';
 
 export const FIXTURE_DIRECTORY = join(process.cwd(), 'test', 'fixtures', 'a1');
@@ -24,8 +29,8 @@ export function loadFixture(name: string): AyqAnalyticalSnapshot {
 }
 
 export const CATEGORIES: Category[] = [
-  { categoryId: 'cat-groceries', name: 'Groceries', categoryGroupId: null },
-  { categoryId: 'cat-utilities', name: 'Utilities', categoryGroupId: null },
+  { categoryId: 'cat-groceries', name: 'Groceries', categoryGroupId: 'grp-daily' },
+  { categoryId: 'cat-utilities', name: 'Utilities', categoryGroupId: 'grp-daily' },
 ];
 
 export const COUNTERPARTIES: Counterparty[] = [
@@ -39,33 +44,43 @@ export interface AccountSpec {
   name?: string;
   currency?: string;
   counts?: boolean;
-  from: string;
+  /** The proven coverage start; `null` is UNKNOWN_START (03 §8.7). */
+  from: string | null;
   to: string;
   ledger?: number;
   statement?: number;
+  /** The bank stated no closing balance at the coverage date. */
+  reconciliation?: 'unavailable';
 }
+
+let identifierCounter = 0;
 
 export function account(spec: AccountSpec): Account {
   const currency = spec.currency ?? 'EUR';
   const ledger = spec.ledger ?? 100000;
   const statement = spec.statement ?? ledger;
+  identifierCounter += 1;
+  const unavailable = spec.reconciliation === 'unavailable';
   return {
     accountKey: spec.key,
     name: spec.name ?? spec.key,
     type: 'current',
-    displayIdentifier: null,
+    displayIdentifier: `NL…${String(identifierCounter).padStart(4, '0')}`,
     countsTowardAvailableFunds: spec.counts ?? true,
     currency,
-    openingDate: spec.from,
-    openingBalance: { amount: 0, currency },
-    ledgerBalance: { amount: ledger, currency },
-    statementCoverage: { lastStatementDate: spec.to, closingBalance: { amount: statement, currency } },
-    reconciliation: {
-      state: statement - ledger === 0 ? 'agrees' : 'differs',
-      ledgerBalanceAtCoverageDate: { amount: ledger, currency },
-      statementClosingBalance: { amount: statement, currency },
-      difference: { amount: statement - ledger, currency },
+    statementCoverage: {
+      ...(spec.from === null ? {} : { coverageStartDate: spec.from }),
+      lastStatementDate: spec.to,
+      ...(unavailable ? {} : { bankClosingBalance: { amount: statement, currency } }),
     },
+    absoluteBalance: { state: 'known', amount: { amount: ledger, currency } },
+    reconciliation: unavailable
+      ? { state: 'unavailable' }
+      : {
+          state: statement - ledger === 0 ? 'agrees' : 'differs',
+          ledgerBalanceAtCoverageDate: { amount: ledger, currency },
+          difference: { amount: statement - ledger, currency },
+        },
   };
 }
 
@@ -75,60 +90,81 @@ export interface TransactionSpec {
   date: string;
   amount: number;
   currency?: string;
-  class?: string;
+  class?: TransactionClass;
+  /** `null` is no canonical counterparty: unresolved, or not applicable for a cash withdrawal. */
   counterparty?: string | null;
+  /** `null` is uncategorised. */
   category?: string | null;
+  /** The provenance of a set category; a learned rule names itself. */
+  source?: 'manual' | 'learned_rule' | 'automatic';
   transfer?: boolean;
+  /** The other side of an internal transfer; defaults to `acc-b`. */
+  counterAccount?: string;
+  pairKey?: string;
   reversalOf?: string;
 }
 
 export function transaction(spec: TransactionSpec): Transaction {
   const currency = spec.currency ?? 'EUR';
+  const transactionClass = spec.class ?? 'card_payment';
   // An internal transfer carries neither a category nor a canonical
-  // counterparty (r003 I7), so the helper never invents one for it.
+  // counterparty (03 §13.14, 017 PC2), so the helper never invents one for it.
   const transfer = spec.transfer ?? false;
   const counterpartyKey = transfer ? null : spec.counterparty === undefined ? 'cp-a' : spec.counterparty;
   const categoryId = transfer ? null : spec.category === undefined ? 'cat-groceries' : spec.category;
+  const source = spec.source ?? 'learned_rule';
+
+  const counterparty: Transaction['counterparty'] =
+    transfer || transactionClass === 'cash_withdrawal'
+      ? { state: 'not_applicable' }
+      : counterpartyKey === null
+        ? { state: 'unresolved' }
+        : { state: 'identified', counterpartyKey };
+  const category: Transaction['category'] = transfer
+    ? { state: 'not_applicable' }
+    : categoryId === null
+      ? { state: 'uncategorised' }
+      : { state: 'categorised', categoryId, source, ...(source === 'learned_rule' ? { ruleKey: 'rule-1' } : {}) };
+
   return {
     transactionKey: spec.key,
     accountKey: spec.account ?? 'acc-a',
     bookingDate: spec.date,
-    valueDate: spec.date,
     amount: { amount: spec.amount, currency },
-    transactionClass: spec.class ?? 'card_payment',
-    counterpartyKey,
-    categoryId,
-    categorisation: categoryId === null ? { source: 'none' } : { source: 'rule', ruleKey: 'rule-1' },
-    isInternalTransfer: transfer,
-    internalTransferPairKey: null,
-    counterAccountKey: null,
-    isReversal: spec.reversalOf !== undefined,
-    reversalOfTransactionKey: spec.reversalOf ?? null,
+    transactionClass,
+    counterparty,
+    category,
+    ...(transfer
+      ? { internalTransfer: { pairKey: spec.pairKey ?? `pair-${spec.key}`, counterAccountKey: spec.counterAccount ?? 'acc-b' } }
+      : {}),
+    ...(spec.reversalOf === undefined ? {} : { reversal: { originalTransactionKey: spec.reversalOf } }),
     evidenceText: 'Synthetic evidence',
   };
 }
 
 export interface SnapshotSpec {
   generatedAt?: string;
-  currencies?: string[];
   accounts: Account[];
   transactions: Transaction[];
 }
 
 export function snapshot(spec: SnapshotSpec): AyqAnalyticalSnapshot {
-  const currencies = spec.currencies ?? ['EUR'];
+  const currencies = [...new Set(spec.accounts.map(x => x.currency))];
   const funds = spec.accounts.filter(x => x.countsTowardAvailableFunds);
-  const boundary = funds.map(x => x.statementCoverage.lastStatementDate).sort()[0] ?? '2026-01-01';
+  const boundary = funds.map(x => x.statementCoverage.lastStatementDate).sort()[0];
+  const generatedAt = spec.generatedAt ?? '2026-03-05T06:00:00Z';
+  const asOfDate = generatedAt.slice(0, 10);
+  const nonTransfer = spec.transactions.filter(x => x.internalTransfer === undefined);
   return {
     meta: {
-      contractVersion: '1.3.0',
+      contractVersion: '1.0',
       snapshotId: 'snap-test',
-      generatedAt: spec.generatedAt ?? '2026-03-05T06:00:00Z',
+      generatedAt,
       budgetKey: 'budget-test',
       producer: { productVersion: '0.0.0', buildNumber: 0, commitSha: 'x'.repeat(40) },
       currencies,
       coverage: {
-        reliabilityBoundary: boundary,
+        ...(boundary === undefined ? {} : { reliabilityBoundary: boundary }),
         reliabilityBoundaryBasis: funds
           .filter(x => x.statementCoverage.lastStatementDate === boundary)
           .map(x => x.accountKey),
@@ -138,34 +174,30 @@ export function snapshot(spec: SnapshotSpec): AyqAnalyticalSnapshot {
         transactions: spec.transactions.length,
         counterparties: COUNTERPARTIES.length,
         categories: CATEGORIES.length,
-        uncategorisedTransactions: spec.transactions.filter(x => x.categoryId === null).length,
-        unresolvedCounterparties: spec.transactions.filter(
-          x => x.counterpartyKey === null && x.transactionClass !== 'cash_withdrawal',
-        ).length,
-        counterpartyNotApplicable: spec.transactions.filter(
-          x => x.counterpartyKey === null && x.transactionClass === 'cash_withdrawal',
-        ).length,
         expectedOccurrences: 0,
+        uncategorisedTransactions: spec.transactions.filter(x => x.category.state === 'uncategorised').length,
+        unresolvedCounterparties: nonTransfer.filter(x => x.counterparty.state === 'unresolved').length,
+        counterpartyNotApplicable: nonTransfer.filter(x => x.counterparty.state === 'not_applicable').length,
       },
     },
     accounts: spec.accounts,
     counterparties: COUNTERPARTIES,
-    categoryGroups: [],
+    categoryGroups: [{ categoryGroupId: 'grp-daily', name: 'Daily living' }],
     categories: CATEGORIES,
     transactions: spec.transactions,
     categoryPlans: [],
     expectationRecords: [],
     expectedOccurrences: [],
     forecast: {
+      state: 'available',
       kind: 'canonical_ayq_forecast',
-      asOfDate: '2026-03-05',
+      asOfDate,
       horizonMonths: 12,
-      horizonEnd: '2027-03-05',
-      currency: currencies[0],
+      horizonEnd: `${Number(asOfDate.slice(0, 4)) + 1}${asOfDate.slice(4)}`,
+      currency: currencies[0] ?? 'EUR',
       basisAccountKeys: funds.map(x => x.accountKey),
-      openingPosition: { amount: 100000, currency: currencies[0] },
+      openingPosition: { amount: 100000, currency: currencies[0] ?? 'EUR' },
       series: [],
-      unavailableReason: null,
     },
   };
 }

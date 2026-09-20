@@ -35,11 +35,32 @@ export function compareKeys(a: string, b: string): number {
 }
 
 const UNCATEGORISED = Symbol.for('ayq.analyses.uncategorised');
+/** A transfer's category state. Never part of a selection (017 PC2). */
+const NOT_APPLICABLE = Symbol.for('ayq.analyses.category-not-applicable');
 
-type CategoryToken = string | typeof UNCATEGORISED;
+type CategoryToken = string | typeof UNCATEGORISED | typeof NOT_APPLICABLE;
 
-function categoryToken(categoryId: string | null): CategoryToken {
+function selectionToken(categoryId: string | null): CategoryToken {
   return categoryId === null ? UNCATEGORISED : categoryId;
+}
+
+/**
+ * The category filter tests the transaction's own category state (017 PC2):
+ * Uncategorised selects exactly `uncategorised`; `not_applicable` — an
+ * internal transfer — is selected by nothing, and contributes nothing anyway.
+ */
+function categoryToken(transaction: Transaction): CategoryToken {
+  const category = transaction.category;
+  if (category.state === 'categorised') return category.categoryId;
+  return category.state === 'uncategorised' ? UNCATEGORISED : NOT_APPLICABLE;
+}
+
+function categoryIdOf(transaction: Transaction): string | null {
+  return transaction.category.state === 'categorised' ? transaction.category.categoryId : null;
+}
+
+function originalKeyOf(transaction: Transaction): string | null {
+  return transaction.reversal === undefined ? null : transaction.reversal.originalTransactionKey;
 }
 
 /**
@@ -65,14 +86,14 @@ export function moneyOutContribution(
   original: Transaction | null,
 ): bigint {
   // 1. an internal transfer is a movement of the owner's own money.
-  if (transaction.isInternalTransfer) return 0n;
+  if (transaction.internalTransfer !== undefined) return 0n;
 
   const amount = exactMinor(transaction.amount);
 
-  if (transaction.isReversal) {
+  if (transaction.reversal !== undefined) {
     if (original === null) return 0n;
     // 5. a reversal of something that was not money-out is not money-out.
-    if (original.isInternalTransfer || exactMinor(original.amount) >= 0n) return 0n;
+    if (original.internalTransfer !== undefined || exactMinor(original.amount) >= 0n) return 0n;
     // 4. a reversal of money-out reduces that counterparty's spend.
     return -absolute(amount);
   }
@@ -83,14 +104,16 @@ export function moneyOutContribution(
 
 /**
  * A contributing transaction with no canonical counterparty is classified
- * rather than shown as a `(none)` row (r003 §7).
+ * rather than shown as a `(none)` row (r003 §7). The class is the snapshot's
+ * own counterparty state (03 §13.14): no counterparty by nature, or expected
+ * and unresolved. Nothing here re-derives it from the transaction class.
  */
 export function subjectOf(transaction: Transaction): ContributionSubject {
-  if (transaction.counterpartyKey !== null) {
-    return { kind: 'counterparty', counterpartyKey: transaction.counterpartyKey };
+  const counterparty = transaction.counterparty;
+  if (counterparty.state === 'identified') {
+    return { kind: 'counterparty', counterpartyKey: counterparty.counterpartyKey };
   }
-  const exclusion: ExclusionClass =
-    transaction.transactionClass === 'cash_withdrawal' ? 'notApplicable' : 'notIdentified';
+  const exclusion: ExclusionClass = counterparty.state === 'not_applicable' ? 'notApplicable' : 'notIdentified';
   return { kind: 'excluded', exclusion };
 }
 
@@ -113,7 +136,7 @@ function buildContributions(input: PopulationInput): Contribution[] {
   const inPeriod = (date: IsoDate): boolean =>
     compareDates(date, period.fromDate) >= 0 && compareDates(date, period.toDate) <= 0;
   const inAccounts = (transaction: Transaction): boolean => accountKeys.has(transaction.accountKey);
-  const inCategories = (transaction: Transaction): boolean => categories.has(categoryToken(transaction.categoryId));
+  const inCategories = (transaction: Transaction): boolean => categories.has(categoryToken(transaction));
 
   const contributions: Contribution[] = [];
 
@@ -121,10 +144,8 @@ function buildContributions(input: PopulationInput): Contribution[] {
     // The filtering order is fixed: references resolve against the full
     // snapshot first, then the requested date, accounts and category filter
     // apply to the transaction being filtered, then the contribution function.
-    const original =
-      transaction.reversalOfTransactionKey === null
-        ? null
-        : byKey.get(transaction.reversalOfTransactionKey) ?? null;
+    const originalKey = originalKeyOf(transaction);
+    const original = originalKey === null ? null : byKey.get(originalKey) ?? null;
 
     if (!inPeriod(transaction.bookingDate)) continue;
     if (!inAccounts(transaction)) continue;
@@ -136,10 +157,10 @@ function buildContributions(input: PopulationInput): Contribution[] {
     // A reversal is attributed to the counterparty of the transaction it
     // reverses, however that original is filtered; where the original has no
     // canonical counterparty, the reversal inherits its classification.
-    const subject = transaction.isReversal && original !== null ? subjectOf(original) : subjectOf(transaction);
+    const subject = original !== null ? subjectOf(original) : subjectOf(transaction);
 
     let outsideReason: OriginalOutsideReason | null = null;
-    if (transaction.isReversal && original !== null) {
+    if (original !== null) {
       const reasons: OriginalOutsideReason[] = [];
       if (!inPeriod(original.bookingDate)) reasons.push('period');
       if (!inAccounts(original)) reasons.push('accounts');
@@ -154,19 +175,19 @@ function buildContributions(input: PopulationInput): Contribution[] {
       subject,
       transaction,
       accountName: nameOfAccount(transaction.accountKey),
-      categoryName: nameOfCategory(transaction.categoryId),
+      categoryName: nameOfCategory(categoryIdOf(transaction)),
       original:
-        transaction.isReversal && original !== null
+        original !== null
           ? {
               transaction: original,
               moneyOutMinor: moneyOutContribution(
                 original,
-                original.reversalOfTransactionKey === null
-                  ? null
-                  : byKey.get(original.reversalOfTransactionKey) ?? null,
+                originalKeyOf(original) === null ? null : byKey.get(originalKeyOf(original)!) ?? null,
               ),
               counterpartyName:
-                original.counterpartyKey === null ? null : counterpartyNames.get(original.counterpartyKey) ?? null,
+                original.counterparty.state === 'identified'
+                  ? counterpartyNames.get(original.counterparty.counterpartyKey) ?? null
+                  : null,
               outsideReason,
             }
           : null,
@@ -185,6 +206,13 @@ function populationCurrencies(contributions: readonly Contribution[]): Currency[
 /**
  * Coverage is an interval derived from the selected analytical scope. The
  * global Forecast reliability boundary is never used for this (r003 §6.4).
+ *
+ * An account without a proven coverage start (UNKNOWN_START, 03 §8.7) has an
+ * end and no beginning. It names no start limit, and Insufficient is concluded
+ * from the end side only: the requested period lies entirely after every
+ * selected account's last statement date, where no data can exist whatever
+ * the start is (010 §3). A period that merely reaches back before an unproven
+ * start is a Result or an empty population, qualified by `unknownStartAccountKeys`.
  */
 export function coverageFor(accounts: readonly Account[], period: Period): CoverageFacts {
   const intervals: AccountCoverageInterval[] = accounts
@@ -192,10 +220,11 @@ export function coverageFor(accounts: readonly Account[], period: Period): Cover
       accountKey: account.accountKey,
       name: account.name,
       displayIdentifier: account.displayIdentifier,
-      openingDate: account.openingDate,
+      coverageStartDate: account.statementCoverage.coverageStartDate ?? null,
       lastStatementDate: account.statementCoverage.lastStatementDate,
     }))
     .sort((a, b) => compareKeys(a.name, b.name) || compareKeys(a.accountKey, b.accountKey));
+  const unknownStartAccountKeys = intervals.filter(x => x.coverageStartDate === null).map(x => x.accountKey);
 
   if (intervals.length === 0) {
     return {
@@ -206,20 +235,18 @@ export function coverageFor(accounts: readonly Account[], period: Period): Cover
       startLimit: null,
       endLimit: null,
       coveredThrough: null,
+      unknownStartAccountKeys,
     };
   }
 
-  const coveredStart = intervals.reduce((latest, x) => (x.openingDate > latest ? x.openingDate : latest), intervals[0].openingDate);
   const coveredEnd = intervals.reduce(
     (earliest, x) => (x.lastStatementDate < earliest ? x.lastStatementDate : earliest),
     intervals[0].lastStatementDate,
   );
 
-  const intersectsAny = intervals.some(
-    x => compareDates(x.openingDate, period.toDate) <= 0 && compareDates(x.lastStatementDate, period.fromDate) >= 0,
-  );
+  const reachesAny = intervals.some(x => compareDates(x.lastStatementDate, period.fromDate) >= 0);
 
-  if (!intersectsAny) {
+  if (!reachesAny) {
     return {
       fromDate: period.fromDate,
       toDate: period.toDate,
@@ -228,13 +255,19 @@ export function coverageFor(accounts: readonly Account[], period: Period): Cover
       startLimit: null,
       endLimit: null,
       coveredThrough: coveredEnd,
+      unknownStartAccountKeys,
     };
   }
 
-  const startLimited = compareDates(coveredStart, period.fromDate) > 0;
+  // The covered start is the latest proven start among the accounts that
+  // have one; an account without one has no start to set a limit with.
+  const provenStarts = intervals.map(x => x.coverageStartDate).filter((x): x is IsoDate => x !== null);
+  const coveredStart = provenStarts.length === 0 ? null : provenStarts.reduce((latest, x) => (x > latest ? x : latest));
+
+  const startLimited = coveredStart !== null && compareDates(coveredStart, period.fromDate) > 0;
   const endLimited = compareDates(coveredEnd, period.toDate) < 0;
 
-  const limitAt = (date: IsoDate, pick: (x: AccountCoverageInterval) => IsoDate): CoverageLimit => ({
+  const limitAt = (date: IsoDate, pick: (x: AccountCoverageInterval) => IsoDate | null): CoverageLimit => ({
     date,
     accountKeys: intervals.filter(x => pick(x) === date).map(x => x.accountKey),
   });
@@ -244,9 +277,10 @@ export function coverageFor(accounts: readonly Account[], period: Period): Cover
     toDate: period.toDate,
     accounts: intervals,
     status: startLimited || endLimited ? 'limited' : 'full',
-    startLimit: startLimited ? limitAt(coveredStart, x => x.openingDate) : null,
+    startLimit: startLimited ? limitAt(coveredStart, x => x.coverageStartDate) : null,
     endLimit: endLimited ? limitAt(coveredEnd, x => x.lastStatementDate) : null,
     coveredThrough: coveredEnd,
+    unknownStartAccountKeys,
   };
 }
 
@@ -322,15 +356,21 @@ function buildExclusions(
 }
 
 function reconciliationFacts(accounts: readonly Account[]): ReconciliationFact[] {
-  return accounts.map(account => ({
-    accountKey: account.accountKey,
-    name: account.name,
-    displayIdentifier: account.displayIdentifier,
-    state: account.reconciliation.state,
-    differenceMinor: exactMinor(account.reconciliation.difference),
-    differenceMagnitudeMinor: absolute(exactMinor(account.reconciliation.difference)),
-    currency: account.reconciliation.difference.currency,
-  }));
+  return accounts.map(account => {
+    const reconciliation = account.reconciliation;
+    const identity = { accountKey: account.accountKey, name: account.name, displayIdentifier: account.displayIdentifier };
+    // Unavailable is a real state (03 §13.3): the bank stated no closing
+    // balance at the coverage date, so there is nothing to compare with. It is
+    // never rendered as agreement, and never as a difference of nought.
+    if (reconciliation.state === 'unavailable') return { ...identity, state: 'unavailable' };
+    return {
+      ...identity,
+      state: reconciliation.state,
+      differenceMinor: exactMinor(reconciliation.difference),
+      differenceMagnitudeMinor: absolute(exactMinor(reconciliation.difference)),
+      currency: reconciliation.difference.currency,
+    };
+  });
 }
 
 export function analyse(snapshot: AyqAnalyticalSnapshot, context: AnalysisContext): AnalysisResult {
@@ -339,7 +379,7 @@ export function analyse(snapshot: AyqAnalyticalSnapshot, context: AnalysisContex
     .filter(account => selectedKeys.has(account.accountKey))
     .sort((a, b) => compareKeys(a.name, b.name) || compareKeys(a.accountKey, b.accountKey));
   const accountKeys = new Set(accounts.map(account => account.accountKey));
-  const categories = new Set<CategoryToken>(context.categoryKeys.map(categoryToken));
+  const categories = new Set<CategoryToken>(context.categoryKeys.map(selectionToken));
 
   const period: Period = { fromDate: context.fromDate, toDate: context.toDate };
   const coverage = coverageFor(accounts, period);
@@ -376,8 +416,12 @@ export function analyse(snapshot: AyqAnalyticalSnapshot, context: AnalysisContex
     });
     const comparisonCurrencies = populationCurrencies(comparisonContributions);
 
+    // A change figure over a period whose earlier part may be absent is not
+    // approximate but wrong (010 §3): one selected account without a proven
+    // start refuses the comparison, before any coverage or currency test.
     let unavailable: ComparisonFacts['unavailable'] = null;
     if (comparisonCoverage.status === 'insufficient') unavailable = 'noData';
+    else if (comparisonCoverage.unknownStartAccountKeys.length > 0) unavailable = 'unknownStart';
     else if (comparisonCoverage.status === 'limited') unavailable = 'coverage';
     else if (comparisonCurrencies.length > 1) unavailable = 'currency';
     else if (comparisonCurrencies.length === 1 && currency !== null && comparisonCurrencies[0] !== currency) {

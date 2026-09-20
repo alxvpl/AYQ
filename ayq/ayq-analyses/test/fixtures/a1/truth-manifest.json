@@ -313,6 +313,85 @@
         "comparison": null,
         "snapshotCounters": { "counterpartyNotApplicable": 2, "unresolvedCounterparties": 3 }
       }
+    },
+    {
+      "id": "f11-default",
+      "fixture": "a1-unknown-start.json",
+      "description": "A Result over one proven-start account and one UNKNOWN_START account: the figure stands, qualified; the comparison is refused for the unproven start; the card account's reconciliation is unavailable, not agreement.",
+      "context": {
+        "fromDate": "2026-02-01",
+        "toDate": "2026-02-28",
+        "comparison": "previous",
+        "accounts": "all",
+        "categories": "all"
+      },
+      "expected": {
+        "state": "result",
+        "coverage": "full",
+        "currency": "EUR",
+        "totalMinor": 9375,
+        "counterparties": [
+          { "counterpartyKey": "cp-superstore", "displayName": "Superstore", "transactionCount": 1, "moneyOutMinor": 4500 },
+          { "counterpartyKey": "cp-harbour", "displayName": "Harbour Café", "transactionCount": 2, "moneyOutMinor": 4875 }
+        ],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": {
+          "fromDate": "2026-01-01",
+          "toDate": "2026-01-31",
+          "totalMinor": null,
+          "deltaMinor": null,
+          "unavailable": "unknownStart"
+        },
+        "unknownStartAccountKeys": ["acc-card"],
+        "reconciliation": [
+          { "accountKey": "acc-card", "state": "unavailable", "differenceMinor": null },
+          { "accountKey": "acc-daily", "state": "agrees", "differenceMinor": 0 }
+        ]
+      }
+    },
+    {
+      "id": "f11-card-before-coverage",
+      "fixture": "a1-unknown-start.json",
+      "description": "A period that merely reaches back before an unproven start is not Insufficient: it is the empty form, qualified by the account whose start is not established.",
+      "context": {
+        "fromDate": "2025-12-01",
+        "toDate": "2025-12-31",
+        "comparison": "none",
+        "accounts": ["acc-card"],
+        "categories": "all"
+      },
+      "expected": {
+        "state": "empty",
+        "coverage": "full",
+        "currency": null,
+        "totalMinor": null,
+        "counterparties": [],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null,
+        "unknownStartAccountKeys": ["acc-card"]
+      }
+    },
+    {
+      "id": "f11-card-after-coverage",
+      "fixture": "a1-unknown-start.json",
+      "description": "Insufficient is concluded from the end side only: the requested period lies entirely after the card account's last statement date.",
+      "context": {
+        "fromDate": "2026-03-01",
+        "toDate": "2026-03-31",
+        "comparison": "none",
+        "accounts": ["acc-card"],
+        "categories": "all"
+      },
+      "expected": {
+        "state": "insufficient",
+        "coverage": "insufficient",
+        "currency": null,
+        "totalMinor": null,
+        "counterparties": [],
+        "exclusions": { "notApplicable": null, "notIdentified": null },
+        "comparison": null,
+        "unknownStartAccountKeys": ["acc-card"]
+      }
     }
   ]
 }
