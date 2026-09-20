@@ -7,7 +7,7 @@
 // or figure enters this repository, CI or any artifact.
 
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -21,6 +21,7 @@ import {
 } from '../../ayq-analytical-contract/src/index.ts';
 import type { AyqSnapshotExport } from '../../ayq-client/src/ayq-ipc-contract.ts';
 import { ayqProvenIntervals } from '../src/ayq-evidence.ts';
+import { ayqSnapshotEvidence } from '../src/ayq-snapshot.ts';
 import { ayqReadStore } from '../src/ayq-store.ts';
 import { ask, budget, fixture, ownAccountFixture, send } from './ayq-engine-harness.ts';
 
@@ -292,4 +293,47 @@ test('an export that cannot be written answers with an error and leaves nothing 
   assert.equal(answer.ok, false);
   assert.equal(existsSync(impossible), false);
   assert.equal(existsSync(join(summary.path, 'inner')), false);
+});
+
+test('the evidence text withholds a full IBAN however the bank spaced it, as the contract checks it (03 §13.8)', () => {
+  // Invented identifiers, in the spaced form a statement prints and the
+  // unspaced form a resolver folds them to.
+  const spaced = ayqSnapshotEvidence('Payment to NL91 ABNA 0417 1643 00 for rent');
+  const folded = ayqSnapshotEvidence('Payment to NL91ABNA0417164300 for rent');
+  const lower = ayqSnapshotEvidence('betaling nl91abna0417164300');
+  for (const text of [spaced, folded, lower]) {
+    assert.doesNotMatch(text.replace(/\s+/g, '').toUpperCase(), /[A-Z]{2}\d{2}[A-Z0-9]{11,30}/);
+    assert.ok(text.includes('…'), 'the identifier is withheld, not silently dropped');
+  }
+  assert.equal(spaced, 'Payment to … for rent');
+  // What is not an IBAN is left alone; a line break becomes a space; the
+  // bound is 256 code points.
+  assert.equal(ayqSnapshotEvidence('Superstore\nAmsterdam 2026'), 'Superstore Amsterdam 2026');
+  assert.equal([...ayqSnapshotEvidence('é'.repeat(300))].length, 256);
+  assert.equal(ayqSnapshotEvidence(null), '');
+});
+
+test('success is claimed only for a file that is there at the size written; the answer carries the exact path', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+
+  // The path is returned unchanged, and the file on disk is exactly the
+  // bytes the answer claims — read back, not assumed.
+  const path = join(dataDir, 'out', 'spaced folder', 'own name.json');
+  const summary = await ask(dataDir, { kind: 'snapshot.export', path, today: TODAY });
+  assert.equal(summary.path, path);
+  assert.equal(statSync(path).size, summary.bytes);
+  assert.deepEqual(await readdir(join(dataDir, 'out', 'spaced folder')), ['own name.json']);
+
+  // A target the engine cannot write to is a failure, and nothing is left
+  // behind — no file, no temporary file.
+  const blocked = join(dataDir, 'out', 'blocked');
+  mkdirSync(blocked, { recursive: true });
+  const asDirectory = join(blocked, 'snapshot.json');
+  mkdirSync(asDirectory);
+  const answer = await send({ id: 'snapshot-blocked', kind: 'snapshot.export', path: asDirectory, today: TODAY }, dataDir);
+  assert.equal(answer.ok, false);
+  assert.ok(!answer.ok && answer.message.length > 0, 'the failure says why');
+  assert.deepEqual(await readdir(blocked), ['snapshot.json'], 'no temporary file beside the target');
+  assert.ok(statSync(asDirectory).isDirectory(), 'the obstacle is untouched');
 });

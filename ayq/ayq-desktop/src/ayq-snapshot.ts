@@ -16,7 +16,7 @@
 // the owner sees in the Register — bounded and single-line.
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import api from '@actual-app/api';
@@ -100,13 +100,76 @@ function displayIdentifierOf(name: string): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * A full IBAN: two letters, two digits, then eleven to thirty more
+ * characters. The contract's leak check runs this over the text with every
+ * space removed, because a bank prints an IBAN in groups of four; so the
+ * withholding here looks at the same spaceless text and maps what it finds
+ * back onto the original, spaces and all.
+ */
+const IBAN_LIKE = /[A-Z]{2}\d{2}[A-Z0-9]{11,30}/;
+/** The shortest run the check would flag: where the withholding starts. */
+const IBAN_SHORTEST = /[A-Z]{2}\d{2}[A-Z0-9]{11}/;
+/** A printed IBAN group that may continue it: up to four characters with a digit. */
+const IBAN_GROUP = /^(?=.*\d)[A-Z0-9]{1,4}$/i;
+
+/**
+ * Withholds, word by word, whatever the contract's check would flag: the
+ * words that overlap the shortest flagged run in the spaceless text, and the
+ * printed groups that continue it, are replaced by one ellipsis, and the text
+ * is checked again until nothing is flagged. Word granularity, because the
+ * spaceless view has no word boundaries and a character-exact cut would leave
+ * fragments the check could still read; the shortest run, because the greedy
+ * one would swallow the words after the identifier.
+ */
+function withholdIbans(text: string): string {
+  let words = text.split(' ');
+  for (;;) {
+    // Each word's span in the spaceless view, in the same UTF-16 units the
+    // match index counts in.
+    const spans: Array<{ from: number; to: number }> = [];
+    let cursor = 0;
+    for (const word of words) {
+      spans.push({ from: cursor, to: cursor + word.length });
+      cursor += word.length;
+    }
+    const spaceless = words.join('').toUpperCase();
+    if (!IBAN_LIKE.test(spaceless)) return words.join(' ');
+    const match = IBAN_SHORTEST.exec(spaceless);
+    if (match === null) return words.join(' ');
+    const from = match.index;
+    const to = from + match[0].length;
+    const overlapping = new Set<number>();
+    spans.forEach((span, index) => {
+      if (span.from < to && span.to > from && span.to > span.from) overlapping.add(index);
+    });
+    let last = Math.max(...overlapping);
+    while (last + 1 < words.length && IBAN_GROUP.test(words[last + 1])) {
+      last += 1;
+      overlapping.add(last);
+    }
+    const next: string[] = [];
+    let replaced = false;
+    words.forEach((word, index) => {
+      if (!overlapping.has(index)) {
+        next.push(word);
+        replaced = false;
+      } else if (!replaced) {
+        next.push('…');
+        replaced = true;
+      }
+    });
+    words = next;
+  }
+}
+
 /** 256 code points, one line, and no obvious full IBAN (03 §13.8). */
-function boundedEvidence(text: string | null): string {
+export function ayqSnapshotEvidence(text: string | null): string {
   if (text === null) return '';
   const oneLine = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const points = [...oneLine];
-  const cut = points.length > 256 ? points.slice(0, 256).join('') : oneLine;
-  return cut.replace(/[A-Z]{2}\d{2}[A-Z0-9]{11,30}/gi, '…');
+  const withheld = withholdIbans(oneLine).replace(/\s+/g, ' ').trim();
+  const points = [...withheld];
+  return points.length > 256 ? points.slice(0, 256).join('') : withheld;
 }
 
 function scheduleOf(record: AyqPlannedRecord): Schedule {
@@ -330,7 +393,7 @@ export async function ayqBuildAnalyticalSnapshot(
       transactionClass,
       counterparty,
       category,
-      evidenceText: boundedEvidence(provenance?.counterpartyName ?? row.payee ?? row.imported_payee ?? null),
+      evidenceText: ayqSnapshotEvidence(provenance?.counterpartyName ?? row.payee ?? row.imported_payee ?? null),
     };
 
     if (counterAccountKey !== undefined) {
@@ -507,16 +570,41 @@ export async function ayqExportAnalyticalSnapshot(
 ): Promise<AyqSnapshotExport> {
   const snapshot = await ayqBuildAnalyticalSnapshot(dataDir, budgetId, today, about);
   const text = JSON.stringify(snapshot, null, 2);
+  const bytes = Buffer.byteLength(text, 'utf8');
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, text, 'utf8');
-  renameSync(temporary, path);
+  try {
+    writeFileSync(temporary, text, 'utf8');
+    renameSync(temporary, path);
+  } catch (error) {
+    // Whatever failed, the half-written file is not left beside the target.
+    rmSync(temporary, { force: true });
+    throw error;
+  }
+
+  // Success is claimed only for what can be shown: the file is read back from
+  // the path the owner chose, at the size that was written, and the temporary
+  // file is gone. A write that "returned" but left nothing there is a failure
+  // and says so.
+  let written: number;
+  try {
+    written = statSync(path).size;
+  } catch {
+    throw new Error(`The file was not there after writing it: ${path}`);
+  }
+  if (written !== bytes) {
+    throw new Error(`The file on disk is ${written} bytes where ${bytes} were written: ${path}`);
+  }
+  if (existsSync(temporary)) {
+    throw new Error(`The temporary file was not moved into place: ${temporary}`);
+  }
+
   return {
     path,
     generatedAt: snapshot.meta.generatedAt,
     accounts: snapshot.meta.counts.accounts,
     transactions: snapshot.meta.counts.transactions,
     counterparties: snapshot.meta.counts.counterparties,
-    bytes: Buffer.byteLength(text, 'utf8'),
+    bytes,
   };
 }

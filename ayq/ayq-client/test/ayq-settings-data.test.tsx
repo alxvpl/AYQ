@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { AyqSnapshotExport } from '../src/ayq-ipc-contract.ts';
-import { AyqSettingsData } from '../src/ayq-screens/ayq-settings-data.tsx';
+import { AyqSettingsData, ayqLocalDate } from '../src/ayq-screens/ayq-settings-data.tsx';
 import { AYQ_SETTINGS_TABS } from '../src/ayq-screens/ayq-settings.tsx';
 import { ayqText } from '../src/ayq-strings.ts';
 import { AyqGroundProvider } from '../src/ayq-ui/ayq-ground-provider.tsx';
@@ -113,6 +113,17 @@ test('a failed export is reported as a failure, in the catalogue’s words', asy
   assert.ok(failures[0].startsWith(ayqText('snapshot.failed', { reason: '' }).trim()));
   assert.ok(failures[0].includes('disk full (invented)'));
   assert.equal(window.dom.window.document.body.dataset.ayqSnapshotState, 'error');
+  // Said beside the button as well, where "Written:" would have stood: a
+  // failure is never a blank.
+  const said = window.container.querySelector('[data-ayq-snapshot="said"]')?.textContent ?? '';
+  assert.equal(said, failures[0]);
 
   await window.close();
+});
+
+test('the suggested name carries the local calendar date, not the UTC one', () => {
+  // 00:30 local on the 21st in a zone two hours ahead of UTC is still the 20th in UTC.
+  const late = new Date(2026, 8, 21, 0, 30);
+  assert.equal(ayqLocalDate(late), '2026-09-21');
+  assert.equal(ayqLocalDate(new Date(2026, 0, 5, 12)), '2026-01-05');
 });

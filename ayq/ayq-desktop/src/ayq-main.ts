@@ -265,9 +265,16 @@ async function pickSnapshotTarget(suggestedName: string): Promise<AyqSnapshotTar
     return { path: smokeTarget };
   }
 
+  // The offered location is AYQ's own local folder, never Documents: on a
+  // machine where Documents is a cloud-synced folder (OneDrive's known-folder
+  // move), a file offered there would be uploaded the moment it is written,
+  // and "stays on this computer" would be a lie by default. The owner may
+  // still choose anywhere.
+  const offered = join(app.getPath('userData'), 'exports');
+  mkdirSync(offered, { recursive: true });
   const chosen = await dialog.showSaveDialog({
     title: 'Export analytical snapshot',
-    defaultPath: join(app.getPath('documents'), suggestedName),
+    defaultPath: join(offered, suggestedName),
     filters: [
       { name: 'AYQ analytical snapshot', extensions: ['json'] },
       { name: 'All files', extensions: ['*'] },

@@ -40,6 +40,15 @@ const useStyles = makeStyles({
 });
 
 /**
+ * The calendar date here, not the UTC one: after 02:00 the UTC date is still
+ * yesterday's, and a file named for yesterday is a file nobody finds.
+ */
+export function ayqLocalDate(now: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
  * Publishes what the export did where the acceptance run can read it — the
  * same device as the import screen, and for the same reason: a packaged
  * application writes nothing to a console. The summary is counts and a path;
@@ -68,7 +77,7 @@ export function AyqSettingsData({
     setSaid(ayqText('snapshot.waiting'));
     try {
       const suggestedName = ayqText('snapshot.suggestedName', {
-        date: new Date().toISOString().slice(0, 10),
+        date: ayqLocalDate(new Date()),
       });
       const target = await ayqAsk({ kind: 'snapshot.pickTarget', suggestedName });
       if (!target.ok) throw new Error(target.message);
@@ -93,8 +102,11 @@ export function AyqSettingsData({
       );
       mark('done', summary);
     } catch (error) {
+      // Said in both places: the shell's banner, and here beside the button,
+      // where a success would have been stated — so a failure is never a
+      // blank where "Written:" was expected.
       const message = error instanceof Error ? error.message : String(error);
-      setSaid(null);
+      setSaid(ayqText('snapshot.failed', { reason: message }));
       onFailure(ayqText('snapshot.failed', { reason: message }));
       mark('error');
     } finally {
