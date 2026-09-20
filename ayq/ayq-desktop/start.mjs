@@ -161,6 +161,13 @@ if (has('balance')) env.AYQ_SMOKE_BALANCE = '1';
 // forbidden ones (12 §12.1, §12.4).
 if (has('about')) env.AYQ_SMOKE_ABOUT = '1';
 
+// `--snapshot <file>` opens Settings → Data, exports the analytical snapshot
+// through the screen to that file (the host's save dialog is answered with
+// it), and requires the file to validate under the contract (03 §13). Only a
+// synthetic budget is ever exported here.
+const snapshot = flag('snapshot');
+if (snapshot) env.AYQ_SMOKE_SNAPSHOT = resolve(snapshot);
+
 // `--suggest` asks Upcoming to suggest and requires only the exact, regular
 // series to appear (9 §9.1), then reads the Plan's historical suggestions and
 // requires the basis to be stated rather than implied (10 §10.3).

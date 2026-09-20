@@ -1625,6 +1625,70 @@ async function balanceShown(window: BrowserWindow): Promise<string> {
  * is not a placeholder, and a technical-information block that carries the safe
  * fields and none of the forbidden ones (§12.4).
  */
+/**
+ * Exports the analytical snapshot through the screen (03 §13): Settings › Data,
+ * the button, and the renderer's own reported outcome — then the file itself,
+ * read back and validated by the contract, with no figure of it printed.
+ * Returns '' when it held, otherwise what went wrong.
+ */
+async function snapshotExported(window: BrowserWindow, target: string): Promise<string> {
+  if (!(await openDestination(window, 'settings'))) {
+    return 'Settings never opened';
+  }
+
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const pressed = await window.webContents.executeJavaScript(
+      `(() => {
+        const tab = document.querySelector('[data-ayq-screen-tab="data"]');
+        if (!tab) return false;
+        tab.click();
+        return true;
+      })()`,
+    );
+    if (pressed === true) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  let pressed = false;
+  while (Date.now() < deadline) {
+    pressed = await window.webContents.executeJavaScript(
+      `(() => {
+        const button = document.querySelector('[data-ayq-action="snapshot-export"]');
+        if (!button) return false;
+        button.click();
+        return true;
+      })()`,
+    );
+    if (pressed) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!pressed) return 'the export button never appeared';
+
+  let state = '';
+  while (Date.now() < deadline) {
+    state = await dataset(window, 'ayqSnapshotState');
+    if (state === 'done' || state === 'error' || state === 'cancelled') break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (state !== 'done') return `the screen reported ${state || 'nothing'}`;
+
+  const summary = JSON.parse(await dataset(window, 'ayqSnapshotSummary')) as { path: string; transactions: number };
+  if (summary.path !== target) return `written to an unexpected path`;
+
+  // The file, as AYQ Analyses would read it: the same validator, the same
+  // refusal. Nothing of its content is printed — only that it validates.
+  const { validateAnalyticalSnapshot } = await import('../../ayq-analytical-contract/src/index.ts');
+  const { readFileSync: read } = await import('node:fs');
+  try {
+    const snapshot = validateAnalyticalSnapshot(JSON.parse(read(target, 'utf8')));
+    if (snapshot.meta.counts.transactions !== summary.transactions) return 'the summary disagrees with the file';
+  } catch (error) {
+    return `the file does not validate: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return '';
+}
+
 async function aboutShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'settings'))) {
     return 'Settings never opened';
@@ -3164,6 +3228,20 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // 03 §13: the analytical snapshot, exported through the screen to the path
+  // the run names, and read back through the contract.
+  const snapshotTarget = process.env.AYQ_SMOKE_SNAPSHOT ?? '';
+  let snapshot = 'not asked';
+  let snapshotOk = true;
+  if (snapshotTarget !== '') {
+    const wrong = await snapshotExported(window, snapshotTarget);
+    snapshot = wrong === '' ? 'held' : wrong;
+    snapshotOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] snapshot export: ${snapshotOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // 9 §9.1 and 10 §10.3: what history is allowed to suggest, and what it is
   // allowed to do with the suggestion.
   const suggestAsked = process.env.AYQ_SMOKE_SUGGEST === '1';
@@ -3268,6 +3346,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     reportsOk &&
     balanceOk &&
     aboutOk &&
+    snapshotOk &&
     suggestOk &&
     pagedOk;
 
@@ -3314,6 +3393,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           balanceOk,
           about,
           aboutOk,
+          snapshot,
+          snapshotOk,
           suggest,
           suggestOk,
           pagedOk,
@@ -3350,7 +3431,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} suggest=${suggest}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} snapshot=${snapshot} suggest=${suggest}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is
