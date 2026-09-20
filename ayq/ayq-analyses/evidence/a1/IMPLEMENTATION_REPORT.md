@@ -2,257 +2,212 @@
 
 The report 007 §22 requires of the pull request. It lives here as well because
 the repository's own rules keep the pull-request body at the blank template for
-the person who tests the change to fill in; the same text is posted as the first
+the person who tests the change to fill in; the same text is posted as a
 comment on the pull request.
 
 **Pull request:** [alxvpl/AYQ#1](https://github.com/alxvpl/AYQ/pull/1) — draft, unmerged.
 
-**A1 is returned early, with one blocker: the thirteen installed-Windows
-screenshots do not exist.** See *Blocker*.
+**Status: the corrections of 010 + 011 are applied and the Windows pass of
+011 §2 / §9 is complete.** The thirteen installed-application images are in
+this directory with their capture record in `README.md`. Nothing is left for
+a second Windows pass. Technical acceptance (ChatGPT) and human/product
+acceptance (Claude Chat) are the joint leads' to give.
 
-## Start-of-work record
+## Revision record
 
 | | |
 |---|---|
-| base / start SHA (`claude/ayq-develop`, live at start and unchanged at push) | `b1f0ede3f6e5fb821e4a1333d111fcfbf89a04f5` |
-| this branch HEAD at the time of this report | `1d9a0ba8357cff4fc7cf92d73b4a208f82d1b76d` |
-| old `claude/ayq-analyses-bootstrap` (reference/source only, not merged) | `531d38d4d12f54e033d56fabb4c1e0c3f2580760` |
-| relationship of those two | diverged, 14 ahead / 9 behind |
-| merge base | `716eb181cb1d3ad71e60f096f829ce40a131e635` |
-| working tree at start | clean; no unrelated local work existed |
+| base (`claude/ayq-develop`, unchanged, nothing pushed to it) | `b1f0ede3f6e5fb821e4a1333d111fcfbf89a04f5` |
+| head reviewed by 010 / 011 | `54469f13ee5fdfff843375fedef13d99bfa26562` |
+| corrections (P3, T1, T2.1–T2.5) | `6dbee8ef9` |
+| two presentation defects seen only in the installed window | `885057628` — the head the installer was built from |
+| this record and the thirteen images | the commit that carries this file; it changes no source |
+| `packages/` | untouched |
 
-All three figures match 009 §8 exactly; re-verification found no drift.
+## Governing inputs, opened before editing
 
-## Governing inputs A–I, all opened before editing
+010, 011 and 012 in full, in that order; `AYQ_ANALYSES_COLLABORATION_MODEL`
+and `AYQ_ANALYSES_PROJECT_WORK_INSTRUCTIONS` (both ACCEPTED);
+`AYQ_ANALYSES_A1_SPECIFICATION` **r004** (ACCEPTED, supersedes r003); the
+frozen r003 contract `AYQ_Analyses_analytical_data_contract-r003.md` §6–§7
+and its reference validator `ayq_snapshot_validator-r003.py`, read for the
+exact shape of I5, I7 and I14 that T2.2, T2.4 and T2.5 enforce. None was
+substituted by a repository mirror, memory or an earlier handoff.
 
-007 §2 as modified by 009 §6 (D5) and 009 §7 (D6).
+## The corrections, as applied
 
-| | input | revision as read |
-|---|---|---|
-| A | `AYQ_PROJECT_WORK_INSTRUCTIONS` | ACCEPTED |
-| B | AYQ `00_INDEX.md` | r009, 2026-09-20, CURRENT |
-| C | `02_ARCHITECTURE` / `03_DATA` / `04_DESIGN` / `06_RELEASE` | r005 / r015 / r006 / r003, all CURRENT |
-| D | `AYQ_ANALYSES_COLLABORATION_MODEL` | ACCEPTED |
-| E | `AYQ_ANALYSES_PROJECT_WORK_INSTRUCTIONS` | ACCEPTED |
-| F | `AYQ_ANALYSES_A1_SPECIFICATION` | **r003, ACCEPTED** |
-| G | `A1_PRESENTATION__r03` | r03, accepted by 006 |
-| H | 004 — fixture/screenshot/branch/evidence plan | as published |
-| I | 006 — conformity acceptance and interpretations | as published |
+### P3 — a reversal whose original has no canonical counterparty
 
-None was substituted by a repository mirror, memory or an earlier handoff.
+- `src/strings/en.json`: `evidence.reversesNoCounterparty` — "Reverses {date},
+  {amount}". No placeholder for the missing name.
+- `src/evidence.ts` (new): the reversal explanation is selected here, outside
+  any component — the original named by date and amount, plus its counterparty
+  when it has one; then the outside-period / accounts / filter / selection
+  sentence exactly as for any reversal. `src/ui/detail.tsx` renders the lines
+  this function returns; the OPEN note at that spot is gone.
+- `test/evidence.test.ts`: the no-counterparty reversal (both exclusion
+  classes) receives the new sentence and the outside-period sentence, with no
+  placeholder, trailing separator or identifier; the ordinary reversal keeps
+  its three-part sentence; screenshot 10's fixture is asserted line for line.
+  The catalogue scan of `test/strings.test.ts` covers the new key.
 
-## Summary of the A1 implementation
+### T1 — exact arithmetic through aggregation
 
-- **One analytical context**: `fromDate`, `toDate`, comparison mode, selected
-  accounts, selected categories including an explicit Uncategorised. Metric is
-  fixed to money out and dimension to canonical counterparty, both shown as
-  static text. `search`, `transactionClasses`, `minimumAbsoluteAmount`,
-  `includeUncategorised` and the selectable metric/dimension are **removed**,
-  not hidden.
-- **One money-out contribution function** and one contribution set behind the
-  headline, the rows, the chart, the exclusions, the drill-down and the
-  comparison. No component reads an amount's sign for itself, and the renderer
-  recalculates no financial meaning.
-- **Reversal attribution** resolved against the full validated snapshot before
-  the period, account and category filters, surviving an original outside any of
-  them; an original with no canonical counterparty passes its exclusion
-  classification to the reversal.
-- **Transaction-level category filtering**, tested on the transaction being
-  filtered — the reversal on its own `categoryId`, never the original's.
-- **Coverage** derived from the selected accounts' `[openingDate,
-  lastStatementDate]`, never from the global Forecast reliability boundary;
-  independent start-side and end-side limits, every tied account named,
-  comparison coverage computed separately.
-- **Currency checked before aggregation**, over the whole current population;
-  the comparison population checked independently; no conversion anywhere;
-  `meta.currencies[0]` is never a result currency.
-- **Result-scoped exclusions**, split into *not applicable* and *not
-  identified*, each opening its own evidence list, never taken from the snapshot
-  header counters.
-- **Validation before analysis**, with a bounded typed reason crossing the
-  preload boundary and the diagnostic detail staying in the log of the Electron
-  process that read the file.
-- **Exact money**: integer minor units and the currency exponent become exact
-  digits, and `Intl` places separators on that exact string. No division by a
-  power of ten anywhere in the display path.
-- **Presentation**: r03's shell, states, wording and catalogue; one
-  `src/strings/en.json` with no user-facing literal in any component,
-  accessible names included; sortable columns with the default one step away;
-  the chart following the table's order and values.
+- A validated snapshot amount becomes a `bigint` at the contribution boundary
+  (`exactMinor` in `src/engine.ts`, the one place a Number becomes money the
+  engine adds). Everything after it is bigint: `Contribution.amountMinor`,
+  `CounterpartyRow.moneyOutMinor / previousMinor / changeMinor`,
+  `ExclusionGroup.amountMinor`, `ComparisonFacts.totalMinor`,
+  `AnalysisResult.totalMinor / deltaMinor`, `ReconciliationFact.differenceMinor`
+  (`src/types.ts`). Snapshot `Money.amount` stays a JSON number validated as
+  `Number.isSafeInteger`, per 011 §5.
+- Absolute value, sums, deltas and the per-counterparty comparison map are
+  bigint arithmetic. Ordering (`src/sort.ts`) compares with `<` / `>` and
+  never subtracts. The validator's reconciliation-difference check compares in
+  bigint as well.
+- Chart rule: `src/geometry.ts` derives a bounded, display-only Number for bar
+  length from the exact rows — exact while every value is safe, otherwise all
+  values divided by one common power of ten, keeping sign, order and
+  proportion. Bar labels and tooltips print the exact bigint row value through
+  the one formatter. Nothing derived for geometry re-enters a result.
+- Tests state expectations as bigint literals; `test/truth-manifest.test.ts`
+  converts the hand-authored manifest's small integers explicitly (`exact()`).
+  `test/exact-aggregate.test.ts`: two individually safe `-9007199254740991`
+  amounts (each accepted by the validator) aggregate to `18014398509481983n`
+  — beyond `Number.MAX_SAFE_INTEGER`, which a Number demonstrably cannot hold
+  — in the row, the headline and the drill-down; the formatter prints
+  `€180,143,985,094,819.83` and reads it back exactly in `en-US`, `nl-NL`,
+  `de-DE`; a comparison and delta at that magnitude are exact; two rows one
+  minor unit apart at that magnitude order correctly; chart geometry is
+  exact within the safe range and bounded beyond it.
 
-### The accepted deltas D1–D6
+### T2 — A1-relevant frozen-r003 validation (`src/validate.ts`)
 
-- **D1** — the evidence plan is thirteen screenshots. F01 is built so a fully
-  covered, empty comparison period exists (June 2025 against May 2025), giving
-  `Previous: €0.00` and `Change: +€30.00`.
-- **D2** — every launch begins at **No data loaded**. The active snapshot is
-  session state; **no archive code is carried at all**, so nothing can restore a
-  snapshot or a context across launches. A test asserts that no archive is read
-  at startup and that the renderer's initial state is unloaded.
-- **D3** — after every successful load the context resets to Last month
-  (anchored on the UTC calendar date of `generatedAt`), comparison None, all
-  accounts, all categories including Uncategorised. Unit tests cover the January
-  year-rollover and a leap-year February.
-- **D4** — `test/fixtures/a1/truth-manifest.json` is **hand-authored** from the
-  construction of the fixtures. It is not generated and no generator exists; the
-  fixture builder that emits the snapshot JSON imports nothing from `src/` and
-  performs no analysis — its only arithmetic is counting records for the
-  snapshot header. Case 26 reads the manifest.
-- **D5** — implemented against r003; the two coverage sentences state only what
-  the snapshot holds and claim no cause.
-- **D6** — all of A–I opened; recorded above.
+Each refusal is an internal inconsistency of the file and carries the
+`invariant` reason, so the screen shows the existing
+`snapshot.invalid.reason.invariant` sentence — no new string, no new reason
+code, as 012 §1 requires. Tests in `test/validate.test.ts`, each by mutating
+`a1-result.json`.
 
-## Commands run, and their results
+| | rule enforced | refused, for example | accepted, for example |
+|---|---|---|---|
+| T2.1 | `meta.generatedAt` is RFC 3339 UTC: `YYYY-MM-DDTHH:MM:SS[.fff]` with the offset written `Z` or `+00:00` | `…T06:00:00+02:00`, `…T06:00:00-00:00`, `…T06:00:00` (no offset), `2026-03-05 06:00:00Z`, a bare date | `…Z`, `….250Z`, `…+00:00` |
+| T2.2 | a transaction's currency equals its account's | USD on the EUR *Everyday account* (with USD declared in `meta.currencies`, so the refusal is this rule and not the declared-currency rule) | — |
+| T2.3 | `openingBalance`, `ledgerBalance`, `statementCoverage.closingBalance` and all three reconciliation money fields are in the account's currency | each of the six, one at a time | — |
+| T2.4 | `categoryId ≠ null` ⇒ `categorisation` present with `source` `manual` or `rule`; `source = rule` ⇒ non-empty `ruleKey` | `categorisation: null`, `{source:'none'}`, `{source:'rule', ruleKey:null}`, `{…, ruleKey:''}`, `{source:'rule'}` | `{source:'manual'}`, `{source:'rule', ruleKey:'rule-002'}` |
+| T2.5 | `isInternalTransfer` ⇒ `categoryId = null` and `counterpartyKey = null` | the transfer `f01-t08` given a category; given a counterparty | — |
 
-On the implementation host (Linux container, Node 22.22.2), from
-`ayq/ayq-analyses`:
+The `utcCalendarDate` helper remains independently testable on arbitrary
+instants; only the snapshot rule is the validator's (011 §7 T2.1).
+`test/helpers.ts` now builds internal transfers without a category or a
+counterparty, so every helper-built snapshot in the matrix is contract-valid
+under T2.5; the engine cases are unchanged in outcome.
+
+## Two defects the installed window showed, fixed at `885057628`
+
+Neither is a semantic change; both were visible only in the real window and
+are reported here rather than left for a second pass:
+
+1. **The rail and the status bar ended at content height** on the empty
+   screens. The shell is `height: 100%` of the Fluent provider, which had no
+   height. The provider now spans the window (`src/renderer.tsx`).
+2. **The longest bar's printed figure was clipped** at the chart's right edge
+   (the €120.00 label read "€12"). The value axis now ends a quarter beyond the
+   longest bar (`src/ui/result.tsx`); the printed figure is unchanged and still
+   the exact row value.
+
+If the joint leads prefer either handled differently, each is one line.
+
+## Commands run on Windows, and their results
+
+Windows 11 Pro 10.0.26200 x64, Node v24.21.0, npm 11.19.0, from
+`ayq/ayq-analyses`, at `885057628`:
 
 | command | result |
 |---|---|
-| `npm test` | **pass** — 72 tests, 0 failures |
+| `npm ci` | pass (Electron 43.4.0 runtime binary present) |
+| `npm test` | **pass — 84 tests, 84 pass, 0 fail** (72 at 54469f13 + 12 new) |
 | `npm run typecheck` | **pass** |
 | `npm run build` | **pass** |
-| `npm run package` | **fail at the installer step.** electron-builder produced the Windows application directory `release/win-unpacked/AYQ Analyses.exe` (562 MB, electron 43.4.0, win32 x64) and then stopped: `⨯ wine is required, please see https://electron.build/multi-platform-build#linux` |
-| Windows installed-app smoke | **not run** — see *Blocker* |
+| `npm run package` | **pass** — `release/AYQ Analyses-0.1.0-windows-x64-setup.exe`, 139 022 633 bytes, SHA-256 `3F37D87F314B8AD628BE89626FB2AAEF2893C61E74190B4A7CF4FA7AB29DCEBD` (unsigned; no certificate is configured) |
+| install (`setup.exe /S`) | **exit 0** — `%LOCALAPPDATA%\Programs\ayq-analyses\`, registered *AYQ Analyses 0.1.0*, Start-menu shortcut; installed `app.asar` SHA-256 `DA8C7E73DE5DC3FA44819E61FD73D5525A6C54CB346FB6964C6678B316FEB37E` |
+| installed-app smoke pass | **done** — all six states of r004 §5 reached on the installed executable with synthetic fixtures only: Result, Coverage-limited, Empty, Insufficient, Comparison unavailable, Unsupported; plus the invalid-snapshot refusal, the coverage flyout, the reversal drill-down, the exclusion evidence list, the exact-zero comparison and the not-in-this-version destination |
+| thirteen screenshots | **captured** — see `README.md` for the method per image |
 
-The application could not be launched even locally: the Electron runtime binary
-could not be downloaded on this host (`redirector.gvt1.com` refused by the
-egress policy), so `electron .` never started.
-
-`npm test` runs the whole A1 regression matrix — r003 §11 cases 1–26 and r03
-§13 case 27 — inside the real test command, not a helper script: inclusive date
-edges; month, quarter and year preset boundaries; coverage from an account
-subset; tied end limits; start limits; both limits at once; a period wholly
-outside coverage; partial comparison coverage; a comparison period before one
-account's opening but covered by another; the leap-day same-last-year clamp; a
-reversal whose original is outside the period, the accounts or the filter; a
-reversal inheriting its original's exclusion; a reversal of something that was
-not money-out; mixed current currency refused; a single-currency population
-carrying its currency; a broken reversal reference rejected by the validator; a
-multi-currency comparison; a differently-denominated comparison; a fully covered
-empty comparison as an exact zero; the five contribution rules each on its own;
-result-scoped exclusions against the snapshot header counters under a filter; an
-empty population inside a covered period; a reconciliation mismatch that still
-produces the result; the §8.8 reconciliation invariants; the truth manifest,
-exactly, in integer minor units; and case 27.
-
-Beyond the matrix: every amount in every fixture round-trips through the display
-path back to the same integer in `en-US`, `nl-NL` and `de-DE`; a value beyond
-IEEE-754 safe integer range (`900719925474099387` minor units) prints and reads
-back exactly; the locale changes presentation and nothing else; the preset
-anchor is the snapshot's UTC `generatedAt` and demonstrably not the machine
-clock; tie ordering is deterministic and locale-independent. Four further tests
-guard the Electron security settings, the two-capability preload surface, a
-renderer that names no path, and a startup that reads no archive; one more fails
-if interface text appears in a component instead of the catalogue.
+Two environment notes, neither a repository change: the repository's agent
+hooks require `jq`, which was installed on this machine for the session; and
+electron-builder's `winCodeSign` archive contains macOS symlinks that this user
+account cannot create, so it was extracted into electron-builder's own cache
+without the `darwin` entries before packaging (the Windows tooling it needs is
+all under `windows/`).
 
 ## Fixtures
 
-Under `ayq/ayq-analyses/test/fixtures/a1/`:
-
-`a1-result.json` · `a1-coverage-limited.json` · `a1-empty.json` ·
-`a1-insufficient.json` · `a1-comparison-unavailable-currency.json` ·
-`a1-unsupported-multicurrency.json` · `a1-invalid-broken-reversal.json` (the
-only intentionally invalid one) · `a1-reconciliation-difference.json` ·
-`a1-reversal-detail.json` · `a1-not-identified.json` · `truth-manifest.json` ·
-`build-fixtures.mjs`
+Unchanged from 54469f13. Under `test/fixtures/a1/`: the nine valid snapshots,
+the one intentionally invalid one, `truth-manifest.json` (hand-authored) and
+`build-fixtures.mjs`. All nine valid fixtures pass the validator with
+T2.1–T2.5 in force.
 
 ## Screenshots
 
-`evidence/a1/README.md` is present with all thirteen rows, each naming its
-fixture, period, accounts, category, comparison mode and the interaction that
-reaches the state. **The thirteen `.png` files are absent.** The planned files
-are `01_no_snapshot__none.png`, `02_invalid_snapshot__a1-invalid-broken-reversal.png`,
-`03_result__a1-result.png`, `04_coverage_limited__a1-coverage-limited.png`,
-`05_empty_population__a1-empty.png`, `06_insufficient__a1-insufficient.png`,
-`07_comparison_unavailable__a1-comparison-unavailable-currency.png`,
-`08_unsupported__a1-unsupported-multicurrency.png`,
-`09_coverage_flyout_reconciliation_difference__a1-reconciliation-difference.png`,
-`10_reversal_detail__a1-reversal-detail.png`,
-`11_not_identified_evidence__a1-not-identified.png`,
-`12_comparison_zero__a1-result.png` and
-`13_not_in_this_version__a1-result.png`.
-
-The evidence directory is excluded from the packaged application: `package.json`
-ships `dist/**/*` and `package.json` only.
+All thirteen `.png` files named in `README.md` are present, each the real
+window of the NSIS-installed build running on Windows, captured by
+`PrintWindow` on the application's own window at its default size. The
+directory is excluded from the packaged application.
 
 ## Out of scope — confirmed
 
-- `packages/` is **unchanged**: tree hash
-  `230602c7485f9c5018e867c214035f0195df3c5d` at both `b1f0ede3` and this branch
-  HEAD.
-- No A2, A3 or A4 functionality was added. The five other rail destinations show
-  only the accepted not-in-this-version behaviour; there is no Overview
-  statement engine, no Fixed costs, no forecast backtesting, no Saved Analyses
-  persistence, no Search, no deep link and no snapshot producer. A test fails if
+- `packages/` is **unchanged** on this branch.
+- No A2, A3 or A4 functionality was added; the boundary tests still fail if
   `expectationRecords`, `expectedOccurrences`, `categoryPlans`, `forecast` or
   `backtest` appears in the engine or the renderer.
-- Files touched: `ayq/ayq-analyses/**` and
-  `.github/workflows/ayq-analyses-windows.yml` only, the workflow gaining
-  `claude/ayq-develop` as a push trigger. `ayq/docs/**` and the root `CLAUDE.md`
-  are untouched; the package's own pointer files were adjusted to point at the
-  Analyses documents beside them, inside the allowed surface.
+- Files touched on this pass: `ayq/ayq-analyses/src/**`,
+  `ayq/ayq-analyses/test/**`, `ayq/ayq-analyses/evidence/a1/**`. `package.json`
+  and the lockfile are unchanged.
 - **No real banking or personally identifying financial data was used
-  anywhere.** Every fixture, name, amount and identifier is invented.
+  anywhere.** Every fixture, name, amount and identifier is invented; no real
+  snapshot was opened on this machine.
 
-## Blocker
+## Dispositions received, and how they landed
 
-**A1 was implemented on Linux, not on the Windows Desktop App.** The installed-
-application evidence of 007 §20–§21, as extended to thirteen images by 009 §2,
-cannot be produced here, and nothing was invented in its place — no browser
-mockup, no CI rendering, no fabricated image.
+- P1 (installed-Windows evidence): performed, above.
+- P2 (previous period by calendar shape): accepted in 011 §3 and written into
+  r004 §4; `src/dates.ts` already implemented it — no change.
+- P3: applied, above.
+- Returned item 3 (beyond-safe value): accepted in 011 §5 as implemented —
+  snapshot amounts stay safe JSON integers, the formatter takes bigint; T1
+  adds exactness through aggregation.
 
-Exactly what is missing: the Windows installer, the installed-app smoke check of
-the six states of r003 §5, and the thirteen screenshots.
+## Observations returned, not decided
 
-**Smallest decision needed from the joint leads: who runs the evidence pass on
-Windows.** Either this branch is handed to Claude Code on the Windows Desktop
-App, which installs it and captures the thirteen images against the plan already
-in `evidence/a1/README.md` and pushes them to this same branch; or the joint
-leads accept the semantic evidence now and gate human/product acceptance on a
-separate Windows evidence pass. Nothing else in the increment waits on that
-choice.
+None blocks the pass. Each is stated so it is not silently absorbed.
 
-## Open items returned rather than decided
-
-Three points the governing documents do not settle. None was silently decided,
-and each is one small, isolated change if the joint leads dispose of it
-differently.
-
-1. **The comparison "previous period" is derived from the dates, by calendar
-   shape.** r003 §4 distinguishes a period that "came from a preset" — shift the
-   preset back one unit — from one entered as arbitrary dates — the equal-length
-   preceding span. But 007 §5 locks the context to five fields and r03 §5 says a
-   preset resolves to dates and the dates are what is reported afterwards, so
-   the preset origin is not representable. The engine therefore reads the shape
-   back from the dates: a whole calendar month, quarter or year shifts back one
-   whole unit; anything else shifts by its own length. Every documented case
-   behaves as r003 requires. The only behaviour that differs from a
-   preset-origin reading is a *Custom* range that happens to coincide exactly
-   with a calendar quarter or year, which then gets the calendar answer.
-   `src/dates.ts`, `periodShape` and `previousPeriod`.
-
-2. **A reversal whose original has no canonical counterparty has no
-   `evidence.reverses` line.** r03 §9 gives `Reverses {date}, {amount},
-   {counterparty}` and no wording for an absent counterparty, while explicitly
-   preferring an empty position over a placeholder elsewhere. Such a reversal is
-   reached through an exclusion count whose own label already states that no
-   counterparty was identified, so the line is omitted rather than filled with
-   invented text. Marked in `src/ui/detail.tsx`. One catalogue string would
-   settle it.
-
-3. **A value beyond IEEE-754 safe integer range is a formatter test value, not a
-   fixture amount.** 007 §15 asks for "at least one fixture/test value beyond
-   IEEE-754 safe integer range". Putting such an amount into a snapshot JSON is
-   not possible honestly: `JSON.parse` would silently round it and the fixture
-   would then state a number it does not hold. The display path therefore
-   accepts `bigint` minor units and the round-trip test uses one, while the
-   validator refuses a snapshot amount outside the exactly representable range.
-   If a fixture amount was intended instead, that needs a contract answer first.
+1. **The frozen r003 reference validator is stricter than T2.4 in one
+   direction.** It also refuses a transaction with `categoryId = null` whose
+   `categorisation.source` is `manual` or `rule` ("no category but claims
+   provenance"), and it requires `categorisation` to be an object with
+   `source: 'none'` rather than `null` for an uncategorised transaction. T2.4
+   as enumerated in 011 §7 enforces only the forward direction, and
+   `build-fixtures.mjs` gives every transaction with a counterparty a `rule`
+   provenance whatever its category, so the salary rows `f01-t07` and
+   `f03-t01` carry `{source:'rule'}` with no category, and uncategorised rows
+   carry `categorisation: null`. A1 is unaffected on screen. Whether the
+   Analyses validator should adopt the reverse-direction rule and the
+   fixtures be regenerated is a contract question for ChatGPT.
+2. **The installed window carries Electron's default menu bar** (File, Edit,
+   View, Window). It was there at 54469f13, r03 does not mention it and no
+   correction names it; it is visible in every image. A presentation
+   disposition for Claude Chat.
+3. **The date inputs reject an intermediate value while a year is typed** —
+   each digit fires a change, and a year of `0002` puts `toDate` before
+   `fromDate`, which the control refuses, so the field snaps back. Setting
+   the year with the arrow key works. Reached while entering 1 – 30 June 2025
+   for image 12 through the real window; not a semantic matter, noted for
+   the product side.
 
 ## Status
 
 The pull request is a **draft and unmerged**, and the implementation engineer
-does not merge it. Nothing was pushed to `claude/ayq-develop`, no history was
-rewritten, no branch was force-pushed, deleted or renamed, and the old Analyses
-branch was not merged.
+does not merge it. Nothing was pushed to `claude/ayq-develop`; no history was
+rewritten; no branch was force-pushed, deleted, renamed or created. This
+branch was pushed to its own remote ref only.
