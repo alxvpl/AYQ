@@ -1,0 +1,29 @@
+{
+  "name": "@ayq/analytical-contract",
+  "version": "1.0.0",
+  "description": "The executable AYQ → AYQ Analyses analytical snapshot contract, 1.0: one type model, one runtime validator, synthetic fixtures.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node build-tests.mjs && node --test --test-reporter=spec \"dist-test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "esbuild": "0.24.2",
+    "typescript": "5.9.2"
+  }
+}
