@@ -155,7 +155,10 @@
       "transactionClass": "credit_transfer",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": false,
       "internalTransferPairKey": null,
       "counterAccountKey": null,
@@ -175,7 +178,10 @@
       "transactionClass": "direct_debit",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": false,
       "internalTransferPairKey": null,
       "counterAccountKey": null,
@@ -195,7 +201,10 @@
       "transactionClass": "cash_withdrawal",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": false,
       "internalTransferPairKey": null,
       "counterAccountKey": null,
@@ -215,7 +224,10 @@
       "transactionClass": "credit_transfer",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": false,
       "internalTransferPairKey": null,
       "counterAccountKey": null,
@@ -235,7 +247,10 @@
       "transactionClass": "cash_withdrawal",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": false,
       "internalTransferPairKey": null,
       "counterAccountKey": null,

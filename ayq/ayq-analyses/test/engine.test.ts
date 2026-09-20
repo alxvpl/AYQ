@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyse, moneyOutContribution, subjectOf } from '../src/engine.js';
 import { DEFAULT_SORT, nextSortState, sortRows } from '../src/sort.js';
+import { formatMoney } from '../src/money.js';
+import { translate } from '../src/strings.js';
 import { account, allCategories, context, snapshot, transaction } from './helpers.js';
 import type { AnalysisResult } from '../src/types.js';
 
@@ -364,6 +366,7 @@ test('case 24 — a reconciliation mismatch is stated and still produces the res
       displayIdentifier: null,
       state: 'differs',
       differenceMinor: -1500n,
+      differenceMagnitudeMinor: 1500n,
       currency: 'EUR',
     },
   ]);
@@ -462,4 +465,21 @@ test('a contributing transaction without a counterparty is classified, never sho
     kind: 'counterparty',
     counterpartyKey: 'cp-a',
   });
+});
+
+test('PC4 — the flyout states the magnitude of the supplied difference while the result keeps the signed fact', () => {
+  const held = snapshot({
+    accounts: [account({ key: 'acc-a', from: '2025-01-01', to: '2026-03-04', ledger: 250000, statement: 248500 })],
+    transactions: [transaction({ key: 't1', date: '2026-02-03', amount: -1000 })],
+  });
+  const result = analyse(held, context({ ...FEBRUARY }));
+  const fact = result.reconciliation[0];
+  assert.equal(fact.state, 'differs');
+  assert.equal(fact.differenceMinor, -1500n);
+  assert.equal(fact.differenceMagnitudeMinor, 1500n);
+  const line = translate('coverage.flyout.reconciliation.line', {
+    account: fact.name,
+    text: translate('coverage.flyout.reconciliation.differs', { amount: formatMoney(fact.differenceMagnitudeMinor, fact.currency, 'en-US') }),
+  });
+  assert.equal(line, 'acc-a — Differs from the statement by €15.00');
 });

@@ -33,10 +33,12 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
     const lengths = chartGeometry(ordered.map(row => row.moneyOutMinor));
     chart.setOption({
       grid: { left: 8, right: 24, top: 8, bottom: 24, containLabel: true },
+      // The tooltip prints the exact row figure and nothing else: a sentence
+      // composed around it would be interface text outside the catalogue.
       tooltip: {
         trigger: 'item',
-        formatter: (params: { name: string; dataIndex: number }) =>
-          `${params.name}: ${formatMoney(ordered[params.dataIndex].moneyOutMinor, ordered[params.dataIndex].currency, locale)}`,
+        formatter: (params: { dataIndex: number }) =>
+          formatMoney(ordered[params.dataIndex].moneyOutMinor, ordered[params.dataIndex].currency, locale),
       },
       // Axis ticks are geometry the chart chooses, not values the result
       // holds, so they are not printed as figures. Every figure the chart

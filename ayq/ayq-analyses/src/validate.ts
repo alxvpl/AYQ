@@ -272,23 +272,33 @@ export function validateSnapshot(raw: unknown): AyqAnalyticalSnapshot {
     if (transaction.counterAccountKey !== null) {
       invariant(accountKeys.has(transaction.counterAccountKey), `${path} references unknown counter account`);
     }
-    if (transaction.categorisation !== null) {
-      malformed(isRecord(transaction.categorisation), `${path}.categorisation must be an object`);
-      invariant(
-        CATEGORISATION_SOURCES.includes(transaction.categorisation.source),
-        `${path}.categorisation.source is not a source of the frozen baseline`,
-      );
-    }
-    // A category that is set carries the provenance that set it, and a rule
-    // names itself (r003 I14; 011 §7 T2.4). A1 shows this provenance, so its
-    // absence may never read as "No category set".
+    // Provenance is a required fact of every transaction (r002 §6.5, I14;
+    // 013 §4 T3): the categorisation object is always present with one of the
+    // three source tokens. A category that is set carries the provenance that
+    // set it and a rule names itself (T2.4); a category that is not set claims
+    // `none`, never a decision nobody took. A1 shows this provenance, so its
+    // absence may never read as "No category set", and "No category set" may
+    // never stand beside a category.
+    invariant(
+      transaction.categorisation !== null && isRecord(transaction.categorisation),
+      `${path}.categorisation is missing`,
+    );
+    invariant(
+      CATEGORISATION_SOURCES.includes(transaction.categorisation.source),
+      `${path}.categorisation.source is not a source of the frozen baseline`,
+    );
     if (transaction.categoryId !== null) {
       invariant(
-        transaction.categorisation !== null && PROVENANCE_SOURCES.includes(transaction.categorisation.source),
+        PROVENANCE_SOURCES.includes(transaction.categorisation.source),
         `${path} is categorised but carries no categorisation provenance`,
       );
+    } else {
+      invariant(
+        transaction.categorisation.source === 'none',
+        `${path} has no category but claims categorisation provenance`,
+      );
     }
-    if (transaction.categorisation !== null && transaction.categorisation.source === 'rule') {
+    if (transaction.categorisation.source === 'rule') {
       invariant(
         typeof transaction.categorisation.ruleKey === 'string' && transaction.categorisation.ruleKey.length > 0,
         `${path} was categorised by a rule that is not named`,

@@ -1,9 +1,11 @@
-// The reversal explanation of the evidence view (P3, 010 §4 / 011 §4).
+// The reversal explanation of the evidence view (P3, 010 §4 / 011 §4; PC3,
+// 014 §3 / 015 §4).
 //
 // A reversal whose original has a canonical counterparty names it by date,
 // amount and counterparty. A reversal whose original has none names it by
 // date and amount alone — no placeholder — and receives the same
-// outside-population sentence as any other reversal.
+// outside-population sentence as any other reversal. The amount named is the
+// original's own positive A1 money-out contribution, never its bank sign.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -55,7 +57,7 @@ test('a reversal of an original with no canonical counterparty is explained by d
   assert.deepEqual(reversalEvidence(cash, result.coverage, t, LOCALE), [
     t('evidence.reversesNoCounterparty', {
       date: formatDate('2026-01-15', LOCALE),
-      amount: formatMoney(-10000, 'EUR', LOCALE),
+      amount: formatMoney(10000, 'EUR', LOCALE),
     }),
     outside,
   ]);
@@ -64,7 +66,11 @@ test('a reversal of an original with no canonical counterparty is explained by d
   const unknown = contributionOf(result, 'unknown-rev');
   const lines = reversalEvidence(unknown, result.coverage, t, LOCALE);
   assert.equal(lines.length, 2);
-  assert.equal(lines[0], `Reverses ${formatDate('2026-01-16', LOCALE)}, ${formatMoney(-8000, 'EUR', LOCALE)}`);
+  assert.equal(lines[0], `Reverses ${formatDate('2026-01-16', LOCALE)}, ${formatMoney(8000, 'EUR', LOCALE)}`);
+  // The original's contribution is positive money-out, supplied by the engine
+  // from the one contribution function; the sentence carries no minus sign.
+  assert.equal(unknown.original?.moneyOutMinor, 8000n);
+  assert.ok(!lines[0].includes('-'), lines[0]);
   assert.equal(lines[1], outside);
   // No placeholder word, no dangling separator, no internal identifier.
   assert.ok(!lines[0].endsWith(','));
@@ -77,7 +83,7 @@ test('a reversal of an original with no canonical counterparty is explained by d
   assert.deepEqual(reversalEvidence(named, result.coverage, t, LOCALE), [
     t('evidence.reverses', {
       date: formatDate('2026-01-17', LOCALE),
-      amount: formatMoney(-6000, 'EUR', LOCALE),
+      amount: formatMoney(6000, 'EUR', LOCALE),
       counterparty: 'Beta Energy',
     }),
     outside,
@@ -104,8 +110,10 @@ test('screenshot 10 — the reversal-detail fixture explains the refund under Su
   });
   const refund = contributionOf(result, 'f09-rev');
   assert.equal(refund.subject.kind, 'counterparty');
+  assert.equal(refund.amountMinor, -9900n);
+  assert.equal(refund.original?.moneyOutMinor, 9900n);
   assert.deepEqual(reversalEvidence(refund, result.coverage, t, LOCALE), [
-    `Reverses ${formatDate('2026-01-20', LOCALE)}, ${formatMoney(-9900, 'EUR', LOCALE)}, Superstore`,
+    `Reverses ${formatDate('2026-01-20', LOCALE)}, ${formatMoney(9900, 'EUR', LOCALE)}, Superstore`,
     t('evidence.reversesOutsidePeriod', { from: formatDate('2026-02-01', LOCALE), to: formatDate('2026-02-28', LOCALE) }),
   ]);
 });

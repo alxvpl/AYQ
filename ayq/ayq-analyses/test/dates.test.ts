@@ -5,12 +5,14 @@ import test from 'node:test';
 import {
   comparisonPeriod,
   periodShape,
+  presetMatching,
   previousPeriod,
   resolvePreset,
   sameLastYearPeriod,
   utcCalendarDate,
 } from '../src/dates.js';
-import { defaultContext } from '../src/context.js';
+import { commitPeriodDate, defaultContext } from '../src/context.js';
+import { context } from './helpers.js';
 import { account, snapshot, transaction } from './helpers.js';
 
 test('case 2 — month, quarter and year presets resolve to the correct first and last day', () => {
@@ -107,4 +109,46 @@ test('case 11 — sameLastYear clamps 29 February and states the clamp', () => {
   assert.equal(plain.fromDate, '2025-02-01');
   assert.equal(plain.toDate, '2025-02-28');
   assert.equal(plain.clamped, null);
+});
+
+test('PC6a — the preset trigger names the preset whose dates these are, else Custom, from the dates alone', () => {
+  const anchor = '2026-03-05';
+  assert.equal(presetMatching({ fromDate: '2026-02-01', toDate: '2026-02-28' }, anchor), 'lastMonth');
+  assert.equal(presetMatching({ fromDate: '2026-03-01', toDate: '2026-03-31' }, anchor), 'thisMonth');
+  assert.equal(presetMatching({ fromDate: '2025-10-01', toDate: '2025-12-31' }, anchor), 'lastQuarter');
+  assert.equal(presetMatching({ fromDate: '2025-01-01', toDate: '2025-12-31' }, anchor), 'lastYear');
+  // The same dates typed by hand name the same preset: there is no origin.
+  assert.equal(presetMatching({ fromDate: '2026-02-01', toDate: '2026-02-27' }, anchor), 'custom');
+  assert.equal(presetMatching({ fromDate: '2025-06-01', toDate: '2025-06-30' }, anchor), 'custom');
+  // F01's default context after a load reads Last month.
+  const held = snapshot({
+    generatedAt: '2026-03-05T06:00:00Z',
+    accounts: [account({ key: 'acc-a', from: '2025-01-01', to: '2026-03-04' })],
+    transactions: [transaction({ key: 't1', date: '2026-02-03', amount: -1000 })],
+  });
+  const resolved = defaultContext(held);
+  assert.equal(presetMatching({ fromDate: resolved.fromDate, toDate: resolved.toDate }, utcCalendarDate(held.meta.generatedAt)), 'lastMonth');
+});
+
+test('PC6c — a date commits only when complete and valid, moves the other bound when it crosses it, and never touches the comparison', () => {
+  const base = context({ fromDate: '2026-02-01', toDate: '2026-02-28', comparison: 'previous' });
+  // An empty or invalid draft commits nothing. (A year typed digit by digit
+  // passes through 0002, 0020 and 0202 — each a calendar date — and is never
+  // judged on the way because the field commits only on blur or Enter.)
+  for (const draft of ['', 'not a date', '2025-13-01', '2025-06-31']) {
+    assert.equal(commitPeriodDate(base, 'toDate', draft), null, draft);
+    assert.equal(commitPeriodDate(base, 'fromDate', draft), null, draft);
+  }
+  // A complete date commits, in either direction, without changing the mode.
+  assert.deepEqual(commitPeriodDate(base, 'fromDate', '2025-06-01'), { ...base, fromDate: '2025-06-01' });
+  assert.deepEqual(commitPeriodDate({ ...base, fromDate: '2025-06-01' }, 'toDate', '2025-06-30'), {
+    ...base,
+    fromDate: '2025-06-01',
+    toDate: '2025-06-30',
+  });
+  // A from after to moves to; a to before from moves from.
+  assert.deepEqual(commitPeriodDate(base, 'fromDate', '2026-03-10'), { ...base, fromDate: '2026-03-10', toDate: '2026-03-10' });
+  assert.deepEqual(commitPeriodDate(base, 'toDate', '2026-01-15'), { ...base, fromDate: '2026-01-15', toDate: '2026-01-15' });
+  // An unchanged date is not a change.
+  assert.equal(commitPeriodDate(base, 'fromDate', '2026-02-01'), null);
 });

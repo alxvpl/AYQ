@@ -173,8 +173,8 @@
       "counterpartyKey": "cp-employer",
       "categoryId": null,
       "categorisation": {
-        "source": "rule",
-        "ruleKey": "rule-001"
+        "source": "none",
+        "ruleKey": null
       },
       "isInternalTransfer": false,
       "internalTransferPairKey": null,
@@ -195,7 +195,10 @@
       "transactionClass": "credit_transfer",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": true,
       "internalTransferPairKey": "f03-t03",
       "counterAccountKey": "acc-card",
@@ -215,7 +218,10 @@
       "transactionClass": "credit_transfer",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": true,
       "internalTransferPairKey": "f03-t02",
       "counterAccountKey": "acc-daily",

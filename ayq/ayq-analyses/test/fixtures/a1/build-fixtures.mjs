@@ -82,7 +82,10 @@ function tx(options) {
     transactionClass,
     counterpartyKey = null,
     categoryId = null,
-    source = counterpartyKey === null ? null : 'rule',
+    // Provenance follows the category, never the counterparty (r002 I14; 013
+    // §4 T3): a set category was set by a rule unless the row says manual, and
+    // a transaction with no category claims none.
+    source = categoryId === null ? 'none' : 'rule',
     isInternalTransfer = false,
     internalTransferPairKey = null,
     counterAccountKey = null,
@@ -99,7 +102,7 @@ function tx(options) {
     transactionClass,
     counterpartyKey,
     categoryId,
-    categorisation: source === null ? null : { source, ruleKey: source === 'rule' ? 'rule-001' : null },
+    categorisation: { source, ruleKey: source === 'rule' ? 'rule-001' : null },
     isInternalTransfer,
     internalTransferPairKey,
     counterAccountKey,

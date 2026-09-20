@@ -170,6 +170,22 @@ export function resolvePreset(preset: Exclude<PeriodPreset, 'custom'>, anchor: I
   }
 }
 
+/**
+ * The preset whose resolved dates equal this period exactly, or `custom`.
+ *
+ * A pure function of the visible dates and the snapshot anchor: no hidden
+ * preset-origin state exists, so the same dates always name the same preset
+ * (r05 §5, PC6a) — the same principle as the comparison rule of r004 §4.
+ */
+export function presetMatching(period: Period, anchor: IsoDate): PeriodPreset {
+  for (const preset of PERIOD_PRESETS) {
+    if (preset === 'custom') continue;
+    const resolved = resolvePreset(preset, anchor);
+    if (resolved.fromDate === period.fromDate && resolved.toDate === period.toDate) return preset;
+  }
+  return 'custom';
+}
+
 export type PeriodShape = 'month' | 'quarter' | 'year' | 'custom';
 
 /**

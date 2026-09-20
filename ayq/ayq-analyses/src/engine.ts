@@ -159,6 +159,12 @@ function buildContributions(input: PopulationInput): Contribution[] {
         transaction.isReversal && original !== null
           ? {
               transaction: original,
+              moneyOutMinor: moneyOutContribution(
+                original,
+                original.reversalOfTransactionKey === null
+                  ? null
+                  : byKey.get(original.reversalOfTransactionKey) ?? null,
+              ),
               counterpartyName:
                 original.counterpartyKey === null ? null : counterpartyNames.get(original.counterpartyKey) ?? null,
               outsideReason,
@@ -322,6 +328,7 @@ function reconciliationFacts(accounts: readonly Account[]): ReconciliationFact[]
     displayIdentifier: account.displayIdentifier,
     state: account.reconciliation.state,
     differenceMinor: exactMinor(account.reconciliation.difference),
+    differenceMagnitudeMinor: absolute(exactMinor(account.reconciliation.difference)),
     currency: account.reconciliation.difference.currency,
   }));
 }

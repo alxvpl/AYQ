@@ -216,3 +216,41 @@ test('T2.5 — an internal transfer carrying a category or a canonical counterpa
   );
   refusedAsInvariant(mutate(s => { s.transactions[7].counterpartyKey = 'cp-superstore'; }), 'transfer with a counterparty');
 });
+
+test('T3 — provenance is a required object, and an uncategorised transaction claims none', () => {
+  // transactions[4] is the cash withdrawal f01-t05: no category, no counterparty.
+  assert.equal((readFixture('a1-result.json') as any).transactions[4].categoryId, null);
+  for (const change of [
+    (s: any) => { s.transactions[4].categorisation = null; },
+    (s: any) => { delete s.transactions[4].categorisation; },
+    (s: any) => { s.transactions[4].categorisation = { source: 'manual' }; },
+    (s: any) => { s.transactions[4].categorisation = { source: 'rule', ruleKey: 'rule-001' }; },
+    (s: any) => { s.transactions[4].categorisation = { source: 'automatic' }; },
+  ]) {
+    refusedAsInvariant(mutate(change), change.toString());
+  }
+  assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.transactions[4].categorisation = { source: 'none' }; })));
+  assert.doesNotThrow(() =>
+    validateSnapshot(mutate(s => { s.transactions[4].categorisation = { source: 'none', ruleKey: null }; })),
+  );
+  // The categorised cases of T2.4 still hold beside the reverse direction.
+  assert.doesNotThrow(() => validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'manual' }; })));
+  assert.doesNotThrow(() =>
+    validateSnapshot(mutate(s => { s.transactions[0].categorisation = { source: 'rule', ruleKey: 'rule-002' }; })),
+  );
+  refusedAsInvariant(mutate(s => { s.transactions[0].categorisation = { source: 'none' }; }), 'categorised as none');
+});
+
+test('T3 — every intended valid fixture carries provenance on every transaction', () => {
+  for (const name of VALID) {
+    const snapshot = validateSnapshot(readFixture(name));
+    for (const transaction of snapshot.transactions) {
+      assert.equal(typeof transaction.categorisation, 'object', `${name}: ${transaction.transactionKey}`);
+      if (transaction.categoryId === null) {
+        assert.equal(transaction.categorisation.source, 'none', `${name}: ${transaction.transactionKey}`);
+      } else {
+        assert.ok(['manual', 'rule'].includes(transaction.categorisation.source), `${name}: ${transaction.transactionKey}`);
+      }
+    }
+  }
+});

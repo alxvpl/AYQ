@@ -7,7 +7,7 @@
 // nothing is read at startup to restore it, and no analytical context survives
 // a launch. A1 therefore keeps no snapshot archive at all.
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -85,6 +85,11 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   interfaceLocale = app.getLocale() || 'en';
+  // No application menu (r05 §2, PC1): the default File / Edit / View /
+  // Window row is not part of the accepted shell and exposes reload,
+  // developer tools and zoom that A1 has no use for. Editing inside inputs
+  // is Chromium's own on Windows and needs no menu.
+  Menu.setApplicationMenu(null);
   registerIpc();
   createWindow();
   app.on('activate', () => {

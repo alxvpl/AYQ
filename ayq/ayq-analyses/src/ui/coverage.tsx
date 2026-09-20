@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { Popover, PopoverSurface, PopoverTrigger, Button } from '@fluentui/react-components';
+import { ChevronDown16Regular } from '@fluentui/react-icons';
 import { formatDate, formatDateTime, formatList, formatRelative } from '../format.js';
 import { formatMoney } from '../money.js';
 import { useLocale, useText } from './text.js';
@@ -22,19 +23,37 @@ export function CoverageIndicator({ result }: { result: AnalysisResult }): JSX.E
   const locale = useLocale();
   const { coverage } = result;
 
-  const label =
-    coverage.status === 'insufficient' || coverage.coveredThrough === null
-      ? t('coverage.button.none')
-      : coverage.status === 'limited'
-        ? t('coverage.button.limited', { date: formatDate(coverage.coveredThrough, locale) })
-        : t('coverage.button.full', { date: formatDate(coverage.coveredThrough, locale) });
+  // The button's text is one catalogue string. For a limited result the
+  // marker that the limited string adds to the full one is the part shown in
+  // the attention tone; the date and its label stay in the ordinary
+  // foreground (PC7). Nothing is composed here that the catalogue did not.
+  let label: JSX.Element | string;
+  if (coverage.status === 'insufficient' || coverage.coveredThrough === null) {
+    label = t('coverage.button.none');
+  } else if (coverage.status === 'limited') {
+    const date = formatDate(coverage.coveredThrough, locale);
+    const full = t('coverage.button.full', { date });
+    const limited = t('coverage.button.limited', { date });
+    label = limited.startsWith(full) ? (
+      <>
+        {full}
+        <span className="coverage-attention">{limited.slice(full.length)}</span>
+      </>
+    ) : (
+      limited
+    );
+  } else {
+    label = t('coverage.button.full', { date: formatDate(coverage.coveredThrough, locale) });
+  }
 
+  // The sentence is chosen by the supplied state, never by testing the
+  // difference against zero.
   const differs = result.reconciliation.some(fact => fact.state === 'differs');
 
   return (
     <Popover positioning="below-end" withArrow>
       <PopoverTrigger disableButtonEnhancement>
-        <Button appearance="subtle" className={coverage.status === 'limited' ? 'coverage-attention' : undefined}>
+        <Button appearance="outline" icon={<ChevronDown16Regular />} iconPosition="after">
           {label}
         </Button>
       </PopoverTrigger>
@@ -75,13 +94,17 @@ export function CoverageIndicator({ result }: { result: AnalysisResult }): JSX.E
         <ul className="coverage-reconciliation">
           {result.reconciliation.map(fact => (
             <li key={fact.accountKey}>
-              {fact.name}
-              {' — '}
-              {fact.state === 'agrees'
-                ? t('coverage.flyout.reconciliation.agrees')
-                : t('coverage.flyout.reconciliation.differs', {
-                    amount: formatMoney(fact.differenceMinor, fact.currency, locale),
-                  })}
+              {t('coverage.flyout.reconciliation.line', {
+                account: fact.name,
+                text:
+                  fact.state === 'agrees'
+                    ? t('coverage.flyout.reconciliation.agrees')
+                    : // The magnitude the engine supplies (PC4); the signed
+                      // difference stays in the structured result.
+                      t('coverage.flyout.reconciliation.differs', {
+                        amount: formatMoney(fact.differenceMagnitudeMinor, fact.currency, locale),
+                      }),
+              })}
             </li>
           ))}
         </ul>

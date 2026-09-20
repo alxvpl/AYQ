@@ -218,7 +218,10 @@
       "transactionClass": "cash_withdrawal",
       "counterpartyKey": null,
       "categoryId": null,
-      "categorisation": null,
+      "categorisation": {
+        "source": "none",
+        "ruleKey": null
+      },
       "isInternalTransfer": false,
       "internalTransferPairKey": null,
       "counterAccountKey": null,

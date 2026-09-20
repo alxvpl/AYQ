@@ -95,8 +95,13 @@ export interface Category {
 
 export type CategorisationSource = 'manual' | 'rule' | 'none';
 
+/**
+ * Decision provenance, present on every transaction (r002 §6.5, I14). The
+ * validator admits only the three tokens, so a validated snapshot never
+ * carries a fourth case for the interface to fall back on.
+ */
 export interface Categorisation {
-  source: string;
+  source: CategorisationSource;
   ruleKey?: string | null;
   [key: string]: unknown;
 }
@@ -118,7 +123,7 @@ export interface Transaction {
   transactionClass: string;
   counterpartyKey: string | null;
   categoryId: string | null;
-  categorisation: Categorisation | null;
+  categorisation: Categorisation;
   isInternalTransfer: boolean;
   internalTransferPairKey: string | null;
   counterAccountKey: string | null;
@@ -246,6 +251,13 @@ export interface Contribution {
   /** Present when this contribution comes from a reversal. */
   original: {
     transaction: Transaction;
+    /**
+     * The original's own A1 money-out contribution — positive for the payment
+     * a reversal reverses — from the same contribution function as every
+     * other figure, so the evidence view speaks one sign convention without
+     * reading a raw amount's sign for itself (r05 §9, PC3).
+     */
+    moneyOutMinor: bigint;
     counterpartyName: string | null;
     outsideReason: OriginalOutsideReason | null;
   } | null;
@@ -305,7 +317,14 @@ export interface ReconciliationFact {
   name: string;
   displayIdentifier: string | null;
   state: ReconciliationStateToken;
+  /** The exact signed difference the snapshot supplied, kept as supplied. */
   differenceMinor: bigint;
+  /**
+   * Its magnitude, taken in exact integer arithmetic here rather than in a
+   * component: the flyout sentence states how far the statement and the
+   * ledger differ and deliberately not which is higher (r05 §6, PC4).
+   */
+  differenceMagnitudeMinor: bigint;
   currency: Currency;
 }
 

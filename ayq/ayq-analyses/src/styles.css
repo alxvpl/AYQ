@@ -142,10 +142,6 @@ body {
   gap: 8px;
 }
 
-.period-range {
-  font-variant-numeric: tabular-nums;
-}
-
 .context-static {
   display: flex;
   flex-direction: column;
@@ -157,6 +153,7 @@ body {
   margin-left: auto;
 }
 
+/* The limited marker in the attention tone; the date stays ordinary (PC7). */
 .coverage-attention {
   color: var(--attention);
 }
@@ -299,9 +296,10 @@ table.rows td.numeric {
   text-align: right;
 }
 
+/* An ordering indicator, not a selection: neutral foreground (PC9). */
 .sort-direction {
   margin-left: 4px;
-  color: var(--accent);
+  color: inherit;
 }
 
 table.rows tbody tr {
@@ -313,7 +311,7 @@ table.rows tbody tr.selected {
 }
 
 .detail-pane {
-  flex: 0 0 380px;
+  flex: 0 0 520px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -339,12 +337,22 @@ table.rows tbody tr.selected {
   font-size: 20px;
 }
 
+/* Five columns, the control gap between every pair, the amount in the
+   ledger treatment (PC8). Text wraps inside its column; it never runs into
+   the next one. */
 .detail-columns,
 .detail-row-main {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-  gap: 4px;
+  grid-template-columns: max-content max-content minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--gap);
   font-size: 12px;
+  overflow-wrap: break-word;
+}
+
+.detail-columns > :nth-child(2),
+.detail-row-main > :nth-child(2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .detail-columns {

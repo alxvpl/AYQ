@@ -98,7 +98,7 @@ export function transaction(spec: TransactionSpec): Transaction {
     transactionClass: spec.class ?? 'card_payment',
     counterpartyKey,
     categoryId,
-    categorisation: categoryId === null ? null : { source: 'rule', ruleKey: 'rule-1' },
+    categorisation: categoryId === null ? { source: 'none' } : { source: 'rule', ruleKey: 'rule-1' },
     isInternalTransfer: transfer,
     internalTransferPairKey: null,
     counterAccountKey: null,

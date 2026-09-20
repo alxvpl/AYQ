@@ -27,6 +27,11 @@ const OUTSIDE_KEYS: Record<Exclude<OriginalOutsideReason, 'period'>, StringKey> 
  * original has no canonical counterparty it is named by date and amount alone
  * (011 §4): no placeholder word stands in for the missing name, and the
  * outside-population sentence follows exactly as it does otherwise.
+ *
+ * The amount is the original's own positive A1 money-out contribution, as
+ * the engine supplies it (r05 §9, PC3): the pane speaks money-out terms
+ * throughout, so a refund of €99.00 reverses a payment of €99.00, never a
+ * payment of −€99.00. Nothing here reads a raw amount's sign.
  */
 export function reversalEvidence(
   contribution: Contribution,
@@ -38,7 +43,7 @@ export function reversalEvidence(
   if (original === null) return [];
 
   const date = formatDate(original.transaction.bookingDate, locale);
-  const amount = formatMoney(original.transaction.amount.amount, original.transaction.amount.currency, locale);
+  const amount = formatMoney(original.moneyOutMinor, original.transaction.amount.currency, locale);
 
   const lines = [
     original.counterpartyName === null

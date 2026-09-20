@@ -17,6 +17,8 @@ const renderer = readFileSync(join(SOURCE, 'renderer.tsx'), 'utf8');
 
 test('the Electron security baseline is intact', () => {
   assert.match(main, /contextIsolation:\s*true/);
+  // No application menu (PC1), and the sandbox is not loosened to remove it.
+  assert.match(mainCode, /Menu\.setApplicationMenu\(null\)/);
   assert.match(main, /nodeIntegration:\s*false/);
   assert.match(main, /sandbox:\s*true/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
@@ -63,6 +65,19 @@ test('no user-facing literal lives in a component', () => {
     const source = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const matches = [...source.matchAll(textNode)].map(match => match[0]);
     assert.deepEqual(matches, [], `${path} carries interface text outside the catalogue`);
+  }
+});
+
+test('no punctuation-bearing composition lives in a component (PC5)', () => {
+  // A separator between two values is part of a displayed string and belongs
+  // in the catalogue: neither a template literal that joins values with a
+  // separator nor a JSX string expression carrying one may appear.
+  const composedTemplate = /`[^`]*\$\{[^`]*[·—–:][^`]*`/g;
+  const jsxSeparator = /\{\s*'[^']*[·—–:,][^']*'\s*\}/g;
+  for (const path of componentFiles()) {
+    const source = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const found = [...source.matchAll(composedTemplate), ...source.matchAll(jsxSeparator)].map(match => match[0]);
+    assert.deepEqual(found, [], `${path} composes interface text outside the catalogue`);
   }
 });
 

@@ -7,6 +7,7 @@ import { useLocale, useText } from './text.js';
 import type { StringKey } from '../strings.js';
 import type {
   AnalysisResult,
+  CategorisationSource,
   Contribution,
   ExclusionClass,
   TransactionClass,
@@ -21,7 +22,11 @@ const CLASS_KEYS: Record<TransactionClass, StringKey> = {
   other: 'class.other',
 };
 
-const PROVENANCE_KEYS: Record<string, StringKey> = {
+/**
+ * Exactly three mappings (r05 §9, T3). A validated snapshot carries one of
+ * these on every transaction, so there is no fourth case and no fallback.
+ */
+const PROVENANCE_KEYS: Record<CategorisationSource, StringKey> = {
   manual: 'evidence.provenance.manual',
   rule: 'evidence.provenance.rule',
   none: 'evidence.provenance.none',
@@ -52,7 +57,7 @@ function ContributionRow({ contribution, result }: { contribution: Contribution;
   const locale = useLocale();
   const { transaction } = contribution;
 
-  const provenanceKey = PROVENANCE_KEYS[transaction.categorisation?.source ?? 'none'] ?? 'evidence.provenance.none';
+  const provenanceKey = PROVENANCE_KEYS[transaction.categorisation.source];
 
   return (
     <li className="detail-row">

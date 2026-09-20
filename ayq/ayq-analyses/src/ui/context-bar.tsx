@@ -1,4 +1,5 @@
-import type { JSX } from 'react';
+import type { JSX, KeyboardEvent } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dropdown,
   Field,
@@ -11,7 +12,8 @@ import {
   Option,
   Button,
 } from '@fluentui/react-components';
-import { isIsoDate, resolvePreset, type PeriodPreset } from '../dates.js';
+import { presetMatching, resolvePreset, type PeriodPreset } from '../dates.js';
+import { commitPeriodDate } from '../context.js';
 import { formatDate } from '../format.js';
 import { useLocale, useText } from './text.js';
 import { CoverageIndicator } from './coverage.js';
@@ -25,14 +27,19 @@ import type {
 } from '../types.js';
 import type { StringKey } from '../strings.js';
 
-const PRESET_KEYS: Record<Exclude<PeriodPreset, 'custom'>, StringKey> = {
+const PRESET_KEYS: Record<PeriodPreset, StringKey> = {
   thisMonth: 'context.period.preset.thisMonth',
   lastMonth: 'context.period.preset.lastMonth',
   thisQuarter: 'context.period.preset.thisQuarter',
   lastQuarter: 'context.period.preset.lastQuarter',
   thisYear: 'context.period.preset.thisYear',
   lastYear: 'context.period.preset.lastYear',
+  custom: 'context.period.preset.custom',
 };
+
+const PRESET_CHOICES = (Object.keys(PRESET_KEYS) as PeriodPreset[]).filter(
+  (preset): preset is Exclude<PeriodPreset, 'custom'> => preset !== 'custom',
+);
 
 const COMPARISON_KEYS: Record<ComparisonMode, StringKey> = {
   none: 'context.comparison.none',
@@ -78,11 +85,32 @@ export function ContextBar({ snapshot, context, result, anchor, onChange }: Cont
     onChange({ ...context, fromDate: period.fromDate, toDate: period.toDate });
   };
 
-  const setDate = (field: 'fromDate' | 'toDate', value: string): void => {
-    if (!isIsoDate(value)) return;
-    const next = { ...context, [field]: value } as AnalysisContext;
-    if (next.fromDate > next.toDate) return;
+  // The trigger names the preset whose dates these are, or Custom… — read
+  // back from the committed dates, never from how they were chosen (PC6a).
+  const presetLabel = t(PRESET_KEYS[presetMatching({ fromDate: context.fromDate, toDate: context.toDate }, anchor)]);
+
+  // The date fields edit a local draft. Keystrokes never reach the context;
+  // blur or Enter commits, and a committed date that crosses the other bound
+  // moves that bound with it. An empty or invalid draft restores the last
+  // committed value (PC6c).
+  const [fromDraft, setFromDraft] = useState(context.fromDate);
+  const [toDraft, setToDraft] = useState(context.toDate);
+  useEffect(() => {
+    setFromDraft(context.fromDate);
+    setToDraft(context.toDate);
+  }, [context.fromDate, context.toDate]);
+
+  const commitDate = (field: 'fromDate' | 'toDate', draft: string): void => {
+    const next = commitPeriodDate(context, field, draft);
+    if (next === null) {
+      (field === 'fromDate' ? setFromDraft : setToDraft)(context[field]);
+      return;
+    }
     onChange(next);
+  };
+
+  const commitOnEnter = (field: 'fromDate' | 'toDate', draft: string) => (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'Enter') commitDate(field, draft);
   };
 
   const comparison = result.comparison;
@@ -91,21 +119,15 @@ export function ContextBar({ snapshot, context, result, anchor, onChange }: Cont
     <div className="context-bar">
       <Field label={t('context.period.label')}>
         <div className="period-control">
-          <span className="period-range">
-            {t('context.period.range', {
-              from: formatDate(context.fromDate, locale),
-              to: formatDate(context.toDate, locale),
-            })}
-          </span>
           <Menu>
             <MenuTrigger disableButtonEnhancement>
               <Button appearance="subtle" aria-label={t('context.period.label')}>
-                {t('context.period.preset.custom')}
+                {presetLabel}
               </Button>
             </MenuTrigger>
             <MenuPopover>
               <MenuList>
-                {(Object.keys(PRESET_KEYS) as Array<Exclude<PeriodPreset, 'custom'>>).map(preset => (
+                {PRESET_CHOICES.map(preset => (
                   <MenuItem key={preset} onClick={() => applyPreset(preset)}>
                     {t(PRESET_KEYS[preset])}
                   </MenuItem>
@@ -115,15 +137,19 @@ export function ContextBar({ snapshot, context, result, anchor, onChange }: Cont
           </Menu>
           <Input
             type="date"
-            value={context.fromDate}
+            value={fromDraft}
             aria-label={t('context.period.label')}
-            onChange={(_event, data) => setDate('fromDate', data.value)}
+            onChange={(_event, data) => setFromDraft(data.value)}
+            onBlur={() => commitDate('fromDate', fromDraft)}
+            onKeyDown={commitOnEnter('fromDate', fromDraft)}
           />
           <Input
             type="date"
-            value={context.toDate}
+            value={toDraft}
             aria-label={t('context.period.label')}
-            onChange={(_event, data) => setDate('toDate', data.value)}
+            onChange={(_event, data) => setToDraft(data.value)}
+            onBlur={() => commitDate('toDate', toDraft)}
+            onKeyDown={commitOnEnter('toDate', toDraft)}
           />
         </div>
       </Field>
@@ -177,7 +203,7 @@ export function ContextBar({ snapshot, context, result, anchor, onChange }: Cont
           {snapshot.accounts.map(account => {
             const label = account.displayIdentifier === null
               ? account.name
-              : `${account.name} · ${account.displayIdentifier}`;
+              : t('context.accounts.entry', { name: account.name, identifier: account.displayIdentifier });
             return (
               <Option key={account.accountKey} value={account.accountKey} text={label}>
                 {label}

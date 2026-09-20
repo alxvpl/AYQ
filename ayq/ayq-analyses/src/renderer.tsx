@@ -10,12 +10,13 @@
 import type { JSX } from 'react';
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Button, FluentProvider, webLightTheme } from '@fluentui/react-components';
+import { Button, FluentProvider } from '@fluentui/react-components';
 import { analyse } from './engine.js';
 import { anchorDate, defaultContext } from './context.js';
 import { formatDateTime } from './format.js';
 import { DEFAULT_SORT, type SortState } from './sort.js';
 import { LocaleContext, useLocale, useText } from './ui/text.js';
+import { analysesTheme } from './ui/theme.js';
 import { ContextBar } from './ui/context-bar.js';
 import { ResultView } from './ui/result.js';
 import { DetailPane, type DetailSelection } from './ui/detail.js';
@@ -233,7 +234,7 @@ function Root(): JSX.Element {
         The provider is the shell's parent, so it must span the window for the
         rail and the status bar to reach the bottom edge on every screen.
       */}
-      <FluentProvider theme={webLightTheme} style={{ height: '100%' }}>
+      <FluentProvider theme={analysesTheme} style={{ height: '100%' }}>
         <App />
       </FluentProvider>
     </LocaleContext.Provider>
