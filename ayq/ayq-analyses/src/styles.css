@@ -154,6 +154,10 @@ body {
 }
 
 /* The limited marker in the attention tone; the date stays ordinary (PC7). */
+.coverage-label {
+  white-space: pre;
+}
+
 .coverage-attention {
   color: var(--attention);
 }
@@ -338,12 +342,14 @@ table.rows tbody tr.selected {
 }
 
 /* Five columns, the control gap between every pair, the amount in the
-   ledger treatment (PC8). Text wraps inside its column; it never runs into
+   ledger treatment (PC8). The date and amount tracks are fixed so every
+   row and the column header share one set of column edges; the three text
+   columns split the rest. Text wraps inside its column; it never runs into
    the next one. */
 .detail-columns,
 .detail-row-main {
   display: grid;
-  grid-template-columns: max-content max-content minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 6em 6em minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--gap);
   font-size: 12px;
   overflow-wrap: break-word;

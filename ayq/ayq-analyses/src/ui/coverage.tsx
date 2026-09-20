@@ -35,10 +35,12 @@ export function CoverageIndicator({ result }: { result: AnalysisResult }): JSX.E
     const full = t('coverage.button.full', { date });
     const limited = t('coverage.button.limited', { date });
     label = limited.startsWith(full) ? (
-      <>
+      // One inline run, so the catalogue string's own spacing between the
+      // date and the marker survives the button's flex layout.
+      <span className="coverage-label">
         {full}
         <span className="coverage-attention">{limited.slice(full.length)}</span>
-      </>
+      </span>
     ) : (
       limited
     );
