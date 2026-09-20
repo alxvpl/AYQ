@@ -1,0 +1,377 @@
+/* AYQ Analyses — A1 build values.
+   Provisional, so that a first version can exist. Not design canon. */
+
+:root {
+  --accent: #22d3a6;
+  --attention: #b26a00;
+  --error: #b10e1c;
+  --ground: #f6f7f9;
+  --surface: #ffffff;
+  --line: #e1e3e6;
+  --secondary: #616161;
+  --row-height: 36px;
+  --gap: 12px;
+  --radius: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ground);
+  color: #121212;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    'rail body'
+    'rail status';
+  height: 100%;
+}
+
+/* Rail — Mica ground, never behind figures. */
+.rail {
+  grid-area: rail;
+  background: rgba(243, 243, 243, 0.85);
+  border-right: 1px solid var(--line);
+  padding: 12px 4px;
+}
+
+.rail .wordmark {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.rail ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rail-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 8px 2px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  color: inherit;
+}
+
+.rail-item.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+  font-weight: 600;
+}
+
+.rail-item.unavailable {
+  color: #a0a0a0;
+}
+
+/* One scroller per screen. */
+.body {
+  grid-area: body;
+  overflow: auto;
+  padding: 0 24px;
+}
+
+.status-bar {
+  grid-area: status;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 4px 24px;
+  min-height: 32px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+
+.centred-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  height: 100%;
+  text-align: center;
+}
+
+.centred-block h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.centred-block.invalid h1 {
+  color: var(--error);
+}
+
+.context-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ground);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--gap);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.period-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.period-range {
+  font-variant-numeric: tabular-nums;
+}
+
+.context-static {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--secondary);
+}
+
+.context-coverage {
+  margin-left: auto;
+}
+
+.coverage-attention {
+  color: var(--attention);
+}
+
+.coverage-flyout {
+  max-width: 420px;
+  font-size: 12px;
+}
+
+.coverage-flyout p {
+  margin: 4px 0;
+}
+
+.coverage-accounts,
+.coverage-reconciliation {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.coverage-note {
+  color: var(--secondary);
+}
+
+.explore-body {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.result {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 16px;
+}
+
+.figure {
+  font-variant-numeric: tabular-nums;
+}
+
+.headline {
+  font-size: 32px;
+  margin: 0;
+}
+
+.secondary {
+  font-size: 12px;
+  color: var(--secondary);
+}
+
+.scope {
+  margin: 4px 0 8px;
+}
+
+.coverage-sentence {
+  margin: 4px 0;
+  color: var(--attention);
+}
+
+.comparison {
+  display: flex;
+  gap: 16px;
+  margin: 4px 0;
+}
+
+.comparison.unavailable {
+  color: var(--secondary);
+}
+
+.state-line {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.state-detail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--secondary);
+  font-size: 12px;
+}
+
+.exclusion-line {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 8px 0 16px;
+  padding: 0;
+}
+
+.exclusion-item {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--secondary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.chart {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+table.rows {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.rows th,
+table.rows td {
+  height: var(--row-height);
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+table.rows th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+table.rows th button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+}
+
+table.rows th.numeric,
+table.rows td.numeric {
+  text-align: right;
+}
+
+.sort-direction {
+  margin-left: 4px;
+  color: var(--accent);
+}
+
+table.rows tbody tr {
+  cursor: pointer;
+}
+
+table.rows tbody tr.selected {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.detail-pane {
+  flex: 0 0 380px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  position: sticky;
+  top: 96px;
+}
+
+.detail-pane header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.detail-pane h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.detail-total {
+  font-size: 20px;
+}
+
+.detail-columns,
+.detail-row-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.detail-columns {
+  color: var(--secondary);
+  padding: 8px 0 4px;
+}
+
+.detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.detail-row {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+}
+
+.detail-row-evidence {
+  font-size: 12px;
+  color: var(--secondary);
+}
+
+.detail-row-evidence p {
+  margin: 2px 0;
+}
+
+.detail-row-evidence .label {
+  font-weight: 600;
+}
