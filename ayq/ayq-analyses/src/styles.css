@@ -1,18 +1,7 @@
-/* AYQ Analyses — A1 build values.
-   Provisional, so that a first version can exist. Not design canon. */
-
-:root {
-  --accent: #22d3a6;
-  --attention: #b26a00;
-  --error: #b10e1c;
-  --ground: #f6f7f9;
-  --surface: #ffffff;
-  --line: #e1e3e6;
-  --secondary: #616161;
-  --row-height: 36px;
-  --gap: 12px;
-  --radius: 4px;
-}
+/* AYQ Analyses — the stylesheet.
+   Every colour and face, and every shared length, is a role from src/ui/tokens.ts, rendered onto
+   the document root as a custom property at start (applyCssVariables). No rule
+   here carries a colour of its own; test/tokens.test.ts holds it to that. */
 
 * {
   box-sizing: border-box;
@@ -27,14 +16,20 @@ body,
 
 body {
   background: var(--ground);
-  color: #121212;
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+}
+
+/* Focus is the accent's geometry, on every focusable element alike. */
+:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 1px;
 }
 
 .shell {
   display: grid;
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: var(--rail-width) 1fr;
   grid-template-rows: 1fr auto;
   grid-template-areas:
     'rail body'
@@ -42,54 +37,84 @@ body {
   height: 100%;
 }
 
-/* Rail — Mica ground, never behind figures. */
+/* Rail — the dark ground, never behind figures (A2 decision K-2). One dark
+   neutral shared with the primary button; the accent marks the active
+   destination as a bar of fill and a label in the on-dark value. */
 .rail {
   grid-area: rail;
-  background: rgba(243, 243, 243, 0.85);
-  border-right: 1px solid var(--line);
+  background: var(--dark-ground);
+  color: var(--dark-ink);
+  border-right: 1px solid var(--dark-edge);
   padding: 12px 4px;
 }
 
 .rail .wordmark {
   display: block;
-  font-size: 11px;
+  font-size: var(--size-caption);
   font-weight: 600;
   text-align: center;
   margin-bottom: 16px;
+  color: var(--dark-ink);
 }
 
 .rail ul {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
+/* A tile: the icon above the label, centred (extraction J-A3). */
 .rail-item {
   width: 100%;
+  min-height: 56px;
   border: 0;
   background: transparent;
-  padding: 8px 2px;
+  padding: 8px 2px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--size-caption);
+  line-height: 1.2;
   cursor: pointer;
   border-radius: var(--radius);
   color: inherit;
 }
 
+.rail-item svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.rail-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .rail-item.active {
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset var(--marker-width) 0 0 var(--accent);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--accent-on-dark);
   font-weight: 600;
 }
 
 .rail-item.unavailable {
-  color: #a0a0a0;
+  color: var(--dark-ink-muted);
+}
+
+.rail-item.unavailable:hover {
+  background: transparent;
 }
 
 /* One scroller per screen. */
 .body {
   grid-area: body;
   overflow: auto;
-  padding: 0 24px;
+  padding: 0 var(--body-inset);
 }
 
 .status-bar {
@@ -98,9 +123,9 @@ body {
   display: flex;
   align-items: center;
   gap: var(--gap);
-  padding: 4px 24px;
-  min-height: 32px;
-  font-size: 12px;
+  padding: 4px var(--body-inset);
+  min-height: var(--status-height);
+  font-size: var(--size-secondary);
   color: var(--secondary);
 }
 
@@ -145,7 +170,7 @@ body {
 .context-static {
   display: flex;
   flex-direction: column;
-  font-size: 12px;
+  font-size: var(--size-secondary);
   color: var(--secondary);
 }
 
@@ -164,7 +189,7 @@ body {
 
 .coverage-flyout {
   max-width: 420px;
-  font-size: 12px;
+  font-size: var(--size-secondary);
 }
 
 .coverage-flyout p {
@@ -195,16 +220,16 @@ body {
 }
 
 .figure {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--figures);
 }
 
 .headline {
-  font-size: 32px;
+  font-size: var(--size-headline);
   margin: 0;
 }
 
 .secondary {
-  font-size: 12px;
+  font-size: var(--size-secondary);
   color: var(--secondary);
 }
 
@@ -237,7 +262,7 @@ body {
   margin: 0;
   padding: 0;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: var(--size-secondary);
 }
 
 .exclusion-line {
@@ -254,7 +279,7 @@ body {
   background: transparent;
   padding: 0;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--size-secondary);
   color: var(--secondary);
   cursor: pointer;
   text-decoration: underline;
@@ -310,12 +335,19 @@ table.rows tbody tr {
   cursor: pointer;
 }
 
+table.rows tbody tr:hover {
+  background: var(--row-hover);
+}
+
+/* The selected row: a neutral wash and a bar of the accent, never the accent
+   as a fill and never a state tone (extraction J-D5; A2 decision K-5). */
 table.rows tbody tr.selected {
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--selection);
+  box-shadow: inset var(--marker-width) 0 0 var(--accent);
 }
 
 .detail-pane {
-  flex: 0 0 520px;
+  flex: 0 0 var(--detail-pane-width);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -351,14 +383,14 @@ table.rows tbody tr.selected {
   display: grid;
   grid-template-columns: 6em 6em minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--gap);
-  font-size: 12px;
+  font-size: var(--size-secondary);
   overflow-wrap: break-word;
 }
 
 .detail-columns > :nth-child(2),
 .detail-row-main > :nth-child(2) {
   text-align: right;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--figures);
 }
 
 .detail-columns {
@@ -378,7 +410,7 @@ table.rows tbody tr.selected {
 }
 
 .detail-row-evidence {
-  font-size: 12px;
+  font-size: var(--size-secondary);
   color: var(--secondary);
 }
 

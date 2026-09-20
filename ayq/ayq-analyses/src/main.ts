@@ -12,6 +12,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAndValidateSnapshot } from './validate.js';
+import { METRIC, SURFACE } from './ui/tokens.js';
 import type { SnapshotLoadResult } from './preload.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -62,12 +63,14 @@ function registerIpc(): void {
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     title: 'AYQ Analyses',
-    width: 1360,
-    height: 860,
-    minWidth: 980,
-    minHeight: 660,
+    width: METRIC.window.width,
+    height: METRIC.window.height,
+    // The window never shrinks below the width at which the context bar,
+    // the table and the detail pane still hold together (A2 decision K-8).
+    minWidth: METRIC.window.minWidth,
+    minHeight: METRIC.window.minHeight,
     show: false,
-    backgroundColor: '#f6f7f9',
+    backgroundColor: SURFACE.ground,
     webPreferences: {
       preload: join(here, 'preload.cjs'),
       contextIsolation: true,

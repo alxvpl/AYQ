@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { ACCENT } from './tokens.js';
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import { formatDate, formatList } from '../format.js';
@@ -55,7 +56,9 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
         {
           type: 'bar',
           data: lengths,
-          itemStyle: { color: '#22D3A6' },
+          // The bars take the accent's fill from the tokens; nothing else about the
+          // chart is decided here (A2 K-10: tokens propagate, chart language does not).
+          itemStyle: { color: ACCENT.fill },
           label: {
             show: true,
             position: 'right',
