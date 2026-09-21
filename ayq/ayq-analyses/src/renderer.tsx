@@ -1,16 +1,28 @@
-// AYQ Analyses — A1 renderer.
+// AYQ Analyses — the renderer.
 //
-// The application opens on Explore. The other five destinations are present and
-// visibly unavailable. There is no Search, no Explore preset row, no archive
-// selector, and Metric and Dimension are static text rather than controls.
+// The application opens on Explore, on the snapshot it holds (r002 §6.2). The
+// other five analytical destinations are present, navigable and answer "Not
+// in this version."; Settings is utility navigation at the rail footer. There
+// is no Search, no Explore preset row, no archive selector, and Metric and
+// Dimension are static text rather than controls.
 //
 // The renderer formats and selects from one engine result. It never recomputes
-// a financial value, and it never touches the filesystem.
+// a financial value, and it never touches the filesystem: it receives the
+// validated snapshot and a display name, and no path of any kind.
 
 import type { JSX, KeyboardEvent } from 'react';
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Button, FluentProvider } from '@fluentui/react-components';
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
+  FluentProvider,
+} from '@fluentui/react-components';
 import {
   ArrowRepeatAll20Regular,
   ArrowTrendingLines20Regular,
@@ -18,10 +30,20 @@ import {
   BranchFork20Regular,
   CompassNorthwest20Regular,
   Home20Regular,
+  Settings20Regular,
   type FluentIcon,
 } from '@fluentui/react-icons';
 import { analyse } from './engine.js';
 import { anchorDate, defaultContext } from './context.js';
+import {
+  ANALYTICAL_DESTINATIONS,
+  DESTINATION_LABEL,
+  isAnalytical,
+  isImplemented,
+  placeholderKey,
+  type AnalyticalDestination,
+  type Destination,
+} from './destinations.js';
 import { formatDateTime } from './format.js';
 import { DEFAULT_SORT, type SortState } from './sort.js';
 import { LocaleContext, useLocale, useText } from './ui/text.js';
@@ -30,9 +52,10 @@ import { applyCssVariables } from './ui/tokens.js';
 import { ContextBar } from './ui/context-bar.js';
 import { ResultView } from './ui/result.js';
 import { DetailPane, type DetailSelection } from './ui/detail.js';
+import { SettingsView, type SettingsSnapshot } from './ui/settings.js';
 import type { StringKey } from './strings.js';
 import type { AnalysisContext, AyqAnalyticalSnapshot } from './types.js';
-import type { AyqAnalysesBridge, SnapshotLoadResult } from './preload.js';
+import type { AyqAnalysesBridge, SnapshotIdentity, SnapshotLoadResult } from './preload.js';
 
 declare global {
   interface Window {
@@ -40,19 +63,17 @@ declare global {
   }
 }
 
-type Destination = 'overview' | 'explore' | 'fixedCosts' | 'projection' | 'scenarios' | 'savedAnalyses';
-
-// The six destinations in the accepted order (r05 §2), each a tile of icon
-// above label (A2 decision K-1; Fluent System Icons, A12). The icon is
-// decorative: the tile's accessible name is its catalogue label.
-const RAIL: Array<{ destination: Destination; key: StringKey; icon: FluentIcon }> = [
-  { destination: 'overview', key: 'rail.overview', icon: Home20Regular },
-  { destination: 'explore', key: 'rail.explore', icon: CompassNorthwest20Regular },
-  { destination: 'fixedCosts', key: 'rail.fixedCosts', icon: ArrowRepeatAll20Regular },
-  { destination: 'projection', key: 'rail.projection', icon: ArrowTrendingLines20Regular },
-  { destination: 'scenarios', key: 'rail.scenarios', icon: BranchFork20Regular },
-  { destination: 'savedAnalyses', key: 'rail.savedAnalyses', icon: Bookmark20Regular },
-];
+// The icon of each tile (Fluent System Icons, A12). The icon is decorative:
+// the tile's accessible name is its catalogue label.
+const ICON: Record<Destination, FluentIcon> = {
+  overview: Home20Regular,
+  explore: CompassNorthwest20Regular,
+  fixedCosts: ArrowRepeatAll20Regular,
+  projection: ArrowTrendingLines20Regular,
+  scenarios: BranchFork20Regular,
+  savedAnalyses: Bookmark20Regular,
+  settings: Settings20Regular,
+};
 
 const INVALID_REASON_KEYS: Record<string, StringKey> = {
   contractMajor: 'snapshot.invalid.reason.contractMajor',
@@ -61,22 +82,71 @@ const INVALID_REASON_KEYS: Record<string, StringKey> = {
   unknown: 'snapshot.invalid.reason.unknown',
 };
 
+/**
+ * What the application holds. `pending` is the launch read; `none` is no
+ * active copy; `candidateRefused` is no active copy and a chosen file just
+ * refused; `activeRefused` is an active copy that failed revalidation
+ * (r002 §6.2); `loaded` is the active snapshot in use.
+ */
 type LoadState =
+  | { kind: 'pending' }
   | { kind: 'none' }
-  | { kind: 'invalid'; reason: string }
-  | { kind: 'loaded'; snapshot: AyqAnalyticalSnapshot };
+  | { kind: 'candidateRefused'; reason: string }
+  | { kind: 'activeRefused'; reason: string; identity: SnapshotIdentity }
+  | { kind: 'loaded'; snapshot: AyqAnalyticalSnapshot; identity: SnapshotIdentity };
+
+function RailTile({
+  destination,
+  current,
+  tabStop,
+  unavailable,
+  onSelect,
+  onKeyDown,
+  tileRef,
+}: {
+  destination: Destination;
+  current: boolean;
+  tabStop: boolean;
+  unavailable: boolean;
+  onSelect(): void;
+  onKeyDown?(event: KeyboardEvent<HTMLButtonElement>): void;
+  tileRef?(element: HTMLButtonElement | null): void;
+}): JSX.Element {
+  const t = useText();
+  const Icon = ICON[destination];
+  return (
+    <button
+      ref={tileRef}
+      type="button"
+      className={['rail-item', current ? 'active' : '', unavailable ? 'unavailable' : ''].filter(Boolean).join(' ')}
+      tabIndex={tabStop ? 0 : -1}
+      aria-current={current ? 'page' : undefined}
+      onClick={onSelect}
+      onKeyDown={onKeyDown}
+    >
+      <Icon aria-hidden="true" />
+      {t(DESTINATION_LABEL[destination])}
+    </button>
+  );
+}
 
 /**
- * The rail is one Tab stop (A2 decision K-7): Tab lands on the current
- * destination, Up/Down and Home/End move along the tiles and open the
- * destination as a click would, and Tab leaves for the body. Every tile
- * remains a real button, so a pointer and a screen reader see the same thing.
+ * The analytical group is one Tab stop (A2 decision K-7; r002 §3.2): Tab
+ * lands on the current tile — or, while Settings is current, on the
+ * analytical destination last visited — Up/Down and Home/End move along the
+ * tiles and open the destination as a click would, and Tab leaves for
+ * Settings at the footer, its own stop, and then for the body. Every tile is
+ * a real button, so a pointer and a screen reader see the same thing; an
+ * unbuilt destination is a navigable placeholder, not a disabled control.
  */
 function Rail({
   destination,
+  analytical,
   onSelect,
 }: {
   destination: Destination;
+  /** The analytical destination the group's Tab stop rests on. */
+  analytical: AnalyticalDestination;
   onSelect(destination: Destination): void;
 }): JSX.Element {
   const t = useText();
@@ -87,13 +157,13 @@ function Rail({
       ArrowDown: index + 1,
       ArrowUp: index - 1,
       Home: 0,
-      End: RAIL.length - 1,
+      End: ANALYTICAL_DESTINATIONS.length - 1,
     };
     const next = steps[event.key];
     if (next === undefined) return;
     event.preventDefault();
-    const target = Math.min(RAIL.length - 1, Math.max(0, next));
-    onSelect(RAIL[target].destination);
+    const target = Math.min(ANALYTICAL_DESTINATIONS.length - 1, Math.max(0, next));
+    onSelect(ANALYTICAL_DESTINATIONS[target]);
     tiles.current[target]?.focus();
   };
 
@@ -101,33 +171,31 @@ function Rail({
     <nav className="rail" aria-label={t('app.wordmark')}>
       <span className="wordmark">{t('app.wordmark')}</span>
       <ul role="list">
-        {RAIL.map((entry, index) => {
-          const unavailable = entry.destination !== 'explore';
-          const active = destination === entry.destination;
-          const Icon = entry.icon;
-          return (
-            <li key={entry.destination}>
-              <button
-                ref={element => {
-                  tiles.current[index] = element;
-                }}
-                type="button"
-                className={['rail-item', active ? 'active' : '', unavailable ? 'unavailable' : '']
-                  .filter(Boolean)
-                  .join(' ')}
-                tabIndex={active ? 0 : -1}
-                aria-disabled={unavailable || undefined}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => onSelect(entry.destination)}
-                onKeyDown={event => move(event, index)}
-              >
-                <Icon aria-hidden="true" />
-                {t(entry.key)}
-              </button>
-            </li>
-          );
-        })}
+        {ANALYTICAL_DESTINATIONS.map((entry, index) => (
+          <li key={entry}>
+            <RailTile
+              destination={entry}
+              current={destination === entry}
+              tabStop={analytical === entry}
+              unavailable={!isImplemented(entry)}
+              onSelect={() => onSelect(entry)}
+              onKeyDown={event => move(event, index)}
+              tileRef={element => {
+                tiles.current[index] = element;
+              }}
+            />
+          </li>
+        ))}
       </ul>
+      <div className="rail-footer">
+        <RailTile
+          destination="settings"
+          current={destination === 'settings'}
+          tabStop
+          unavailable={false}
+          onSelect={() => onSelect('settings')}
+        />
+      </div>
     </nav>
   );
 }
@@ -145,13 +213,16 @@ function NoData({ onLoad }: { onLoad(): void }): JSX.Element {
   );
 }
 
+function reasonKey(reason: string): StringKey {
+  return INVALID_REASON_KEYS[reason] ?? 'snapshot.invalid.reason.unknown';
+}
+
 function InvalidSnapshot({ reason, onLoad }: { reason: string; onLoad(): void }): JSX.Element {
   const t = useText();
-  const key = INVALID_REASON_KEYS[reason] ?? 'snapshot.invalid.reason.unknown';
   return (
     <div className="centred-block invalid">
       <h1>{t('snapshot.invalid.title')}</h1>
-      <p>{t(key)}</p>
+      <p>{t(reasonKey(reason))}</p>
       <Button appearance="primary" onClick={onLoad}>
         {t('snapshot.invalid.retry')}
       </Button>
@@ -159,38 +230,101 @@ function InvalidSnapshot({ reason, onLoad }: { reason: string; onLoad(): void })
   );
 }
 
-function NotInThisVersion(): JSX.Element {
+/**
+ * A chosen file refused while an active snapshot is in use (r002 §11.5): the
+ * refused-snapshot family, over the result that stays on screen, because
+ * until a replacement is proven the previous snapshot remains in use.
+ */
+function RefusedCandidate({ reason, onClose }: { reason: string | null; onClose(): void }): JSX.Element {
   const t = useText();
   return (
-    <div className="centred-block">
-      <p>{t('rail.notInThisVersion')}</p>
-    </div>
+    <Dialog
+      open={reason !== null}
+      onOpenChange={(_event, data) => {
+        if (!data.open) onClose();
+      }}
+    >
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle className="invalid-title">{t('snapshot.invalid.title')}</DialogTitle>
+          <DialogContent>{reason !== null && t(reasonKey(reason))}</DialogContent>
+          <DialogActions>
+            <Button appearance="primary" onClick={onClose}>
+              {t('dialog.close')}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
   );
+}
+
+function NotInThisVersion({ destination }: { destination: AnalyticalDestination }): JSX.Element {
+  const t = useText();
+  const key = placeholderKey(destination);
+  return <div className="centred-block">{key !== null && <p>{t(key)}</p>}</div>;
 }
 
 function App(): JSX.Element {
   const t = useText();
   const locale = useLocale();
-  const [load, setLoad] = useState<LoadState>({ kind: 'none' });
+  const [load, setLoad] = useState<LoadState>({ kind: 'pending' });
+  const [refusedCandidate, setRefusedCandidate] = useState<string | null>(null);
   const [context, setContext] = useState<AnalysisContext | null>(null);
   const [destination, setDestination] = useState<Destination>('explore');
+  const [analytical, setAnalytical] = useState<AnalyticalDestination>('explore');
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [selection, setSelection] = useState<DetailSelection | null>(null);
 
+  const select = (next: Destination): void => {
+    setDestination(next);
+    if (isAnalytical(next)) setAnalytical(next);
+  };
+
+  const adopt = (snapshot: AyqAnalyticalSnapshot, identity: SnapshotIdentity): void => {
+    setLoad({ kind: 'loaded', snapshot, identity });
+    // The default context, at every launch and at every load (r002 §6.1).
+    setContext(defaultContext(snapshot));
+    setSort(DEFAULT_SORT);
+    setSelection(null);
+  };
+
+  // The launch read: the active copy, revalidated, or nothing (r002 §6.2).
+  useEffect(() => {
+    let cancelled = false;
+    void window.ayqAnalyses.activeSnapshot().then(active => {
+      if (cancelled) return;
+      if (active.status === 'loaded') adopt(active.snapshot, active.identity);
+      else if (active.status === 'invalid') setLoad({ kind: 'activeRefused', reason: active.reason, identity: active.identity });
+      else setLoad({ kind: 'none' });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const openSnapshot = async (): Promise<void> => {
     const result: SnapshotLoadResult = await window.ayqAnalyses.openSnapshot();
-    if (result.status === 'cancelled') return;
+    if (result.status === 'cancelled' || result.status === 'failed') return;
     if (result.status === 'invalid') {
-      // The previous result does not stay on screen beside a refused file, and
-      // the status bar empties.
-      setLoad({ kind: 'invalid', reason: result.reason });
+      if (load.kind === 'loaded' || load.kind === 'activeRefused') {
+        // The active copy is untouched and stays in use (r002 §11.5).
+        setRefusedCandidate(result.reason);
+        return;
+      }
+      setLoad({ kind: 'candidateRefused', reason: result.reason });
       setContext(null);
       setSelection(null);
       return;
     }
-    setLoad({ kind: 'loaded', snapshot: result.snapshot });
-    setContext(defaultContext(result.snapshot));
-    setSort(DEFAULT_SORT);
+    adopt(result.snapshot, result.identity);
+  };
+
+  const removeSnapshot = async (): Promise<void> => {
+    const outcome = await window.ayqAnalyses.removeSnapshot();
+    if (!outcome.removed) return;
+    setLoad({ kind: 'none' });
+    setContext(null);
     setSelection(null);
   };
 
@@ -217,12 +351,25 @@ function App(): JSX.Element {
         : t('context.accounts.some', { n: context.accountKeys.length, m: snapshot.accounts.length })
       : '';
 
-  let body: JSX.Element;
-  if (destination !== 'explore') {
-    body = <NotInThisVersion />;
+  const settingsSnapshot: SettingsSnapshot =
+    load.kind === 'loaded'
+      ? { kind: 'loaded', snapshot: load.snapshot, identity: load.identity }
+      : load.kind === 'activeRefused'
+        ? { kind: 'refused', identity: load.identity }
+        : { kind: 'none' };
+
+  let body: JSX.Element | null;
+  if (load.kind === 'pending') {
+    body = null;
+  } else if (destination === 'settings') {
+    body = (
+      <SettingsView active={settingsSnapshot} onLoad={() => void openSnapshot()} onRemove={() => void removeSnapshot()} />
+    );
+  } else if (destination !== 'explore') {
+    body = <NotInThisVersion destination={destination} />;
   } else if (load.kind === 'none') {
     body = <NoData onLoad={() => void openSnapshot()} />;
-  } else if (load.kind === 'invalid') {
+  } else if (load.kind === 'candidateRefused' || load.kind === 'activeRefused') {
     body = <InvalidSnapshot reason={load.reason} onLoad={() => void openSnapshot()} />;
   } else {
     body = (
@@ -256,7 +403,7 @@ function App(): JSX.Element {
 
   return (
     <div className="shell">
-      <Rail destination={destination} onSelect={setDestination} />
+      <Rail destination={destination} analytical={analytical} onSelect={select} />
       <main className="body">{body}</main>
       <footer className="status-bar">
         {load.kind === 'loaded' && (
@@ -268,6 +415,7 @@ function App(): JSX.Element {
           </>
         )}
       </footer>
+      <RefusedCandidate reason={refusedCandidate} onClose={() => setRefusedCandidate(null)} />
     </div>
   );
 }

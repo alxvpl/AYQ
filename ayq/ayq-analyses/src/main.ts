@@ -1,62 +1,72 @@
 // AYQ Analyses — Electron main process.
 //
 // The operating-system dialog lives here; so does reading and validating the
-// file. Only a bounded typed payload crosses the preload boundary.
+// file, and the application's own copy of the active snapshot (r002 §6.1;
+// 02_ARCHITECTURE r006 §7.12). Only a bounded typed payload crosses the
+// preload boundary: the validated snapshot and the name of the file it came
+// from — never a path, neither the source's nor the copy's.
 //
-// Every launch begins unloaded (009 §3). The active snapshot is session state:
-// nothing is read at startup to restore it, and no analytical context survives
-// a launch. A1 therefore keeps no snapshot archive at all.
+// At launch the active copy is read and revalidated through the same contract
+// validator a manual load uses. No analytical context survives a launch.
 
 import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseAndValidateSnapshot } from './validate.js';
+import { readActiveSnapshot, removeActiveSnapshot, replaceActiveSnapshot } from './active-snapshot.js';
 import { METRIC, SURFACE } from './ui/tokens.js';
 import type { SnapshotLoadResult } from './preload.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+const CHANNEL_ACTIVE = 'analyses:active-snapshot';
 const CHANNEL_OPEN = 'analyses:open-snapshot';
+const CHANNEL_REMOVE = 'analyses:remove-snapshot';
 const CHANNEL_PRESENTATION = 'analyses:presentation-context';
 
 /** Read once, at start, as presentation context and nothing more. */
 let interfaceLocale = 'en';
 
+/** The per-user directory holding the one active copy. The renderer never learns it. */
+function activeDirectory(): string {
+  return app.getPath('userData');
+}
+
 async function openSnapshot(window: BrowserWindow | null): Promise<SnapshotLoadResult> {
-  const result = window
-    ? await dialog.showOpenDialog(window, {
-        title: 'Load AYQ snapshot',
-        properties: ['openFile'],
-        filters: [{ name: 'AYQ snapshot', extensions: ['json'] }],
-      })
-    : await dialog.showOpenDialog({
-        title: 'Load AYQ snapshot',
-        properties: ['openFile'],
-        filters: [{ name: 'AYQ snapshot', extensions: ['json'] }],
-      });
+  const options = {
+    title: 'Load AYQ snapshot',
+    properties: ['openFile' as const],
+    filters: [{ name: 'AYQ snapshot', extensions: ['json'] }],
+  };
+  const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
 
   if (result.canceled || result.filePaths.length === 0) return { status: 'cancelled' };
 
-  let text: string;
+  let bytes: Buffer;
   try {
-    text = await readFile(result.filePaths[0], 'utf8');
+    bytes = await readFile(result.filePaths[0]);
   } catch (error) {
     // The path and the system error stay here: the renderer is told only that
     // the file does not match the snapshot format it can read.
-    console.error('Could not read the selected file:', error);
+    console.error('Could not read the selected file:', (error as { code?: string }).code ?? 'error');
     return { status: 'invalid', reason: 'unknown' };
   }
 
-  const validated = parseAndValidateSnapshot(text);
-  if (validated.ok) return { status: 'loaded', snapshot: validated.snapshot };
-
-  console.error(`Snapshot refused (${validated.reason}): ${validated.detail}`);
-  return { status: 'invalid', reason: validated.reason };
+  return replaceActiveSnapshot(activeDirectory(), bytes, basename(result.filePaths[0]));
 }
 
 function registerIpc(): void {
+  ipcMain.handle(CHANNEL_ACTIVE, () => readActiveSnapshot(activeDirectory()));
   ipcMain.handle(CHANNEL_OPEN, event => openSnapshot(BrowserWindow.fromWebContents(event.sender)));
+  ipcMain.handle(CHANNEL_REMOVE, async () => {
+    try {
+      await removeActiveSnapshot(activeDirectory());
+      return { removed: true };
+    } catch (error) {
+      console.error('The snapshot copy could not be removed:', (error as { code?: string }).code ?? 'error');
+      return { removed: false };
+    }
+  });
   ipcMain.handle(CHANNEL_PRESENTATION, () => ({ locale: interfaceLocale }));
 }
 

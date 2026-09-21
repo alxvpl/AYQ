@@ -25,32 +25,65 @@ test('the Electron security baseline is intact', () => {
   assert.match(main, /will-navigate/);
 });
 
-test('the preload surface is two read-only capabilities and nothing else', () => {
+test('the preload surface is four bounded capabilities and nothing else', () => {
   const exposed = [...preload.matchAll(/ipcRenderer\.invoke\('([^']+)'\)/g)].map(match => match[1]);
-    assert.deepEqual(exposed.sort(), ['analyses:open-snapshot', 'analyses:presentation-context']);
+  assert.deepEqual(exposed.sort(), [
+    'analyses:active-snapshot',
+    'analyses:open-snapshot',
+    'analyses:presentation-context',
+    'analyses:remove-snapshot',
+  ]);
   assert.ok(!preload.includes('node:fs'));
   assert.ok(!preload.includes('require('));
+  // What crosses is the validated snapshot and a display name — never a path.
+  assert.ok(!/path/i.test(withoutComments(preload)), 'no path crosses the preload boundary');
 });
 
 test('the renderer reaches no filesystem and no path', () => {
-  for (const forbidden of ['node:fs', 'readFile', 'writeFile', 'filePath', 'archiveDirectory']) {
+  for (const forbidden of ['node:fs', 'readFile', 'writeFile', 'filePath', 'archiveDirectory', 'getPath', 'userData', 'readdir']) {
+    assert.ok(!renderer.includes(forbidden), `${forbidden} must not be in the renderer`);
+  }
+  for (const path of componentFiles()) {
+    const source = readFileSync(path, 'utf8');
+    for (const forbidden of ['filePath', 'getPath', 'userData', 'node:fs']) {
+      assert.ok(!source.includes(forbidden), `${forbidden} must not be in ${path}`);
+    }
+  }
+});
+
+test('the launch reads the one active copy through the validator, and nothing else is remembered (r002 §6.1)', () => {
+  // The owner's decision: what he loads stays loaded. The main process reads
+  // its own copy at startup and revalidates it; the renderer asks for it and
+  // begins on it. No listing, no archive, no history — one copy, by a fixed
+  // name, under the application's own per-user directory.
+  const activeSnapshot = withoutComments(readFileSync(join(SOURCE, 'active-snapshot.ts'), 'utf8'));
+  assert.match(mainCode, /readActiveSnapshot\(activeDirectory\(\)\)/);
+  assert.match(mainCode, /app\.getPath\('userData'\)/);
+  assert.deepEqual([...mainCode.matchAll(/getPath\('([^']+)'\)/g)].map(m => m[1]), ['userData']);
+  assert.match(activeSnapshot, /parseAndValidateSnapshot\(/);
+  assert.match(renderer, /useState<LoadState>\(\{ kind: 'pending' \}\)/);
+  assert.match(renderer, /window\.ayqAnalyses\.activeSnapshot\(\)/);
+  for (const forbidden of ['readdir', 'listSnapshots', 'archive', 'history']) {
+    assert.ok(!mainCode.includes(forbidden), `${forbidden} must not be in the main process`);
+    assert.ok(!activeSnapshot.includes(forbidden), `${forbidden} must not be in active-snapshot.ts`);
+  }
+  // No analytical context persists: the default context at every adoption.
+  assert.match(renderer, /setContext\(defaultContext\(snapshot\)\)/);
+  for (const forbidden of ['localStorage', 'sessionStorage', 'indexedDB']) {
     assert.ok(!renderer.includes(forbidden), `${forbidden} must not be in the renderer`);
   }
 });
 
-test('every launch begins unloaded: no archive is read at startup', () => {
-  // D2/009 §3: the active snapshot is session state. Nothing restores it, and
-  // A1 keeps no archive at all.
-  assert.match(renderer, /useState<LoadState>\(\{ kind: 'none' \}\)/);
-  for (const forbidden of ['readdir', 'listSnapshots', 'getPath', 'archive']) {
-    assert.ok(!mainCode.includes(forbidden), `${forbidden} must not be in the main process`);
-  }
-});
-
-test('a refused replacement leaves no previous result beside it', () => {
-  const branch = renderer.slice(renderer.indexOf("result.status === 'invalid'"));
-  assert.match(branch, /setLoad\(\{ kind: 'invalid'/);
-  assert.match(branch, /setContext\(null\)/);
+test('a refused candidate leaves the active snapshot in use; a refused active copy shows no figure (r002 §11.5, §6.2)', () => {
+  const branch = renderer.slice(renderer.indexOf("result.status === 'invalid'"), renderer.indexOf('adopt(result.snapshot'));
+  // With an active copy: the refusal is stated over the result that stays.
+  assert.match(branch, /load\.kind === 'loaded' \|\| load\.kind === 'activeRefused'[\s\S]*?setRefusedCandidate\(result\.reason\)[\s\S]*?return/);
+  // Without one: the refused-snapshot family in the body, and no context.
+  assert.match(branch, /setLoad\(\{ kind: 'candidateRefused'[\s\S]*?setContext\(null\)/);
+  // A failed write changes nothing on screen: the previous copy is untouched.
+  assert.match(renderer, /result\.status === 'cancelled' \|\| result\.status === 'failed'\) return/);
+  // A refused active copy never becomes a result.
+  assert.match(renderer, /const snapshot = load\.kind === 'loaded' \? load\.snapshot : null/);
 });
 
 function componentFiles(): string[] {

@@ -8,6 +8,7 @@
   "rail.scenarios": "Scenarios",
   "rail.savedAnalyses": "Saved Analyses",
   "rail.notInThisVersion": "Not in this version.",
+  "rail.settings": "Settings",
 
   "status.snapshot": "Snapshot taken {datetime}",
   "status.loadAnother": "Load another snapshot…",
@@ -22,6 +23,24 @@
   "snapshot.invalid.reason.invariant": "The snapshot is internally inconsistent, so no figure from it can be trusted.",
   "snapshot.invalid.reason.unknown": "This file does not match the snapshot format this application can read.",
   "snapshot.invalid.retry": "Load another snapshot…",
+
+  "settings.snapshot.heading": "Snapshot",
+  "settings.snapshot.taken": "Taken {datetime} ({relative})",
+  "settings.snapshot.holds": {
+    "counts": ["accounts", "transactions"],
+    "forms": {
+      "one|one": "{accounts} account · {transactions} transaction",
+      "one|other": "{accounts} account · {transactions} transactions",
+      "other|one": "{accounts} accounts · {transactions} transaction",
+      "other|other": "{accounts} accounts · {transactions} transactions"
+    }
+  },
+  "settings.snapshot.none": "No snapshot loaded.",
+  "settings.snapshot.refused": "This file cannot be read.",
+  "settings.snapshot.remove": "Remove this snapshot",
+  "settings.snapshot.remove.confirm": "AYQ Analyses will delete its copy of this snapshot. If you no longer have the original file, this snapshot cannot be loaded again.",
+  "dialog.cancel": "Cancel",
+  "dialog.close": "Close",
 
   "context.period.label": "Period",
   "context.period.preset.thisMonth": "This month",
@@ -70,12 +89,21 @@
   "explore.comparison.reason.coverage": "this snapshot does not hold {accounts} for {from} – {to}",
   "explore.comparison.reason.noData": "this snapshot holds no data for {from} – {to}",
   "explore.comparison.reason.currency": "the comparison period is in {currency}",
-  "explore.comparison.reason.unknownStart": "this snapshot does not establish how far back {accounts} reach",
+  "explore.comparison.reason.unknownStart": {
+    "one": "this snapshot does not establish how far back {accounts} reaches",
+    "other": "this snapshot does not establish how far back {accounts} reach"
+  },
   "explore.coverage.endLimit": "This snapshot holds {accounts} through {date}. Nothing after that date is in it.",
   "explore.coverage.startLimit": "This snapshot holds {accounts} from {date}. The period you asked for begins before that.",
-  "explore.coverage.unknownStart": "This snapshot does not establish how far back {accounts} reach, so earlier transactions may be missing.",
+  "explore.coverage.unknownStart": {
+    "one": "This snapshot does not establish how far back {accounts} reaches, so earlier transactions may be missing.",
+    "other": "This snapshot does not establish how far back {accounts} reach, so earlier transactions may be missing."
+  },
   "explore.empty": "No matching transactions.",
-  "explore.empty.unknownStart": "No matching transactions in what this snapshot holds. It does not establish how far back {accounts} reach, so there may be more.",
+  "explore.empty.unknownStart": {
+    "one": "No matching transactions in what this snapshot holds. It does not establish how far back {accounts} reaches, so there may be more.",
+    "other": "No matching transactions in what this snapshot holds. It does not establish how far back {accounts} reach, so there may be more."
+  },
   "explore.insufficient": "No data for this period.",
   "explore.insufficient.detail": "{account} covers {openingDate} – {lastStatementDate}",
   "explore.unsupported": "This selection spans more than one currency ({currencies}). Narrow the accounts or the period to a single currency.",

@@ -66,8 +66,8 @@ test('a period that merely reaches back before an unproven start is the empty fo
   assert.equal(result.coverage.status, 'full');
   assert.deepEqual(result.coverage.unknownStartAccountKeys, ['acc-b']);
   assert.equal(
-    translate('explore.empty.unknownStart', { accounts: 'acc-b' }),
-    'No matching transactions in what this snapshot holds. It does not establish how far back acc-b reach, so there may be more.',
+    translate('explore.empty.unknownStart', { accounts: 'acc-b', n: result.coverage.unknownStartAccountKeys.length }),
+    'No matching transactions in what this snapshot holds. It does not establish how far back acc-b reaches, so there may be more.',
   );
 });
 
@@ -92,9 +92,12 @@ test('one selected account without a proven start refuses the comparison, with i
   assert.deepEqual(result.comparison?.coverage.unknownStartAccountKeys, ['acc-b']);
   assert.equal(
     translate('explore.comparison.unavailable', {
-      reason: translate('explore.comparison.reason.unknownStart', { accounts: 'acc-b' }),
+      reason: translate('explore.comparison.reason.unknownStart', {
+        accounts: 'acc-b',
+        n: result.comparison!.coverage.unknownStartAccountKeys.length,
+      }),
     }),
-    'Comparison unavailable — this snapshot does not establish how far back acc-b reach',
+    'Comparison unavailable — this snapshot does not establish how far back acc-b reaches',
   );
   // With only the proven-start account selected, the comparison is ordinary.
   const alone = analyse(two(), context({ ...FEBRUARY, comparison: 'previous', accountKeys: ['acc-a'] }));
@@ -118,11 +121,15 @@ test('an unavailable reconciliation is stated as such and carries no difference'
   );
 });
 
-test('the four 010 sentences and the button form are in the catalogue, word for word', () => {
+test('the four 010 sentences and the button form are in the catalogue, word for word, in the number r002 §6.6 gives them', () => {
   assert.equal(translate('coverage.button.unknownStart', { date: '4 Mar 2026' }), 'Data through 4 Mar 2026 · start unknown');
   assert.equal(
-    translate('explore.coverage.unknownStart', { accounts: 'Card account' }),
-    'This snapshot does not establish how far back Card account reach, so earlier transactions may be missing.',
+    translate('explore.coverage.unknownStart', { accounts: 'Card account', n: 1 }),
+    'This snapshot does not establish how far back Card account reaches, so earlier transactions may be missing.',
+  );
+  assert.equal(
+    translate('explore.coverage.unknownStart', { accounts: 'Card account and Everyday account', n: 2 }),
+    'This snapshot does not establish how far back Card account and Everyday account reach, so earlier transactions may be missing.',
   );
   assert.equal(
     translate('coverage.flyout.account.unknownStart', { account: 'Card account', lastStatementDate: '28 Feb 2026' }),

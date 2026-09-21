@@ -46,6 +46,16 @@ body {
   color: var(--dark-ink);
   border-right: 1px solid var(--dark-edge);
   padding: 12px 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Settings: utility navigation at the rail footer, outside the analytical
+   group and its order (r002 §3.1, §11.1). */
+.rail-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--dark-edge);
 }
 
 .rail .wordmark {
@@ -102,12 +112,17 @@ body {
   font-weight: 600;
 }
 
+/* The third kind of rail item (r002 §3.2, resolving D-1): a destination not in
+   this version. Its label and icon keep the ordinary rail ink — muting is not
+   a permitted carrier of unavailability, and the muted token measures below
+   4.5:1 — and the tile is drawn as a placeholder: a dashed outline in the
+   muted token, which is non-text geometry and clears 3:1 on the ground and on
+   the hover wash. It is a navigable placeholder, not a disabled control, so
+   it hovers and focuses like any other tile. */
 .rail-item.unavailable {
-  color: var(--dark-ink-muted);
-}
-
-.rail-item.unavailable:hover {
-  background: transparent;
+  color: var(--dark-ink);
+  border: 1px dashed var(--dark-ink-muted);
+  padding: 7px 1px 5px;
 }
 
 /* Current beats unavailable, for foreground and wash alike (PC-A2-10, 017A):
@@ -154,8 +169,43 @@ body {
   margin: 0;
 }
 
-.centred-block.invalid h1 {
+.centred-block.invalid h1,
+.invalid-title {
   color: var(--error);
+}
+
+/* Settings (r002 §11): one section about the active snapshot. */
+.settings {
+  max-width: 640px;
+  padding-top: 16px;
+}
+
+.settings h1 {
+  font-size: 20px;
+  margin: 0 0 16px;
+}
+
+.settings h2 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.settings p {
+  margin: 4px 0;
+}
+
+.settings-name {
+  font-weight: 600;
+}
+
+.settings-refused {
+  color: var(--error);
+}
+
+.settings-actions {
+  display: flex;
+  gap: var(--gap);
+  margin-top: 16px;
 }
 
 .context-bar {

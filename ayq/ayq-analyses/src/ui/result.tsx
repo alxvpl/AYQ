@@ -171,7 +171,7 @@ export function ResultView({
             ? // Replaces the ordinary sentence, never appears beside it
               // (010 §3): it states what was found and refuses the claim
               // the ordinary sentence would make.
-              t('explore.empty.unknownStart', { accounts: namesOf(result, unknownStart, locale) })
+              t('explore.empty.unknownStart', { accounts: namesOf(result, unknownStart, locale), n: unknownStart.length })
             : t('explore.empty')}
         </p>
       </section>
@@ -216,7 +216,8 @@ export function ResultView({
       )}
       {unknownStart.length > 0 && (
         <p className="coverage-sentence">
-          {t('explore.coverage.unknownStart', { accounts: namesOf(result, unknownStart, locale) })}
+          {/* The verb agrees with the number of accounts named, though none is printed (r002 §10.3). */}
+          {t('explore.coverage.unknownStart', { accounts: namesOf(result, unknownStart, locale), n: unknownStart.length })}
         </p>
       )}
 
@@ -242,6 +243,7 @@ export function ResultView({
                   : comparison.unavailable === 'unknownStart'
                     ? t('explore.comparison.reason.unknownStart', {
                         accounts: namesOf(result, comparison.coverage.unknownStartAccountKeys, locale),
+                        n: comparison.coverage.unknownStartAccountKeys.length,
                       })
                   : t('explore.comparison.reason.coverage', {
                       accounts: formatList(

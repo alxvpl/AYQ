@@ -204,21 +204,69 @@ test('PC-A2-10 — the stylesheet gives the current tile its foreground and wash
   };
   assert.match(rule('.rail-item.active'), /color:\s*var\(--rail-current\)/);
   assert.match(rule('.rail-item.active'), /background:\s*var\(--rail-active\)/);
-  // The muted rule for a non-current unavailable tile stays as it was (017A §3).
-  assert.match(rule('.rail-item.unavailable'), /color:\s*var\(--dark-ink-muted\)/);
+  // A non-current unavailable tile keeps the ordinary rail ink and is drawn
+  // as a placeholder by a dashed outline in the muted token (r002 §3.2).
+  assert.match(rule('.rail-item.unavailable'), /color:\s*var\(--dark-ink\)/);
+  assert.match(rule('.rail-item.unavailable'), /border:\s*1px dashed var\(--dark-ink-muted\)/);
+  assert.ok(!css.includes('\n.rail-item.unavailable:hover {'), 'a placeholder hovers like any other tile');
   // The precedence rule: two classes beat one, and it names both rest and hover.
   const precedence = rule('.rail-item.active.unavailable,\n.rail-item.active.unavailable:hover');
   assert.match(precedence, /color:\s*var\(--rail-current\)/);
   assert.match(precedence, /background:\s*var\(--rail-active\)/);
   // It comes after every single-class rail rule, so nothing later overrides it.
-  const lastSingle = Math.max(
-    css.indexOf('\n.rail-item.unavailable {'),
-    css.indexOf('\n.rail-item.unavailable:hover {'),
-    css.indexOf('\n.rail-item.active {'),
-  );
+  const lastSingle = Math.max(css.indexOf('\n.rail-item.unavailable {'), css.indexOf('\n.rail-item.active {'));
   assert.ok(css.indexOf('\n.rail-item.active.unavailable,') > lastSingle);
   // The on-dark accent no longer colours any rail rule; it stays the button's.
   assert.ok(!css.includes('--accent-on-dark'));
+});
+
+/** The states a non-current tile can sit in, and the surface each composites to. */
+function nonCurrentRailStates(): Array<{ state: string; background: string }> {
+  return [
+    // .rail-item at rest: the rail ground.
+    { state: 'rest', background: DARK.ground },
+    // .rail-item:hover: the hover wash over the ground.
+    { state: 'hover', background: composite(DARK.ground, 0.06) },
+    // Focus adds an outline outside the tile; the surface is unchanged.
+    { state: 'focused', background: DARK.ground },
+    { state: 'focused + hover', background: composite(DARK.ground, 0.06) },
+  ];
+}
+
+test('D-1 (r002 §3.2) — the three kinds of rail item are told apart, and the unavailable non-current label and icon clear 4.5:1 on every composited surface, the lowest governing', () => {
+  // Available non-current and unavailable non-current share the ink; the
+  // placeholder outline, not a reduced contrast, carries unavailability.
+  const label = DARK.ink;
+  const measured = nonCurrentRailStates().map(({ state, background }) => ({
+    state,
+    background,
+    ratio: contrastRatio(label, background),
+  }));
+  const lowest = measured.reduce((a, b) => (a.ratio <= b.ratio ? a : b));
+  assert.ok(
+    lowest.ratio >= 4.5,
+    `lowest unavailable non-current state ${lowest.state}: ${lowest.ratio.toFixed(2)}:1 on ${lowest.background}`,
+  );
+  // The figures r002 asks to be reported rather than asserted (026 §4).
+  assert.equal(contrastRatio(DARK.ink, DARK.ground).toFixed(2), '10.45');
+  assert.equal(contrastRatio(DARK.ink, composite(DARK.ground, 0.06)).toFixed(2), '8.84');
+  // The muted token that carried the r001 treatment measures below threshold
+  // for text, which is why it no longer colours a label or an icon …
+  assert.equal(contrastRatio(DARK.inkMuted, DARK.ground).toFixed(2), '4.30');
+  assert.ok(contrastRatio(DARK.inkMuted, DARK.ground) < 4.5);
+  // … and is used only as the placeholder outline, essential non-text
+  // geometry, which clears 3:1 in every state.
+  for (const { state, background } of nonCurrentRailStates()) {
+    const ratio = contrastRatio(DARK.inkMuted, background);
+    assert.ok(ratio >= 3, `placeholder outline, ${state}: ${ratio.toFixed(2)}:1 on ${background}`);
+  }
+  // Three kinds, three treatments: current (rail-current on the active wash
+  // with the marker), available non-current (ink, no outline), unavailable
+  // non-current (ink with the dashed outline).
+  const css = readFileSync(join(ROOT, 'styles.css'), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(css, /\n\.rail-item\.unavailable \{[^}]*border: 1px dashed var\(--dark-ink-muted\)/);
+  assert.match(css, /\n\.rail-item \{[^}]*border: 0/);
+  assert.match(css, /\n\.rail-item\.active \{[^}]*box-shadow: inset var\(--marker-width\)/);
 });
 
 test('the standing rule — every accent or state foreground whose background changes by state, measured on each actual surface', () => {
