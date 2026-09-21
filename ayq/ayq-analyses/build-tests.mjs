@@ -15,7 +15,7 @@ await Promise.all(
       platform: 'node',
       format: 'esm',
       target: 'node22',
-      external: ['node:*'],
+      external: ['node:*', 'esbuild', 'electron'],
       loader: { '.json': 'json' },
       sourcemap: false,
     }),

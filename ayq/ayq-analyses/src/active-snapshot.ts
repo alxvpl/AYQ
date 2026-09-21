@@ -142,11 +142,19 @@ export async function replaceActiveSnapshot(
 }
 
 /**
- * Removal (r002 §11.6): the copy and the retained name go together, the name
- * first so that no name ever outlives the data it names.
+ * Removal (r003 §11.6): the copy first, so that a removal that fails on disk
+ * leaves the copy and its retained name exactly as they were — the
+ * application still holds it, name included. Once the copy is gone the name
+ * follows; a name that could not be deleted names nothing (the launch read
+ * reports "none" for a missing copy whatever the meta file says) and is
+ * never shown.
  */
 export async function removeActiveSnapshot(directory: string, io: ActiveSnapshotIo = fs): Promise<void> {
   const paths = activeSnapshotPaths(directory);
-  await io.rm(paths.meta, { force: true });
   await io.rm(paths.snapshot, { force: true });
+  try {
+    await io.rm(paths.meta, { force: true });
+  } catch (error) {
+    console.error('The snapshot name could not be removed:', (error as { code?: string }).code ?? 'error');
+  }
 }

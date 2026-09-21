@@ -164,6 +164,31 @@ test('removal deletes the copy and the retained name together and returns to "No
   await removeActiveSnapshot(directory);
 });
 
+test('a removal that fails on disk leaves the copy and its retained name exactly as they were (r003 §11.6)', async () => {
+  const directory = scratch();
+  await replaceActiveSnapshot(directory, RESULT, 'march.json');
+  const locked: ActiveSnapshotIo = {
+    ...fs,
+    rm: async (path: string, ...rest: unknown[]) => {
+      if (String(path).endsWith('active-snapshot.json')) throw Object.assign(new Error('in use'), { code: 'EBUSY' });
+      return (fs.rm as any)(path, ...rest);
+    },
+  } as ActiveSnapshotIo;
+  await assert.rejects(removeActiveSnapshot(directory, locked), { code: 'EBUSY' });
+  assert.ok(bytesOf(directory).equals(RESULT), 'the copy is still held');
+  assert.equal(nameOf(directory), 'march.json', 'the retained name is not discarded');
+  const active = await readActiveSnapshot(directory);
+  assert.equal(active.status, 'loaded');
+  assert.equal(active.status === 'loaded' && active.identity.fileName, 'march.json');
+});
+
+test('a name that outlives a removed copy is never reported: the launch read says "none"', async () => {
+  const directory = scratch();
+  await replaceActiveSnapshot(directory, RESULT, 'march.json');
+  await fs.rm(activeSnapshotPaths(directory).snapshot);
+  assert.deepEqual(await readActiveSnapshot(directory), { status: 'none' });
+});
+
 test('a refused copy can still be removed', async () => {
   const directory = scratch();
   writeFileSync(activeSnapshotPaths(directory).snapshot, '{ not json');

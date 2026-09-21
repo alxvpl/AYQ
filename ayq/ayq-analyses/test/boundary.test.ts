@@ -68,22 +68,24 @@ test('the launch reads the one active copy through the validator, and nothing el
     assert.ok(!activeSnapshot.includes(forbidden), `${forbidden} must not be in active-snapshot.ts`);
   }
   // No analytical context persists: the default context at every adoption.
-  assert.match(renderer, /setContext\(defaultContext\(snapshot\)\)/);
+  assert.match(renderer, /setContext\(transition\.load\.kind === 'loaded' \? defaultContext\(transition\.load\.snapshot\) : null\)/);
   for (const forbidden of ['localStorage', 'sessionStorage', 'indexedDB']) {
     assert.ok(!renderer.includes(forbidden), `${forbidden} must not be in the renderer`);
   }
 });
 
-test('a refused candidate leaves the active snapshot in use; a refused active copy shows no figure (r002 §11.5, §6.2)', () => {
-  const branch = renderer.slice(renderer.indexOf("result.status === 'invalid'"), renderer.indexOf('adopt(result.snapshot'));
-  // With an active copy: the refusal is stated over the result that stays.
-  assert.match(branch, /load\.kind === 'loaded' \|\| load\.kind === 'activeRefused'[\s\S]*?setRefusedCandidate\(result\.reason\)[\s\S]*?return/);
-  // Without one: the refused-snapshot family in the body, and no context.
-  assert.match(branch, /setLoad\(\{ kind: 'candidateRefused'[\s\S]*?setContext\(null\)/);
-  // A failed write changes nothing on screen: the previous copy is untouched.
-  assert.match(renderer, /result\.status === 'cancelled' \|\| result\.status === 'failed'\) return/);
+test('every load and removal outcome reaches the screen through the one transition the suite proves (r003 §6.3, §11.5, §11.6)', () => {
+  // The renderer applies load-state.ts and decides nothing of its own.
+  assert.match(renderer, /apply\(applyLoadOutcome\(load, result\)\)/);
+  assert.match(renderer, /apply\(applyRemovalOutcome\(load, await window\.ayqAnalyses\.removeSnapshot\(\)\)\)/);
+  assert.ok(!renderer.includes("kind: 'candidateRefused'"), 'the renderer does not restate a transition');
   // A refused active copy never becomes a result.
   assert.match(renderer, /const snapshot = load\.kind === 'loaded' \? load\.snapshot : null/);
+  // What is said over the surface is a catalogue sentence or the refused family, never a system error.
+  const notice = renderer.slice(renderer.indexOf('function NoticeDialog'), renderer.indexOf('function NotInThisVersion'));
+  assert.match(notice, /t\(notice\.key\)/);
+  assert.match(notice, /t\(reasonKey\(notice\.reason\)\)/);
+  assert.ok(!/error\.message|\.code\b/.test(notice));
 });
 
 function componentFiles(): string[] {

@@ -1,10 +1,17 @@
 // AYQ Analyses — Electron main process.
 //
 // The operating-system dialog lives here; so does reading and validating the
-// file, and the application's own copy of the active snapshot (r002 §6.1;
-// 02_ARCHITECTURE r006 §7.12). Only a bounded typed payload crosses the
+// file, and the application's own copy of the active snapshot (r003 §6.1;
+// 02_ARCHITECTURE r007 §7.12). Only a bounded typed payload crosses the
 // preload boundary: the validated snapshot and the name of the file it came
 // from — never a path, neither the source's nor the copy's.
+//
+// One instance (02_ARCHITECTURE r007 §7.16). The single-instance lock is the
+// first thing this process does — before the application is ready, before a
+// window exists, and before the store is opened, validated, replaced or
+// removed. A process that does not obtain it registers nothing, creates
+// nothing, touches nothing in the store, and exits; the instance that holds
+// the lock brings its window forward. Nothing is said on a second launch.
 //
 // At launch the active copy is read and revalidated through the same contract
 // validator a manual load uses. No analytical context survives a launch.
@@ -96,20 +103,38 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
-app.whenReady().then(() => {
-  interfaceLocale = app.getLocale() || 'en';
-  // No application menu (r05 §2, PC1): the default File / Edit / View /
-  // Window row is not part of the accepted shell and exposes reload,
-  // developer tools and zoom that A1 has no use for. Editing inside inputs
-  // is Chromium's own on Windows and needs no menu.
-  Menu.setApplicationMenu(null);
-  registerIpc();
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
+/** The running window, brought forward for a second launch. */
+function bringForward(): void {
+  const window = BrowserWindow.getAllWindows()[0];
+  if (window === undefined) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+// The lock, before anything else (§7.16). Nothing below runs without it.
+const holdsTheStore = app.requestSingleInstanceLock();
+
+if (!holdsTheStore) {
+  app.quit();
+} else {
+  app.on('second-instance', bringForward);
+
+  app.whenReady().then(() => {
+    interfaceLocale = app.getLocale() || 'en';
+    // No application menu (r05 §2, PC1): the default File / Edit / View /
+    // Window row is not part of the accepted shell and exposes reload,
+    // developer tools and zoom that A1 has no use for. Editing inside inputs
+    // is Chromium's own on Windows and needs no menu.
+    Menu.setApplicationMenu(null);
+    registerIpc();
+    createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}

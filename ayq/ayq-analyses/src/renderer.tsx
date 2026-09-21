@@ -1,6 +1,6 @@
 // AYQ Analyses — the renderer.
 //
-// The application opens on Explore, on the snapshot it holds (r002 §6.2). The
+// The application opens on Explore, on the snapshot it holds (r003 §6.2). The
 // other five analytical destinations are present, navigable and answer "Not
 // in this version."; Settings is utility navigation at the rail footer. There
 // is no Search, no Explore preset row, no archive selector, and Metric and
@@ -45,6 +45,7 @@ import {
   type Destination,
 } from './destinations.js';
 import { formatDateTime } from './format.js';
+import { applyLoadOutcome, applyRemovalOutcome, type LoadState, type Notice, type Transition } from './load-state.js';
 import { DEFAULT_SORT, type SortState } from './sort.js';
 import { LocaleContext, useLocale, useText } from './ui/text.js';
 import { analysesTheme } from './ui/theme.js';
@@ -54,8 +55,8 @@ import { ResultView } from './ui/result.js';
 import { DetailPane, type DetailSelection } from './ui/detail.js';
 import { SettingsView, type SettingsSnapshot } from './ui/settings.js';
 import type { StringKey } from './strings.js';
-import type { AnalysisContext, AyqAnalyticalSnapshot } from './types.js';
-import type { AyqAnalysesBridge, SnapshotIdentity, SnapshotLoadResult } from './preload.js';
+import type { AnalysisContext } from './types.js';
+import type { AyqAnalysesBridge, SnapshotLoadResult } from './preload.js';
 
 declare global {
   interface Window {
@@ -81,19 +82,6 @@ const INVALID_REASON_KEYS: Record<string, StringKey> = {
   invariant: 'snapshot.invalid.reason.invariant',
   unknown: 'snapshot.invalid.reason.unknown',
 };
-
-/**
- * What the application holds. `pending` is the launch read; `none` is no
- * active copy; `candidateRefused` is no active copy and a chosen file just
- * refused; `activeRefused` is an active copy that failed revalidation
- * (r002 §6.2); `loaded` is the active snapshot in use.
- */
-type LoadState =
-  | { kind: 'pending' }
-  | { kind: 'none' }
-  | { kind: 'candidateRefused'; reason: string }
-  | { kind: 'activeRefused'; reason: string; identity: SnapshotIdentity }
-  | { kind: 'loaded'; snapshot: AyqAnalyticalSnapshot; identity: SnapshotIdentity };
 
 function RailTile({
   destination,
@@ -131,7 +119,7 @@ function RailTile({
 }
 
 /**
- * The analytical group is one Tab stop (A2 decision K-7; r002 §3.2): Tab
+ * The analytical group is one Tab stop (A2 decision K-7; r003 §3.2): Tab
  * lands on the current tile — or, while Settings is current, on the
  * analytical destination last visited — Up/Down and Home/End move along the
  * tiles and open the destination as a click would, and Tab leaves for
@@ -231,23 +219,30 @@ function InvalidSnapshot({ reason, onLoad }: { reason: string; onLoad(): void })
 }
 
 /**
- * A chosen file refused while an active snapshot is in use (r002 §11.5): the
- * refused-snapshot family, over the result that stays on screen, because
- * until a replacement is proven the previous snapshot remains in use.
+ * What is said over the current surface, which stays as it is: a chosen file
+ * refused while a copy is held — the refused-snapshot family over the result
+ * that remains in use (r003 §6.3) — or one of the two failure sentences of
+ * r003 §11.5 and §11.6. A sentence is its own title.
  */
-function RefusedCandidate({ reason, onClose }: { reason: string | null; onClose(): void }): JSX.Element {
+function NoticeDialog({ notice, onClose }: { notice: Notice | null; onClose(): void }): JSX.Element {
   const t = useText();
   return (
     <Dialog
-      open={reason !== null}
+      open={notice !== null}
       onOpenChange={(_event, data) => {
         if (!data.open) onClose();
       }}
     >
       <DialogSurface>
         <DialogBody>
-          <DialogTitle className="invalid-title">{t('snapshot.invalid.title')}</DialogTitle>
-          <DialogContent>{reason !== null && t(reasonKey(reason))}</DialogContent>
+          {notice?.kind === 'refused' ? (
+            <>
+              <DialogTitle className="invalid-title">{t('snapshot.invalid.title')}</DialogTitle>
+              <DialogContent>{t(reasonKey(notice.reason))}</DialogContent>
+            </>
+          ) : (
+            <DialogTitle>{notice !== null && t(notice.key)}</DialogTitle>
+          )}
           <DialogActions>
             <Button appearance="primary" onClick={onClose}>
               {t('dialog.close')}
@@ -269,7 +264,7 @@ function App(): JSX.Element {
   const t = useText();
   const locale = useLocale();
   const [load, setLoad] = useState<LoadState>({ kind: 'pending' });
-  const [refusedCandidate, setRefusedCandidate] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [context, setContext] = useState<AnalysisContext | null>(null);
   const [destination, setDestination] = useState<Destination>('explore');
   const [analytical, setAnalytical] = useState<AnalyticalDestination>('explore');
@@ -281,22 +276,29 @@ function App(): JSX.Element {
     if (isAnalytical(next)) setAnalytical(next);
   };
 
-  const adopt = (snapshot: AyqAnalyticalSnapshot, identity: SnapshotIdentity): void => {
-    setLoad({ kind: 'loaded', snapshot, identity });
-    // The default context, at every launch and at every load (r002 §6.1).
-    setContext(defaultContext(snapshot));
-    setSort(DEFAULT_SORT);
-    setSelection(null);
+  // Every outcome goes through one transition (load-state.ts), so what the
+  // screen keeps, drops or says is the same thing the suite proves.
+  const apply = (transition: Transition): void => {
+    setLoad(transition.load);
+    setNotice(transition.notice);
+    if (transition.resetContext) {
+      // The default context at every launch and at every load (r003 §6.1);
+      // no context at all when nothing usable is held.
+      setContext(transition.load.kind === 'loaded' ? defaultContext(transition.load.snapshot) : null);
+      setSort(DEFAULT_SORT);
+      setSelection(null);
+    }
   };
 
-  // The launch read: the active copy, revalidated, or nothing (r002 §6.2).
+  // The launch read: the active copy, revalidated, or nothing (r003 §6.2).
   useEffect(() => {
     let cancelled = false;
     void window.ayqAnalyses.activeSnapshot().then(active => {
       if (cancelled) return;
-      if (active.status === 'loaded') adopt(active.snapshot, active.identity);
-      else if (active.status === 'invalid') setLoad({ kind: 'activeRefused', reason: active.reason, identity: active.identity });
-      else setLoad({ kind: 'none' });
+      if (active.status === 'loaded') apply(applyLoadOutcome({ kind: 'pending' }, active));
+      else if (active.status === 'invalid') {
+        setLoad({ kind: 'activeRefused', reason: active.reason, identity: active.identity });
+      } else setLoad({ kind: 'none' });
     });
     return () => {
       cancelled = true;
@@ -305,27 +307,11 @@ function App(): JSX.Element {
 
   const openSnapshot = async (): Promise<void> => {
     const result: SnapshotLoadResult = await window.ayqAnalyses.openSnapshot();
-    if (result.status === 'cancelled' || result.status === 'failed') return;
-    if (result.status === 'invalid') {
-      if (load.kind === 'loaded' || load.kind === 'activeRefused') {
-        // The active copy is untouched and stays in use (r002 §11.5).
-        setRefusedCandidate(result.reason);
-        return;
-      }
-      setLoad({ kind: 'candidateRefused', reason: result.reason });
-      setContext(null);
-      setSelection(null);
-      return;
-    }
-    adopt(result.snapshot, result.identity);
+    apply(applyLoadOutcome(load, result));
   };
 
   const removeSnapshot = async (): Promise<void> => {
-    const outcome = await window.ayqAnalyses.removeSnapshot();
-    if (!outcome.removed) return;
-    setLoad({ kind: 'none' });
-    setContext(null);
-    setSelection(null);
+    apply(applyRemovalOutcome(load, await window.ayqAnalyses.removeSnapshot()));
   };
 
   const snapshot = load.kind === 'loaded' ? load.snapshot : null;
@@ -415,7 +401,7 @@ function App(): JSX.Element {
           </>
         )}
       </footer>
-      <RefusedCandidate reason={refusedCandidate} onClose={() => setRefusedCandidate(null)} />
+      <NoticeDialog notice={notice} onClose={() => setNotice(null)} />
     </div>
   );
 }
