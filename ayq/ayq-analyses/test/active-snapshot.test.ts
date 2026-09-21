@@ -18,6 +18,8 @@ import {
   replaceActiveSnapshot,
   type ActiveSnapshotIo,
 } from '../src/active-snapshot.js';
+import { applyRemovalOutcome } from '../src/load-state.js';
+import { validateSnapshot } from '../src/validate.js';
 import { FIXTURE_DIRECTORY } from './helpers.js';
 
 const RESULT = readFileSync(join(FIXTURE_DIRECTORY, 'a1-result.json'));
@@ -180,6 +182,29 @@ test('a removal that fails on disk leaves the copy and its retained name exactly
   const active = await readActiveSnapshot(directory);
   assert.equal(active.status, 'loaded');
   assert.equal(active.status === 'loaded' && active.identity.fileName, 'march.json');
+});
+
+test('a removal whose copy goes but whose name cannot be deleted resolves: the copy is gone, removed:true, and the launch read says "none" (036 §3)', async () => {
+  const directory = scratch();
+  await replaceActiveSnapshot(directory, RESULT, 'march.json');
+  const metaLocked: ActiveSnapshotIo = {
+    ...fs,
+    rm: async (path: string, ...rest: unknown[]) => {
+      if (String(path).endsWith('active-snapshot.meta.json')) throw Object.assign(new Error('in use'), { code: 'EBUSY' });
+      return (fs.rm as any)(path, ...rest);
+    },
+  } as ActiveSnapshotIo;
+  // The first step succeeds and the second fails; the function resolves.
+  await assert.doesNotReject(removeActiveSnapshot(directory, metaLocked));
+  assert.ok(!existsSync(activeSnapshotPaths(directory).snapshot), 'the financial copy is gone');
+  assert.ok(existsSync(activeSnapshotPaths(directory).meta), 'the name could not be deleted and is left behind');
+  // What the main process answers, and what the session then shows.
+  const outcome = { removed: true };
+  const after = applyRemovalOutcome({ kind: 'loaded', snapshot: validateSnapshot(JSON.parse(RESULT.toString('utf8'))), identity: { fileName: 'march.json' } }, outcome);
+  assert.deepEqual(after.load, { kind: 'none' });
+  assert.equal(after.notice, null);
+  // And the next launch agrees: an orphan name is never reported.
+  assert.deepEqual(await readActiveSnapshot(directory), { status: 'none' });
 });
 
 test('a name that outlives a removed copy is never reported: the launch read says "none"', async () => {

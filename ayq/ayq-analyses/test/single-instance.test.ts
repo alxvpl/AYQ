@@ -83,12 +83,22 @@ function storeState(): Record<string, string> {
   return state;
 }
 
-/** Top-level windows titled as the application, across every Electron process. */
+/**
+ * Top-level windows titled as the application among the processes this test
+ * launched — and only those: an installed AYQ Analyses the owner has open on
+ * the same machine (over its own store) is not part of the experiment.
+ */
 function applicationWindows(): number {
   if (process.platform !== 'win32') return -1;
+  const pids = started.map(instance => instance.process.pid).filter((pid): pid is number => pid !== undefined);
+  if (pids.length === 0) return 0;
   const out = execFileSync(
     'powershell',
-    ['-NoProfile', '-Command', "(Get-Process | Where-Object { $_.MainWindowTitle -eq 'AYQ Analyses' } | Measure-Object).Count"],
+    [
+      '-NoProfile',
+      '-Command',
+      `(Get-Process -Id ${pids.join(',')} -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq 'AYQ Analyses' } | Measure-Object).Count`,
+    ],
     { encoding: 'utf8' },
   );
   return Number.parseInt(out.trim(), 10);
