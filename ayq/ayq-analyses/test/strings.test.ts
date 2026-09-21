@@ -24,7 +24,7 @@ test('every key a component asks for is in the catalogue', () => {
     const text = readFileSync(path, 'utf8');
     for (const match of text.matchAll(/\bt\(\s*'([a-zA-Z][\w.]*)'/g)) used.add(match[1]);
     for (const match of text.matchAll(
-      /'((?:rail|status|snapshot|settings|dialog|context|coverage|explore|table|detail|class|evidence|exclusion|app)\.[\w.]+)'/g,
+      /'((?:rail|status|snapshot|settings|dialog|context|coverage|chart|explore|table|detail|class|evidence|exclusion|app)\.[\w.]+)'/g,
     )) {
       used.add(match[1]);
     }

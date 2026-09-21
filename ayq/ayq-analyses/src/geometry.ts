@@ -24,3 +24,22 @@ export function chartGeometry(values: readonly bigint[]): number[] {
   while (largest / divisor > SAFE) divisor *= 10n;
   return values.map(value => Number(value / divisor));
 }
+
+/**
+ * What the platform will rasterise as one canvas, measured in this Electron
+ * on 2026-09-21 (evidence/hardening-039): a side of at most 65 535 device
+ * pixels and an area of at most 268 435 456 (16 384²). Above either the
+ * canvas exists and draws nothing, silently. The chart asks this before it
+ * draws, so that a result it cannot show is stated instead of left blank
+ * (r004 §8.2). The limits are implementation facts, revisable on evidence.
+ */
+export const MAX_CANVAS_SIDE = 65_535;
+export const MAX_CANVAS_AREA = 268_435_456;
+
+/** Whether a chart of this CSS size, at this device pixel ratio, fits what the platform will rasterise. */
+export function canvasFitsRaster(cssWidth: number, cssHeight: number, devicePixelRatio: number): boolean {
+  const width = Math.ceil(cssWidth * devicePixelRatio);
+  const height = Math.ceil(cssHeight * devicePixelRatio);
+  if (width <= 0 || height <= 0) return true;
+  return width <= MAX_CANVAS_SIDE && height <= MAX_CANVAS_SIDE && width * height <= MAX_CANVAS_AREA;
+}

@@ -1,9 +1,9 @@
 import type { JSX } from 'react';
 import { ACCENT } from './tokens.js';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { formatDate, formatList } from '../format.js';
-import { chartGeometry } from '../geometry.js';
+import { canvasFitsRaster, chartGeometry } from '../geometry.js';
 import { formatCount, formatMoney, formatSignedMoney } from '../money.js';
 import { nextSortState, sortRows, type SortColumn, type SortState } from '../sort.js';
 import { useLocale, useText } from './text.js';
@@ -21,11 +21,35 @@ interface ResultViewProps {
   onSelect(selection: DetailSelection | null): void;
 }
 
+/** The chart's height follows its rows (a provisional build value, r004 §12). */
+function chartHeight(rows: number): number {
+  return Math.max(140, rows * 44 + 48);
+}
+
 function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: string }): JSX.Element {
+  const t = useText();
+  const frame = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
+  const height = chartHeight(rows.length);
+  // The guard of r004 §8.2: before anything is drawn, the canvas the chart
+  // would allocate — the frame's width by the rows' height, at the device
+  // pixel ratio — is checked against what the platform will rasterise. A
+  // result the chart cannot show is stated, never left blank. Re-checked on
+  // resize, because the width and the pixel ratio can change with the window
+  // and the display it is on.
+  const [tooLarge, setTooLarge] = useState(false);
+  useEffect(() => {
+    const decide = (): void => {
+      const width = frame.current?.clientWidth ?? 0;
+      setTooLarge(!canvasFitsRaster(width, height, window.devicePixelRatio));
+    };
+    decide();
+    window.addEventListener('resize', decide);
+    return () => window.removeEventListener('resize', decide);
+  }, [height]);
 
   useEffect(() => {
-    if (host.current === null) return undefined;
+    if (tooLarge || host.current === null) return undefined;
     const chart = echarts.init(host.current);
     // The chart follows the table's order and the table's values. Bar length is
     // geometry, so a bounded display-only Number is derived for it; every
@@ -74,9 +98,17 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
       window.removeEventListener('resize', resize);
       chart.dispose();
     };
-  }, [rows, locale]);
+  }, [rows, locale, tooLarge]);
 
-  return <div className="chart" ref={host} style={{ height: `${Math.max(140, rows.length * 44 + 48)}px` }} />;
+  return (
+    <div className="chart-frame" ref={frame}>
+      {tooLarge ? (
+        <p className="chart-too-large">{t('chart.tooLarge')}</p>
+      ) : (
+        <div className="chart" ref={host} style={{ height: `${height}px` }} />
+      )}
+    </div>
+  );
 }
 
 const COLUMN_KEYS: Record<SortColumn, StringKey> = {

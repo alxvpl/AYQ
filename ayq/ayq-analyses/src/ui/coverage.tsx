@@ -62,7 +62,7 @@ export function CoverageIndicator({ result }: { result: AnalysisResult }): JSX.E
   const differs = result.reconciliation.some(fact => fact.state === 'differs');
 
   return (
-    <Popover positioning="below-end" withArrow>
+    <Popover positioning={{ position: 'below', align: 'end', autoSize: 'height' }} withArrow>
       <PopoverTrigger disableButtonEnhancement>
         <Button appearance="outline" icon={<ChevronDown16Regular />} iconPosition="after">
           {label}

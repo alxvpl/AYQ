@@ -247,8 +247,14 @@ body {
   color: var(--attention);
 }
 
+/* The flyout is bounded by the viewport and scrolls in itself, so it never
+   overflows the document and the window never grows a second scrollbar
+   beside the body's (040 §3). The positioning layer sets the exact
+   max-height for the space available; this is the ceiling it cannot exceed. */
 .coverage-flyout {
   max-width: 420px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   font-size: var(--size-secondary);
 }
 
@@ -345,9 +351,20 @@ body {
   text-decoration: underline;
 }
 
+.chart-frame {
+  width: 100%;
+}
+
 .chart {
   width: 100%;
   margin-bottom: 16px;
+}
+
+/* A result the chart cannot draw is stated in its place (r004 §8.2): ordinary
+   text, no state tone — nothing is wrong with the result. */
+.chart-too-large {
+  margin: 8px 0 16px;
+  color: var(--secondary);
 }
 
 table.rows {

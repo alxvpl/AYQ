@@ -118,8 +118,15 @@ export const SURFACE = {
  * the coverage sentences, r05 §6–§7) and error (the one red, r05 §4).
  */
 export const STATE = {
-  /** Deepened from the A1 build value #b26a00 (4.24:1 on white, below text contrast) to 5.47:1. */
-  attention: '#9a5a00',
+  /**
+   * r004 §4: darkened from r003's #9a5a00 because the marker inside the
+   * coverage button sits on Fluent's pressed surface (#e0e0e0) and measured
+   * 4.15:1 there; every actual state is measured and the lowest governs.
+   * Computed: 5.96:1 on white, 5.47:1 on the hover surface, 4.52:1 on the
+   * pressed surface — asserted by the conformance suite on every surface the
+   * role is drawn on.
+   */
+  attention: '#925500',
   error: '#b10e1c',
 } as const;
 

@@ -110,6 +110,8 @@
   "explore.insufficient.detail": "{account} covers {openingDate} – {lastStatementDate}",
   "explore.unsupported": "This selection spans more than one currency ({currencies}). Narrow the accounts or the period to a single currency.",
 
+  "chart.tooLarge": "This result is too large to show as a chart. The table still shows the complete result.",
+
   "table.counterparty": "Counterparty",
   "table.transactions": "Transactions",
   "table.moneyOut": "Money out",

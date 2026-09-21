@@ -14,6 +14,7 @@ application: `package.json` ships `dist/**/*` and `package.json` only.
 | [`persistence-settings/`](persistence-settings/README.md) | 026 — persistent snapshot, Settings, rail kinds, grammar (2026-09-21) | DESIGN_SYSTEM r002; 02_ARCHITECTURE r006 §7.12 | the copy held across relaunch and after the source moved; Settings without a path; the three rail item kinds with the measured contrast; the five placeholders; one account "reaches"; removal |
 | [`single-instance-and-failures/`](single-instance-and-failures/README.md) | 032 — single instance and the two failure sentences (2026-09-21) | DESIGN_SYSTEM r003; 02_ARCHITECTURE r007 §7.16 | a second launch fronting the running window; `snapshot.load.failed` and `snapshot.remove.failed` produced with a locked file |
 | [`hardening-039/`](hardening-039/README.md) | 039 — conformance, scale and named debts (2026-09-21) | DESIGN_SYSTEM r003; 02_ARCHITECTURE r007 | no images: the scale numbers with their method, the Observation B trace, and what W1 enforces |
+| [`r004-three-fixes/`](r004-three-fixes/README.md) | r004 — chart guard, attention tone, bounded flyout (2026-09-21) | DESIGN_SYSTEM r004 | no images: the measured raster limits behind the guard, the tone on every surface, the flyout trace before and after; the installed candidate |
 
 Superseded presentation authorities named in the older records (A1_PRESENTATION
 r06, DESIGN_SYSTEM r001, r002) remain provenance; the current authority is

@@ -1,5 +1,6 @@
 // Governance-to-code conformance (directive 039 W1): this suite fails when the
-// implementation drifts from AYQ_ANALYSES_DESIGN_SYSTEM r003.
+// implementation drifts from AYQ_ANALYSES_DESIGN_SYSTEM r004 (r003 plus the
+// chart guard of §8.2 and the attention tone of §4).
 //
 // Three things are enforced. (1) Every sentence r003 states as normative is
 // in the catalogue character for character, and is referenced from the
@@ -205,6 +206,14 @@ const NORMATIVE: Sentence[] = [
     reachedThrough: DETAIL,
   },
 
+  // §8.2 — a presentation that cannot show the result says so (r004).
+  {
+    section: '8.2',
+    key: 'chart.tooLarge',
+    text: 'This result is too large to show as a chart. The table still shows the complete result.',
+    owner: RESULT,
+  },
+
   // §9 — the exclusion lines; r003 gives the plural form, §10.1 requires the singular.
   {
     section: '9',
@@ -289,7 +298,7 @@ test('r003 — every normative sentence is in the catalogue character for charac
   }
   // The suite covers every sentence r003 §§3, 6, 7, 8.1, 9 and 11 enumerate:
   // a count, so a sentence dropped from this table is noticed.
-  assert.equal(NORMATIVE.length, 61);
+  assert.equal(NORMATIVE.length, 62);
 });
 
 test('r003 — every normative sentence is referenced from the module that owns it, and that module reaches the screen', () => {
@@ -467,8 +476,8 @@ const RULES: Rule[] = [
       pane: SURFACE.pane,
       'outline button rest': fluent.colorNeutralBackground1,
       'outline button hover': fluent.colorNeutralBackground1Hover,
-      // The pressed surface is measured by its own test below: it does not
-      // clear the gate, and that is reported rather than asserted away.
+      'outline button pressed': fluent.colorNeutralBackground1Pressed,
+      'outline button selected': fluent.colorNeutralBackground1Selected,
     },
     gate: 4.5,
   },
@@ -507,16 +516,19 @@ test('r003 §4 — every accent- or state-coloured text or icon clears its thres
   }
 });
 
-// Reported in 040 (W1): the attention marker inside the coverage button, in
-// the button's pressed state, sits on Fluent's colorNeutralBackground1Pressed
-// (#e0e0e0) and measures 4.15:1 — below the 4.5:1 gate of r003 §4. Whether
-// the pressed surface, the marker's tone or the rule for a transient state
-// changes is a decision for the joint leads; this test keeps the measurement
-// visible on every run until it is taken. A todo test reports its failure
-// without failing the suite.
-test('r003 §4 — the attention marker on the coverage button, pressed', { todo: 'reported: 4.15:1 on the pressed surface, below 4.5:1' }, () => {
-  const ratio = contrastRatio(STATE.attention, fluent.colorNeutralBackground1Pressed);
-  assert.ok(ratio >= 4.5, `attention marker, outline button pressed: ${ratio.toFixed(2)}:1 on ${fluent.colorNeutralBackground1Pressed}`);
+// r004 §4.1: the attention tone is #925500 because the marker inside the
+// coverage button sits on Fluent's pressed surface; the rule above measures it
+// there and everywhere else the role is drawn, the lowest governing. The
+// token's value is pinned so that a drift back is noticed.
+test('r004 §4 — the attention tone is the accepted value and clears 4.5:1 on every surface it is drawn on, the pressed button included', () => {
+  assert.equal(STATE.attention, '#925500');
+  const rule = RULES.find(entry => entry.foreground === STATE.attention)!;
+  const measured = Object.entries(rule.surfaces).map(([state, surface]) => [state, contrastRatio(STATE.attention, surface)] as const);
+  for (const [state, ratio] of measured) assert.ok(ratio >= 4.5, `attention on ${state}: ${ratio.toFixed(2)}:1`);
+  // The computed figures r004 §4.1 records, to two decimals.
+  assert.equal(contrastRatio(STATE.attention, '#ffffff').toFixed(2), '5.96');
+  assert.equal(contrastRatio(STATE.attention, fluent.colorNeutralBackground1Hover).toFixed(2), '5.47');
+  assert.equal(contrastRatio(STATE.attention, fluent.colorNeutralBackground1Pressed).toFixed(2), '4.52');
 });
 
 test('r003 §4 — the rules above name every colour role the interface draws text or icons in', () => {
