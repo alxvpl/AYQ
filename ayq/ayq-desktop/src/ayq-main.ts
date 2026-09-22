@@ -2299,8 +2299,9 @@ async function reviewShown(window: BrowserWindow): Promise<string> {
   if (!/Renaming a category moves its rules/.test(categories.consequence)) {
     return 'Settings does not say what renaming a category does to the rules';
   }
-  if (!/does not archive or delete/.test(categories.archive)) {
-    return 'Settings does not say what it will not do to a category';
+  // 04 A35: removal is counted first and never silent, and the screen says so.
+  if (!/never destroys or refiles anything in silence/.test(categories.archive)) {
+    return 'Settings does not say what removing a category does and does not do';
   }
   process.stdout.write(
     `[ayq-smoke] Settings lists ${categories.rows} categories, and states both consequences\n`,

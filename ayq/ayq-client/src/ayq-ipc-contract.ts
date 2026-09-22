@@ -400,6 +400,54 @@ export type AyqBulkCounterparty = {
   counterpartyName: string;
 };
 
+/**
+ * What still uses a category, said before it is removed (04 A35).
+ *
+ * Removal never destroys or reclassifies data in silence: the owner is shown
+ * these counts and chooses where what used the category goes. Every count is
+ * read from the budget and the store at the moment of asking.
+ */
+export type AyqCategoryImpact = {
+  categoryId: string;
+  name: string;
+  isIncome: boolean;
+  /** Transactions filed in it, however they were filed. */
+  transactions: number;
+  /** Learned rules that file into it, by name (03 §4.2). */
+  rules: number;
+  /** Planned and recurring records that carry it (03 §7.23). */
+  planned: number;
+  /** Months of the Plan with an amount set for it. */
+  plannedMonths: number;
+  /** True when none of the above is non-zero: one confirmed action removes it. */
+  unused: boolean;
+};
+
+/**
+ * Where what used a removed category goes.
+ *
+ * A category of the same kind, into which the transactions, the plan amounts,
+ * the rules and the planned records move; or the explicit `Uncategorised`
+ * state (03 §4.5, §7.23), in which the transactions and planned records
+ * survive without a category, and the rules — which cannot file into nothing
+ * — are removed, said in advance.
+ */
+export type AyqCategoryDestination =
+  | { kind: 'category'; categoryId: string }
+  | { kind: 'uncategorised' };
+
+/** What removing a category came to. */
+export type AyqCategoryRemoved = {
+  categories: AyqCategory[];
+  removed: string;
+  /** The destination's name, or null for Uncategorised. */
+  movedTo: string | null;
+  transactions: number;
+  rulesMoved: number;
+  rulesRemoved: number;
+  planned: number;
+};
+
 /** Which period, and which account, the spending question is being asked of. */
 export type AyqSpendingFilter = {
   /** Inclusive YYYY-MM-DD bounds; both absent means everything there is. */
@@ -1291,6 +1339,9 @@ export type AyqResults = {
   'categories.list': AyqCategory[];
   'categories.create': AyqCategory[];
   'categories.rename': AyqCategory[];
+  'categories.move': AyqCategory[];
+  'categories.impact': AyqCategoryImpact;
+  'categories.remove': AyqCategoryRemoved;
   'rules.list': AyqCategoryRule[];
   'rules.remove': AyqCategoryRule[];
   'rules.apply': { categorised: number };
@@ -1481,6 +1532,29 @@ export type AyqRequestBody =
   | { kind: 'categories.list' }
   | { kind: 'categories.create'; name: string; groupId: string }
   | { kind: 'categories.rename'; categoryId: string; name: string }
+  | {
+      /** Moves a category to another group of the same kind (04 A35). */
+      kind: 'categories.move';
+      categoryId: string;
+      groupId: string;
+    }
+  | {
+      /** What still uses this category — asked before any removal is offered. */
+      kind: 'categories.impact';
+      categoryId: string;
+    }
+  | {
+      /**
+       * Removes a category, with an explicit destination for what used it.
+       *
+       * A category in use cannot be removed without one: the engine refuses.
+       * An unused one needs none. Nothing is destroyed or reclassified in
+       * silence (04 A35); the answer says what moved where.
+       */
+      kind: 'categories.remove';
+      categoryId: string;
+      destination?: AyqCategoryDestination;
+    }
   | { kind: 'rules.list' }
   | { kind: 'rules.remove'; ruleId: string }
   | { kind: 'rules.apply' }

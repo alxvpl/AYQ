@@ -112,15 +112,16 @@ test('both consequences of this screen are stated on it', async () => {
       '',
     /Renaming a category moves its rules with it/,
   );
-  // And what AYQ does not do here, and why. Nothing on the screen offers it.
+  // And what removal does and does not do (04 A35): counted first, never
+  // silent. Nothing on the screen offers to archive or delete.
   assert.match(
     window.container.querySelector('[data-ayq-no-archive]')?.textContent ?? '',
-    /does not archive or delete a category here/,
+    /never destroys or refiles anything in silence/,
   );
   const said = window.container.textContent ?? '';
   for (const forbidden of ['Archive', 'Delete']) {
     assert.ok(
-      !new RegExp(`${forbidden}(?! or delete)`).test(said),
+      !new RegExp(forbidden).test(said),
       `the screen offers to ${forbidden.toLowerCase()} a category`,
     );
   }

@@ -358,9 +358,40 @@ const EN = {
     'budget (03 §4.2). Renaming a category moves its rules with it; the rules ' +
     'are on the Rules tab.',
   'categories.noArchive':
-    'AYQ does not archive or delete a category here. Nothing in Canon says what ' +
-    'should happen to the transactions filed under one, and guessing is worse ' +
-    'than not offering it.',
+    'Removing a category never destroys or refiles anything in silence: what ' +
+    'still uses it is counted first, and you say where it goes.',
+  'categories.move': 'Move',
+  'categories.move.to': 'Move to group',
+  'categories.move.cancel': 'Cancel',
+  'categories.moved': '{name} is now in {group}.',
+  'categories.remove': 'Remove',
+  'categories.remove.cancel': 'Cancel',
+  'categories.remove.checking': 'Counting what uses it…',
+  'categories.remove.unused':
+    'Nothing uses {name}: no transaction, no rule, no planned record, no plan amount.',
+  'categories.remove.inUse': '{name} is still in use:',
+  'categories.remove.transactions': '{count} transactions',
+  'categories.remove.rules': '{count} learned rules',
+  'categories.remove.planned': '{count} planned or recurring records',
+  'categories.remove.months': '{count} months with a plan amount',
+  'categories.remove.destination': 'Where they should go',
+  'categories.remove.destination.choose': 'Choose a destination',
+  'categories.remove.destination.uncategorised': 'Leave them Uncategorised',
+  'categories.remove.consequence.category':
+    'The transactions, the plan amounts and the planned records move to ' +
+    '{destination}; the rules follow it by name.',
+  'categories.remove.consequence.uncategorised':
+    'The transactions and the planned records survive without a category. The ' +
+    '{rules} learned rules are removed — a rule cannot file into nothing — and ' +
+    'the plan amounts are dropped.',
+  'categories.remove.confirm': 'Remove {name}',
+  'categories.removed': '{name} removed.',
+  'categories.removed.to':
+    '{name} removed; {transactions} transactions and {planned} planned records ' +
+    'moved to {destination}, {rules} rules with them.',
+  'categories.removed.uncategorised':
+    '{name} removed; {transactions} transactions and {planned} planned records ' +
+    'are now Uncategorised, and {rules} rules were removed.',
   'categories.empty': 'This budget has no categories yet.',
   'categories.needsName': 'A category needs a name.',
   'categories.made': '{name} added.',

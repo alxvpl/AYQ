@@ -43,7 +43,10 @@ import { ayqAccountsView } from './ayq-coverage.ts';
 import { ayqTodayView } from './ayq-today.ts';
 import {
   ayqCategories,
+  ayqCategoryImpact,
   ayqCreateCategory,
+  ayqMoveCategory,
+  ayqRemoveCategory,
   ayqRenameCategory,
 } from './ayq-categories.ts';
 import { ayqRecoverCounterpartyNames } from './ayq-recover-names.ts';
@@ -680,6 +683,34 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'categories.create',
         result: await ayqCreateCategory(request.name, request.groupId),
+      };
+
+    case 'categories.move':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.move',
+        result: await ayqMoveCategory(request.categoryId, request.groupId),
+      };
+
+    case 'categories.impact':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.impact',
+        result: await ayqCategoryImpact(dataDir, request.categoryId),
+      };
+
+    case 'categories.remove':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.remove',
+        result: await ayqRemoveCategory(
+          dataDir,
+          request.categoryId,
+          request.destination,
+        ),
       };
 
     case 'categories.rename': {
