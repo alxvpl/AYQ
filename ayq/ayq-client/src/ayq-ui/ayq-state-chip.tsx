@@ -20,6 +20,7 @@ const useStyles = makeStyles({
     display: 'inline-flex',
     alignItems: 'center',
     gap: '5px',
+    boxSizing: 'border-box',
     minHeight: '22px',
     padding: `1px 7px`,
     borderRadius: `${AYQ_METRIC.radiusSmall}px`,

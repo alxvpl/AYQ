@@ -33,6 +33,7 @@ const useStyles = makeStyles({
     backgroundColor: 'var(--ayq-quiet)',
     textAlign: 'left',
     fontSize: AYQ_TYPE.size.small,
+    lineHeight: '18px',
     fontWeight: AYQ_TYPE.weight.semibold,
     color: 'var(--ayq-label)',
     padding: `${AYQ_METRIC.header.paddingY}px ${AYQ_METRIC.header.paddingX}px`,
@@ -76,8 +77,11 @@ const useStyles = makeStyles({
   },
   tick: {
     width: '32px',
-    paddingTop: '2px',
-    paddingBottom: '2px',
+    paddingTop: '0',
+    paddingBottom: '0',
+    // The checkbox keeps to the row: no padding of its own above the indicator.
+    '& .fui-Checkbox': { minHeight: '0', padding: '0' },
+    '& .fui-Checkbox__indicator': { margin: '0' },
     paddingRight: '0',
   },
 });
