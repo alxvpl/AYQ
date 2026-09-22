@@ -63,6 +63,9 @@ function engineFor(dataDir: string): EngineChild {
 
   const child = fork(enginePath, [], {
     execPath: engineBinary(),
+    // The engine is not this Node: whatever flags the test runner started this
+    // process with (Node 24 forwards its own) are not Electron's to parse.
+    execArgv: [],
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', AYQ_DATA_DIR: dataDir },
     stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
   });
