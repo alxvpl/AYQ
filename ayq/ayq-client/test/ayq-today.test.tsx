@@ -149,6 +149,19 @@ function engine(today: AyqToday) {
       };
     }
     if (request.kind === 'categories.list') return [];
+    if (request.kind === 'transaction.detail') {
+      return {
+        row: ROW,
+        importedPayee: null,
+        notes: null,
+        importedId: null,
+        provenance: null,
+        counterpartyKey: null,
+        decisions: [],
+        rule: null,
+        match: null,
+      };
+    }
     if (request.kind === 'settings.get' || request.kind === 'settings.set') {
       return { ground: 'light' };
     }
@@ -217,9 +230,9 @@ test('A21\u2019s order, in A21\u2019s own words', async () => {
   assert.deepEqual(order, [
     'today-funds',
     'today-lasts',
-    // The table and, beside it, the pane that holds the chosen row (A4).
+    // The table; the pane that holds the chosen row (A4) stands beside it
+    // once a row is chosen, as template r003 composes Today.
     'today-movements',
-    'today-movements-detail',
     'today-waiting',
   ]);
 
@@ -345,12 +358,16 @@ test('the latest movements are a table with the same detail pane', async () => {
   assert.equal(rows.length, 1);
   assert.match(rows[0].textContent ?? '', /TESTMARKT/);
 
-  // The same pane the Register uses: it says so by saying nothing is chosen
-  // in the same words.
-  assert.match(
-    window.container.querySelector('[data-ayq-pane="today-movements-detail"]')
-      ?.textContent ?? '',
-    new RegExp(ayqText('detail.none')),
+  // The same pane the Register uses, beside the table once a row is chosen;
+  // until then the table stands alone (template r003).
+  assert.equal(
+    window.container.querySelector('[data-ayq-pane="today-movements-detail"]'),
+    null,
+  );
+  await ayqPress(rows[0]);
+  assert.ok(
+    window.container.querySelector('[data-ayq-pane="today-movements-detail"]'),
+    'choosing a row opened no detail beside it (A4)',
   );
 
   // And it asked for the newest few rather than for everything.

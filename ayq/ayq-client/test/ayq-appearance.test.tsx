@@ -46,8 +46,10 @@ test('the screen draws, and says what the catalogue says', async () => {
 
   const drawn = window.container.querySelector('[data-ayq-screen="appearance"]');
   assert.ok(drawn, 'the appearance screen did not draw');
+  // Its name is the settings frame's (template r003); the section carries
+  // the ground's heading.
   assert.ok(
-    window.container.textContent?.includes(ayqText('appearance.title')),
+    window.container.textContent?.includes(ayqText('appearance.ground.heading')),
     'the screen does not carry its own title',
   );
   assert.ok(

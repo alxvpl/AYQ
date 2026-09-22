@@ -26,12 +26,17 @@ import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 
 const useStyles = makeStyles({
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+    gap: `${AYQ_METRIC.splitGap}px`,
+    alignItems: 'start',
+  },
   body: {
     display: 'flex',
     flexDirection: 'column',
     gap: `${AYQ_METRIC.space.wide}px`,
-    padding: `${AYQ_METRIC.space.screen}px`,
-    maxWidth: '620px',
+    padding: `${AYQ_METRIC.panePadding}px`,
   },
   name: {
     margin: '0',
@@ -102,8 +107,9 @@ export function AyqAboutScreen({
   }
 
   return (
-    <AyqPane mark="about">
-      <div className={styles.body} data-ayq-about-screen="">
+    <div className={styles.grid} data-ayq-about-screen="">
+    <AyqPane mark="about" title={ayqText('about.pane')}>
+      <div className={styles.body}>
         <div className={styles.identity}>
           {/* The mark, from the same master the icon is built from (06 §3.6). */}
           <AyqMark size={48} />
@@ -168,7 +174,17 @@ export function AyqAboutScreen({
         <p className={styles.copyright} data-ayq-about="copyright">
           {about.copyright}
         </p>
+      </div>
+    </AyqPane>
 
+    <AyqPane mark="about-technical" title={ayqText('about.technical')}>
+      <div className={styles.body}>
+        <p className={styles.note}>{ayqText('about.technical.note')}</p>
+        {/* The same text, readable, so a person on a machine where the
+            clipboard is unavailable is not stuck. */}
+        <pre className={styles.value} data-ayq-technical="">
+          {about.technicalInformation}
+        </pre>
         <p className={styles.note}>
           <AyqButton
             mark="about-copy"
@@ -184,13 +200,8 @@ export function AyqAboutScreen({
           </AyqButton>{' '}
           {copied ? <span className={styles.said}>{ayqText('about.copied')}</span> : null}
         </p>
-
-        {/* The same text, readable, so a person on a machine where the
-            clipboard is unavailable is not stuck. */}
-        <pre className={styles.value} data-ayq-technical="">
-          {about.technicalInformation}
-        </pre>
       </div>
     </AyqPane>
+    </div>
   );
 }

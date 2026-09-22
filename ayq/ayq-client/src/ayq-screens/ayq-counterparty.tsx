@@ -39,16 +39,36 @@ import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqRuleCard } from './ayq-rule-card.tsx';
 
 const useStyles = makeStyles({
-  body: {
+  head: {
     display: 'flex',
     flexDirection: 'column',
-    gap: `${AYQ_METRIC.space.wide}px`,
-    padding: `13px ${AYQ_METRIC.space.screen}px`,
+    gap: `${AYQ_METRIC.space.tight}px`,
+    marginBottom: `${AYQ_METRIC.space.small}px`,
+  },
+  // Template r003: two columns of panes, 8 apart.
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+    gap: `${AYQ_METRIC.splitGap}px`,
+    alignItems: 'start',
+  },
+  column: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: `${AYQ_METRIC.splitGap}px`,
+    minWidth: '0',
+  },
+  paneBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: `${AYQ_METRIC.space.small}px`,
+    padding: `${AYQ_METRIC.panePadding}px`,
   },
   name: {
     margin: '0',
     fontFamily: 'var(--ayq-font-display)',
-    fontSize: 'var(--ayq-size-heading)',
+    fontSize: 'var(--ayq-size-screen)',
+    fontWeight: 600,
     color: 'var(--ayq-ink)',
     overflowWrap: 'anywhere',
   },
@@ -86,6 +106,21 @@ const useStyles = makeStyles({
   boundary: {
     color: 'var(--ayq-ink-quiet)',
     fontSize: 'var(--ayq-size-small)',
+  },
+  // Template r003's way back: a small link above the name.
+  back: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'transparent',
+    borderTopStyle: 'none',
+    borderRightStyle: 'none',
+    borderBottomStyle: 'none',
+    borderLeftStyle: 'none',
+    padding: '0',
+    font: 'inherit',
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-quiet)',
+    cursor: 'pointer',
+    ':hover': { color: 'var(--ayq-ink)' },
   },
 });
 
@@ -245,11 +280,10 @@ export function AyqCounterpartyScreen({
 
   return (
     <>
-      <AyqPane mark="counterparty">
-        <div
-          className={styles.body}
-          data-ayq-counterparty-page={counterparty.key}
-        >
+      <div className={styles.head} data-ayq-counterparty-page={counterparty.key}>
+        <button type="button" className={styles.back} data-ayq-action="cp-back" onClick={onBack}>
+          {ayqText('counterparty.back')}
+        </button>
           <div className={styles.inline}>
             <h3 className={styles.name} data-ayq-cp-name="">
               {counterparty.name}
@@ -272,9 +306,12 @@ export function AyqCounterpartyScreen({
             </p>
           )}
 
-          {/* The owner's name, and only a name (8 §8.3). */}
-          <div className={styles.section}>
-            <span className={styles.label}>{ayqText('counterparty.name')}</span>
+      </div>
+
+      <div className={styles.grid}>
+        <div className={styles.column}>
+          <AyqPane mark="counterparty-name" title={ayqText('counterparty.name')}>
+                    <div className={styles.paneBody}>
             <p className={styles.note}>
               {ayqText(
                 detail.ownerNamed
@@ -336,11 +373,61 @@ export function AyqCounterpartyScreen({
             )}
           </div>
 
-          {/* The evidence, never overwritten (03 §3.5, §3.6). */}
-          <div className={styles.section} data-ayq-cp-evidence="">
-            <span className={styles.label}>
-              {ayqText('counterparty.evidence')}
-            </span>
+          </AyqPane>
+          <AyqPane mark="counterparty-rules" title={ayqText('counterparty.rules')}>
+                    <div className={styles.paneBody}
+            data-ayq-cp-rules={String(rules.length)}
+          >
+            {rules.length === 0 ? (
+              <p className={styles.note}>
+                {ayqText('counterparty.rules.none')}
+              </p>
+            ) : (
+              rules.map(rule => (
+                <AyqRuleCard
+                  key={rule.id}
+                  rule={rule}
+                  categories={categories}
+                  onFailure={onFailure}
+                  onDone={again}
+                />
+              ))
+            )}
+          </div>
+
+          </AyqPane>
+          <AyqPane mark="counterparty-recent" title={ayqText('counterparty.recent')}>
+          <div className={styles.paneBody}>
+            {detail.recent.slice(0, 6).map(row => (
+              <div
+                key={row.id}
+                className={styles.inline}
+                data-ayq-cp-recent={row.id}
+              >
+                <span className={styles.note}>{ayqDate(row.date)}</span>
+                <span>{row.payee ?? ''}</span>
+                <AyqFigure cents={row.amountCents} />
+              </div>
+            ))}
+            <div className={styles.inline}>
+              <AyqButton
+                size="small"
+                mark="cp-register"
+                onClick={() => onOpenRegister(counterparty.key)}
+              >
+                {ayqText('today.open.register')}
+              </AyqButton>
+            </div>
+          </div>
+          </AyqPane>
+        </div>
+        <div className={styles.column}>
+          <AyqPane
+            mark="counterparty-evidence"
+            title={ayqText('counterparty.evidence')}
+            note={ayqText('counterparty.evidence.kind')}
+          >
+                    <div className={styles.paneBody} data-ayq-cp-evidence="">
             <p className={styles.note}>
               {ayqText('counterparty.evidence.note')}
             </p>
@@ -412,36 +499,9 @@ export function AyqCounterpartyScreen({
             ))}
           </div>
 
-          {/* The rules that mention it, correctable where they are seen (A7). */}
-          <div
-            className={styles.section}
-            data-ayq-cp-rules={String(rules.length)}
-          >
-            <span className={styles.label}>
-              {ayqText('counterparty.rules')}
-            </span>
-            {rules.length === 0 ? (
-              <p className={styles.note}>
-                {ayqText('counterparty.rules.none')}
-              </p>
-            ) : (
-              rules.map(rule => (
-                <AyqRuleCard
-                  key={rule.id}
-                  rule={rule}
-                  categories={categories}
-                  onFailure={onFailure}
-                  onDone={again}
-                />
-              ))
-            )}
-          </div>
-
-          {/* Identity: this counterparty is really another one (03 §3.6). */}
-          <div className={styles.section} data-ayq-cp-identity="">
-            <span className={styles.label}>
-              {ayqText('counterparty.identity')}
-            </span>
+          </AyqPane>
+          <AyqPane mark="counterparty-identity" title={ayqText('counterparty.identity')}>
+                    <div className={styles.paneBody} data-ayq-cp-identity="">
             {mode.kind === 'merge' ? (
               <>
                 <Input
@@ -519,38 +579,12 @@ export function AyqCounterpartyScreen({
             )}
           </div>
 
-          <div className={styles.section}>
-            <span className={styles.label}>
-              {ayqText('counterparty.recent')}
-            </span>
-            {detail.recent.slice(0, 6).map(row => (
-              <div
-                key={row.id}
-                className={styles.inline}
-                data-ayq-cp-recent={row.id}
-              >
-                <span className={styles.note}>{ayqDate(row.date)}</span>
-                <span>{row.payee ?? ''}</span>
-                <AyqFigure cents={row.amountCents} />
-              </div>
-            ))}
-            <div className={styles.inline}>
-              <AyqButton
-                size="small"
-                mark="cp-register"
-                onClick={() => onOpenRegister(counterparty.key)}
-              >
-                {ayqText('today.open.register')}
-              </AyqButton>
-            </div>
-          </div>
+          </AyqPane>
         </div>
-      </AyqPane>
+      </div>
 
-      <p className={styles.boundary}>
-        <AyqButton size="small" mark="cp-back" onClick={onBack}>
-          {ayqText('counterparty.back')}
-        </AyqButton>
+      <p className={styles.boundary} data-ayq-cp-operational="">
+        {ayqText('counterparty.operational')}
       </p>
     </>
   );

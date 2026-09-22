@@ -45,6 +45,11 @@ function hue(colour: string): { chroma: number; angle: number } {
   return { chroma: Math.hypot(a, b), angle: angle < 0 ? angle + 360 : angle };
 }
 
+/** CIE L*, 0–100. */
+function lightness(colour: string): number {
+  return ayqLab(colour)[0];
+}
+
 function apart(one: number, other: number): number {
   const gap = Math.abs(one - other) % 360;
   return gap > 180 ? 360 - gap : gap;
@@ -102,14 +107,24 @@ test('the accent and the state scale never share a tone', () => {
         `${ground}: ${tone} is listed as an accent tone but is not one`,
       );
     }
+    // A state near the accent's hue may not be near the accent: template
+    // r003 draws "owner set" in a green, and it is a state rather than the
+    // accent because it is well short of the mint in chroma — a deep ink and
+    // a pale wash, not a saturated fill. That is what is held (A17).
+    const accentLightness = lightness(AYQ_ACCENT);
     for (const colour of states) {
       const theirs = hue(colour);
       if (theirs.chroma < 8) continue;
       const gap = apart(theirs.angle, accent.angle);
+      if (gap >= 45) continue;
+      // Markedly less vivid than the mint (the ink), or a wash far from it
+      // in lightness (the fill): either keeps a state a state.
       assert.ok(
-        gap >= 45,
+        theirs.chroma <= accent.chroma * 0.7 &&
+          (theirs.chroma <= accent.chroma * 0.65 ||
+            Math.abs(lightness(colour) - accentLightness) >= 20),
         `${ground}: the state colour ${colour} is ${gap.toFixed(0)}° from the ` +
-          'accent, which is close enough to read as the accent',
+          'accent and as vivid, which is close enough to read as the accent',
       );
     }
   }
@@ -158,15 +173,17 @@ test('all three grounds resolve to a complete token set', () => {
     }
   }
 
-  // Every state of A17 is in both grounds, foreground and background.
+  // Every state of A17 is in both grounds, foreground and background. The
+  // operational chip has no fill of its own and is read on the pane.
   for (const ground of AYQ_GROUNDS_RESOLVED) {
     for (const state of AYQ_STATES) {
       const pair = AYQ_TOKENS[ground].state[state];
       assert.ok(pair.fg !== undefined && pair.bg !== undefined);
+      const on = pair.bg === 'transparent' ? AYQ_TOKENS[ground].surface.pane : pair.bg;
       assert.ok(
-        ayqContrast(pair.fg, pair.bg) >= 4.5,
+        ayqContrast(pair.fg, on) >= 4.5,
         `${ground}: the ${state} chip reads at ` +
-          `${ayqContrast(pair.fg, pair.bg).toFixed(2)}:1`,
+          `${ayqContrast(pair.fg, on).toFixed(2)}:1`,
       );
     }
   }

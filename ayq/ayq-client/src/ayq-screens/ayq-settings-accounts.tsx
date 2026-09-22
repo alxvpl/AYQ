@@ -6,7 +6,7 @@
 // surface says so, and opens that screen for the account in question, rather
 // than showing a second, smaller copy of them.
 
-import { Switch, makeStyles } from '@fluentui/react-components';
+import { Checkbox, makeStyles } from '@fluentui/react-components';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { ayqAsk } from '../ayq-bridge.ts';
@@ -15,11 +15,11 @@ import { ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
-import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
+import { AyqSettingBody, AyqSettingRow } from './ayq-settings.tsx';
 
 const useStyles = makeStyles({
   note: {
-    padding: `${AYQ_METRIC.space.screen}px`,
+    padding: `${AYQ_METRIC.space.small}px 2px`,
     color: 'var(--ayq-ink-quiet)',
     fontSize: 'var(--ayq-size-small)',
     display: 'flex',
@@ -82,55 +82,43 @@ export function AyqSettingsAccounts({
     [onFailure, onChanged],
   );
 
-  const columns: readonly AyqColumn<AyqAccountSummary>[] = [
-    {
-      id: 'name',
-      header: ayqText('accounts.column.name'),
-      cell: account => account.name,
-    },
-    {
-      id: 'counts',
-      header: ayqText('accounts.column.counts'),
-      cell: account => (
-        <Switch
-          data-ayq-funds-switch={account.id}
-          checked={account.countsTowardFunds}
-          aria-label={ayqText('accounts.detail.counts')}
-          onChange={(_event, data) => flag(account.id, data.checked)}
-        />
-      ),
-    },
-    {
-      id: 'details',
-      header: ayqText('accounts.column.details'),
-      cell: account => (
-        <AyqButton
-          size="small"
-          mark={`open-account-${account.id}`}
-          onClick={() => onOpenAccount(account.id)}
-        >
-          {ayqText('settings.accounts.openOne')}
-        </AyqButton>
-      ),
-    },
-  ];
-
   return (
-    <AyqPane mark="settings-accounts">
-      <AyqTable
-        mark="settings-accounts"
-        columns={columns}
-        rows={accounts}
-        keyOf={account => account.id}
-        empty={ayqText('accounts.empty')}
-      />
+    <>
+      <AyqPane mark="settings-accounts">
+        <AyqSettingBody>
+          {accounts.length === 0 ? (
+            <p className={styles.note}>{ayqText('accounts.empty')}</p>
+          ) : null}
+          {accounts.map(account => (
+            <AyqSettingRow
+              key={account.id}
+              mark={account.id}
+              name={account.name}
+              note={ayqText('settings.accounts.kind')}
+            >
+              <Checkbox
+                data-ayq-funds-switch={account.id}
+                checked={account.countsTowardFunds}
+                label={ayqText('accounts.detail.counts')}
+                onChange={(_event, data) => flag(account.id, data.checked === true)}
+              />
+              <AyqButton
+                mark={`open-account-${account.id}`}
+                onClick={() => onOpenAccount(account.id)}
+              >
+                {ayqText('settings.accounts.openOne')}
+              </AyqButton>
+            </AyqSettingRow>
+          ))}
+        </AyqSettingBody>
+      </AyqPane>
       <div className={styles.note}>
         <span>{ayqText('settings.accounts.only')}</span>
         <span>{ayqText('settings.accounts.transfers')}</span>
-        <AyqButton size="small" mark="open-accounts" onClick={onOpenAccounts}>
+        <AyqButton mark="open-accounts" onClick={onOpenAccounts}>
           {ayqText('settings.accounts.open')}
         </AyqButton>
       </div>
-    </AyqPane>
+    </>
   );
 }

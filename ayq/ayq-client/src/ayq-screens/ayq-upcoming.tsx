@@ -47,11 +47,12 @@ import {
   ayqText,
   type AyqStringKey,
 } from '../ayq-strings.ts';
-import { AYQ_METRIC } from '../ayq-tokens.ts';
+import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorder, ayqBorderTop } from '../ayq-ui/ayq-css.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
+import { AyqScreenActions } from '../ayq-ui/ayq-screen.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
@@ -66,15 +67,42 @@ const useStyles = makeStyles({
     ...ayqBorder('var(--ayq-line)'),
     borderRadius: 'var(--ayq-radius-medium)',
   },
-  lowest: { marginLeft: 'auto', color: 'var(--ayq-ink-quiet)' },
+  lowest: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
   rematch: {
     display: 'flex',
-    gap: `${AYQ_METRIC.space.medium}px`,
+    gap: `${AYQ_METRIC.space.wide}px`,
     alignItems: 'center',
-    flexWrap: 'wrap',
-    margin: `${AYQ_METRIC.space.small}px 2px 0`,
-    color: 'var(--ayq-ink-faint)',
+    padding: `${AYQ_METRIC.space.wide}px ${AYQ_METRIC.panePadding}px`,
+    backgroundColor: 'var(--ayq-quiet)',
+    ...ayqBorder('var(--ayq-line)'),
+    borderRadius: 'var(--ayq-radius-medium)',
+    marginTop: `${AYQ_METRIC.space.ten}px`,
+  },
+  info: {
+    width: '26px',
+    height: '26px',
+    flex: 'none',
+    display: 'grid',
+    placeItems: 'center',
+    borderRadius: 'var(--ayq-radius-small)',
+    backgroundColor: 'var(--ayq-pane)',
+    ...ayqBorder('var(--ayq-line)'),
+    fontFamily: 'var(--ayq-font-mono)',
+    fontWeight: AYQ_TYPE.weight.bold,
+    color: 'var(--ayq-ink-quiet)',
+  },
+  rematchText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    flexGrow: 1,
     fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-quiet)',
+  },
+  rematchTitle: {
+    fontSize: 'var(--ayq-size-body)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
   },
   body: {
     display: 'flex',
@@ -90,8 +118,15 @@ const useStyles = makeStyles({
     gap: `${AYQ_METRIC.space.small}px`,
   },
   label: {
-    color: 'var(--ayq-ink-quiet)',
-    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink)',
+    fontSize: 'var(--ayq-size-heading)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+  },
+  name: {
+    margin: '0',
+    fontSize: 'var(--ayq-size-screen)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
   },
   actions: {
     display: 'flex',
@@ -331,6 +366,18 @@ export function AyqUpcomingScreen({
       cell: row => <span data-ayq-cell="name">{row.label}</span>,
     },
     {
+      id: 'recurrence',
+      header: ayqText('upcoming.column.recurrence'),
+      cell: row => {
+        const record = row.recordId === null ? undefined : records.get(row.recordId);
+        return (
+          <span data-ayq-cell="recurrence" className={styles.quiet}>
+            {record === undefined ? ayqText('upcoming.recurrence.plan') : rhythm(record)}
+          </span>
+        );
+      },
+    },
+    {
       id: 'category',
       header: ayqText('upcoming.column.category'),
       // Every row states a category or Uncategorised; never a blank (A32).
@@ -400,7 +447,13 @@ export function AyqUpcomingScreen({
 
   return (
     <>
-      <div className={styles.bar} data-ayq-matches={String(proposals.length)}>
+      <AyqScreenActions>
+        <AyqButton
+          mark="plan-suggest"
+          onClick={() => decide({ kind: 'plan.suggest' })}
+        >
+          {ayqText('upcoming.suggest')}
+        </AyqButton>
         <AyqButton
           filled
           mark="plan-new"
@@ -418,37 +471,8 @@ export function AyqUpcomingScreen({
         >
           {ayqText('upcoming.new')}
         </AyqButton>
-        <AyqButton
-          mark="plan-suggest"
-          onClick={() => decide({ kind: 'plan.suggest' })}
-        >
-          {ayqText('upcoming.suggest')}
-        </AyqButton>
-        {/* §5: no lowest point without a position to project from. The
-            occurrences below are still true and still shown — what is expected
-            and when does not depend on knowing what is in the bank. */}
-        {forecast.lowest === null ? (
-          <span className={styles.lowest} data-ayq-lowest="unknown">
-            {ayqText('upcoming.lowest.unknown')}
-          </span>
-        ) : (
-          <span className={styles.lowest} data-ayq-lowest={forecast.lowest.date}>
-            {ayqText('upcoming.lowest', {
-              amount: ayqMoney(forecast.lowest.balanceCents),
-              date: ayqDate(forecast.lowest.date),
-            })}
-          </span>
-        )}
-      </div>
-
-      {/* Matching is automatic (03 §7.16); a re-check is a recovery action,
-          kept out of the working bar and said to be secondary. */}
-      <p className={styles.rematch} data-ayq-rematch="">
-        <span>{ayqText('upcoming.match.note')}</span>
-        <AyqButton size="small" mark="plan-match" onClick={lookForMatches}>
-          {ayqText('upcoming.match.again')}
-        </AyqButton>
-      </p>
+      </AyqScreenActions>
+      <span data-ayq-matches={String(proposals.length)} hidden />
 
       {proposals.length === 0 ? null : (
         <AyqPane
@@ -548,7 +572,26 @@ export function AyqUpcomingScreen({
           <AyqPane
             mark="upcoming-forecast"
             title={ayqText('upcoming.title')}
-            note={ayqCount(rows.length)}
+            note={
+              // §5: no lowest point without a position to project from. The
+              // occurrences below are still true and still shown — what is
+              // expected and when does not depend on knowing what is in the
+              // bank.
+              forecast.lowest === null
+                ? ayqText('upcoming.lowest.unknown')
+                : ayqText('upcoming.lowest', {
+                    amount: ayqMoney(forecast.lowest.balanceCents),
+                    date: ayqDate(forecast.lowest.date),
+                  })
+            }
+            actions={
+              <span
+                className={styles.lowest}
+                data-ayq-lowest={forecast.lowest?.date ?? 'unknown'}
+              >
+                {ayqCount(rows.length)}
+              </span>
+            }
           >
             <AyqTable
               mark="upcoming"
@@ -561,6 +604,7 @@ export function AyqUpcomingScreen({
                 setOpen(row.key);
               }}
               empty={ayqText('upcoming.empty')}
+              footer={ayqText('upcoming.position.note')}
             />
           </AyqPane>
         }
@@ -610,6 +654,21 @@ export function AyqUpcomingScreen({
           )
         }
       />
+
+      {/* Matching is automatic (03 §7.16); a re-check is a recovery action,
+          under the work rather than in the way of it, and said to be so. */}
+      <div className={styles.rematch} data-ayq-rematch="">
+        <span className={styles.info} aria-hidden="true">
+          {ayqText('upcoming.match.glyph')}
+        </span>
+        <span className={styles.rematchText}>
+          <span className={styles.rematchTitle}>{ayqText('upcoming.match.title')}</span>
+          <span>{ayqText('upcoming.match.note')}</span>
+        </span>
+        <AyqButton mark="plan-match" onClick={lookForMatches}>
+          {ayqText('upcoming.match.again')}
+        </AyqButton>
+      </div>
     </>
   );
 }
@@ -670,13 +729,23 @@ function AyqOccurrencePane({
   const matched = occurrence?.matchedTransactionId ?? null;
 
   return (
-    <AyqPane mark="upcoming-detail" title={record.name}>
+    <AyqPane
+      mark="upcoming-detail"
+      title={ayqText('upcoming.pane.title')}
+      actions={
+        <AyqStateChip
+          state={AYQ_ROW_TONE[row.state]}
+          label={ayqText(`upcoming.state.${row.state}` as AyqStringKey)}
+        />
+      }
+    >
       <div className={styles.body} data-ayq-record={record.id}>
         <div className={styles.group} data-ayq-occurrence={dueDate}>
+          <h3 className={styles.name}>{record.name}</h3>
           <span className={styles.label}>
             {ayqText('upcoming.pane.occurrence')}
           </span>
-          <AyqFigure cents={row.amountCents} size="large" />
+          <AyqFigure cents={row.amountCents} size="large" align="left" />
           <span>{ayqText('upcoming.pane.due', { date: ayqDate(dueDate) })}</span>
           <span className={styles.quiet} data-ayq-pane-category="">
             {ayqText('upcoming.pane.category')}:{' '}

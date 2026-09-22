@@ -31,6 +31,8 @@ import { ayqBorder } from '../ayq-ui/ayq-css.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
+import { AyqScreenActions } from '../ayq-ui/ayq-screen.tsx';
 import { AyqTable } from '../ayq-ui/ayq-table.tsx';
 import type { AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
@@ -38,26 +40,33 @@ import { ayqPeriodBounds } from './ayq-register.tsx';
 import type { AyqPeriod } from './ayq-register.tsx';
 
 const useStyles = makeStyles({
-  bar: {
-    display: 'flex',
-    gap: `${AYQ_METRIC.space.medium}px`,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    padding: `10px ${AYQ_METRIC.space.wide}px`,
-    backgroundColor: 'var(--ayq-pane)',
-    ...ayqBorder('var(--ayq-line)'),
-    borderRadius: 'var(--ayq-radius-medium)',
-  },
+  // Template r003: three panes across, a kicker over each figure.
   totals: {
-    display: 'flex',
-    gap: `${AYQ_METRIC.space.edge}px`,
-    flexWrap: 'wrap',
-    padding: `${AYQ_METRIC.space.medium}px 2px`,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: `${AYQ_METRIC.splitGap}px`,
   },
   total: {
     display: 'flex',
     flexDirection: 'column',
-    gap: `${AYQ_METRIC.space.tight}px`,
+    gap: `${AYQ_METRIC.space.small}px`,
+    padding: `${AYQ_METRIC.panePadding}px`,
+    backgroundColor: 'var(--ayq-pane)',
+    ...ayqBorder('var(--ayq-line)'),
+    borderRadius: 'var(--ayq-radius-medium)',
+  },
+  kicker: {
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-label)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.45px',
+    fontWeight: 600,
+  },
+  link: {
+    color: 'var(--ayq-ink)',
+    textDecorationLine: 'underline',
+    textDecorationColor: 'var(--ayq-accent-line-on)',
+    textUnderlineOffset: '3px',
   },
   label: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)' },
   note: {
@@ -107,6 +116,7 @@ export function AyqReportsScreen({
   onFailure(message: string): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [period, setPeriod] = useState<AyqPeriod>('threeMonths');
   const [accountId, setAccountId] = useState('');
   const [spending, setSpending] = useState<AyqSpending | null>(null);
@@ -156,7 +166,11 @@ export function AyqReportsScreen({
             label={ayqText('register.category.none')}
           />
         ) : (
-          <span data-ayq-report-category={row.categoryId}>
+          <span
+            className={styles.link}
+            data-ayq-report-category={row.categoryId}
+            data-ayq-report-transactions={String(row.transactions)}
+          >
             {row.categoryName}
           </span>
         ),
@@ -183,22 +197,13 @@ export function AyqReportsScreen({
       figures: true,
       cell: row => <AyqFigure cents={Math.round(row.cents / months)} />,
     },
-    {
-      id: 'transactions',
-      header: ayqText('reports.column.transactions'),
-      figures: true,
-      cell: row => (
-        <span data-ayq-report-transactions={String(row.transactions)}>
-          {ayqCount(row.transactions)}
-        </span>
-      ),
-    },
   ];
 
   return (
     <>
-      <div className={styles.bar} data-ayq-reports-bar="">
+      <AyqScreenActions>
         <Select
+          className={fields.field}
           data-ayq-reports-period=""
           aria-label={ayqText('register.filter.period')}
           value={period}
@@ -211,6 +216,7 @@ export function AyqReportsScreen({
           ))}
         </Select>
         <Select
+          className={fields.field}
           data-ayq-reports-account=""
           aria-label={ayqText('register.filter.account')}
           value={accountId}
@@ -223,8 +229,7 @@ export function AyqReportsScreen({
             </option>
           ))}
         </Select>
-        <span className={styles.label}>{ayqText('reports.magnitudes')}</span>
-      </div>
+      </AyqScreenActions>
 
       {spending === null ? (
         <p className={styles.note}>{ayqText('common.loading')}</p>
@@ -232,21 +237,20 @@ export function AyqReportsScreen({
         <>
           <div className={styles.totals} data-ayq-reports-totals="">
             <span className={styles.total}>
-              <span className={styles.label}>{ayqText('reports.income')}</span>
-              <AyqFigure cents={spending.incomeCents} size="large" withSymbol />
+              <span className={styles.kicker}>{ayqText('reports.income')}</span>
+              <AyqFigure cents={spending.incomeCents} size="large" withSymbol align="left" />
             </span>
             <span className={styles.total}>
-              <span className={styles.label}>
-                {ayqText('reports.expenses')}
-              </span>
-              <AyqFigure cents={spending.totalCents} size="large" withSymbol />
+              <span className={styles.kicker}>{ayqText('reports.expenses')}</span>
+              <AyqFigure cents={spending.totalCents} size="large" withSymbol align="left" />
             </span>
             <span className={styles.total}>
-              <span className={styles.label}>{ayqText('reports.net')}</span>
+              <span className={styles.kicker}>{ayqText('reports.net')}</span>
               <AyqFigure
                 cents={spending.incomeCents - spending.totalCents}
                 size="large"
                 withSymbol
+                align="left"
               />
             </span>
           </div>
@@ -265,8 +269,8 @@ export function AyqReportsScreen({
                         : ayqDate(spending.to),
                   })
             }
+            actions={<span className={styles.label}>{ayqText('reports.select')}</span>}
           >
-            <p className={styles.note}>{ayqText('reports.select')}</p>
             <AyqTable
               mark="reports"
               columns={columns}

@@ -30,6 +30,8 @@ import {
 import { AyqTransactionDetailPane } from './ayq-transaction-detail.tsx';
 
 const useStyles = makeStyles({
+  quiet: { color: 'var(--ayq-ink-faint)' },
+  date: { whiteSpace: 'nowrap', color: 'var(--ayq-ink-quiet)' },
   reading: {
     margin: '0',
     padding: `${AYQ_METRIC.space.screen}px ${AYQ_METRIC.row.paddingX}px`,
@@ -51,6 +53,7 @@ export function AyqLedgerPane({
   reloadToken,
   selection,
   onOpenCounterparty,
+  detailWhenChosen = false,
 }: {
   filter: AyqLedgerFilter;
   mark: string;
@@ -69,13 +72,19 @@ export function AyqLedgerPane({
   selection?: AyqSelection;
   /** The counterparty's page can be opened from here (04 A37). */
   onOpenCounterparty?(counterpartyKey: string): void;
+  /**
+   * The detail pane appears only once a row is chosen (template r003's
+   * Today): the table stands alone until then, and the pane beside it is the
+   * same pane the Register always shows.
+   */
+  detailWhenChosen?: boolean;
 }): ReactNode {
   const [ledger, setLedger] = useState<AyqLedger | null>(null);
   const [categories, setCategories] = useState<readonly AyqCategory[]>([]);
   const [counterparties, setCounterparties] = useState<
     readonly AyqCounterparty[] | null
   >(null);
-  const { reading } = useStyles();
+  const { reading, quiet, date } = useStyles();
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AyqTransactionDetail | null>(null);
   const [round, setRound] = useState(0);
@@ -139,7 +148,7 @@ export function AyqLedgerPane({
       {
         id: 'date',
         header: ayqText('register.column.date'),
-        cell: row => ayqDate(row.date),
+        cell: row => <span className={date}>{ayqDate(row.date)}</span>,
       },
       {
         id: 'payee',
@@ -159,10 +168,28 @@ export function AyqLedgerPane({
             row.category
           ),
       },
+      // Who decided the category, as the template's State column (A17): the
+      // row's category source, said as a chip; where there is no category
+      // there is nobody to name, and the cell says so with a dash.
       {
-        id: 'account',
-        header: ayqText('register.column.account'),
-        cell: row => row.account,
+        id: 'state',
+        header: ayqText('register.column.state'),
+        cell: row =>
+          row.category === null ? (
+            <span className={quiet}>{ayqText('register.state.none')}</span>
+          ) : row.categorySource === 'rule' ? (
+            <AyqStateChip state="rule" label={ayqText('state.rule')} />
+          ) : row.categorySource === 'auto' ? (
+            <AyqStateChip
+              state="suggested"
+              label={ayqText('state.suggested')}
+            />
+          ) : (
+            <AyqStateChip
+              state="confirmed"
+              label={ayqText('state.confirmed')}
+            />
+          ),
       },
       {
         id: 'amount',
@@ -174,9 +201,7 @@ export function AyqLedgerPane({
     [],
   );
 
-  return (
-    <AyqSplit
-      table={
+  const table = (
         <AyqPane mark={mark} title={title} note={note} actions={actions}>
           {/* No table until the engine has answered. "Nothing has been imported
               yet" is a statement about a budget, and before the answer it is a
@@ -203,9 +228,14 @@ export function AyqLedgerPane({
             />
           )}
         </AyqPane>
-      }
+  );
+  if (detailWhenChosen && openId === null) return table;
+
+  return (
+    <AyqSplit
+      table={table}
       detail={
-        <AyqPane mark={`${mark}-detail`}>
+        <AyqPane mark={`${mark}-detail`} title={ayqText('detail.title')}>
           <AyqTransactionDetailPane
             detail={detail}
             categories={categories}

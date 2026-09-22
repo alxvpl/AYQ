@@ -108,25 +108,32 @@ test('the rail carries the destinations of A20, in its order and its groups', as
   );
 
   // Three groups means two hairlines, and they fall between the groups rather
-  // than anywhere that looked tidy.
-  const children = [...rail.children];
-  const separators = children.filter(one =>
+  // than anywhere that looked tidy: the second and third group each carry
+  // the line above them (template r003).
+  const everything = [...rail.querySelectorAll('[data-ayq-tab], [data-ayq-rail-separator]')];
+  const separators = everything.filter(one =>
     one.hasAttribute('data-ayq-rail-separator'),
   );
   assert.equal(separators.length, AYQ_RAIL_GROUPS.length - 1);
 
   const where = (destination: string): number =>
-    children.findIndex(one => one.getAttribute('data-ayq-tab') === destination);
-  const firstSeparator = children.indexOf(separators[0]);
-  const secondSeparator = children.indexOf(separators[1]);
+    everything.findIndex(one => one.getAttribute('data-ayq-tab') === destination);
+  const firstSeparator = everything.indexOf(separators[0]);
+  const secondSeparator = everything.indexOf(separators[1]);
   assert.ok(where('register') < firstSeparator && firstSeparator < where('review'));
   assert.ok(where('plan') < secondSeparator && secondSeparator < where('reports'));
 
-  // Settings sits at the foot, apart: last, and after everything else.
+  // Settings sits at the foot, apart: last, after everything else, and in
+  // its own footer rather than in a group.
+  const tabs = [...rail.querySelectorAll('[data-ayq-tab]')];
   assert.equal(
-    children.at(-1)?.getAttribute('data-ayq-tab'),
+    tabs.at(-1)?.getAttribute('data-ayq-tab'),
     AYQ_RAIL_FOOT,
     'Settings is not at the foot of the rail',
+  );
+  assert.ok(
+    !tabs.at(-1)?.closest('[data-ayq-rail-separator]'),
+    'Settings sits inside a group',
   );
 
   // The wordmark is text (A20), not a tile and not an image.

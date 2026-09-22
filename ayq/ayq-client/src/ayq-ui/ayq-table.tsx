@@ -24,22 +24,25 @@ const useStyles = makeStyles({
     fontSize: 'var(--ayq-size-body)',
     color: 'var(--ayq-ink)',
   },
+  // A39: header and body cells on 6×10; the header on the quiet surface in
+  // the small size, the rows parted by the section line.
   head: {
     position: 'sticky',
     top: '0',
     zIndex: 1,
-    backgroundColor: 'var(--ayq-pane)',
+    backgroundColor: 'var(--ayq-quiet)',
     textAlign: 'left',
+    fontSize: AYQ_TYPE.size.small,
     fontWeight: AYQ_TYPE.weight.semibold,
-    color: 'var(--ayq-ink-quiet)',
+    color: 'var(--ayq-label)',
     padding: `${AYQ_METRIC.header.paddingY}px ${AYQ_METRIC.header.paddingX}px`,
     ...ayqBorderBottom('var(--ayq-line-strong)'),
     whiteSpace: 'nowrap',
   },
   cell: {
     padding: `${AYQ_METRIC.row.paddingY}px ${AYQ_METRIC.row.paddingX}px`,
-    ...ayqBorderBottom('var(--ayq-line)'),
-    verticalAlign: 'top',
+    ...ayqBorderBottom('var(--ayq-section)'),
+    verticalAlign: 'middle',
   },
   figures: {
     textAlign: 'right',
@@ -58,12 +61,14 @@ const useStyles = makeStyles({
   },
   selected: {
     backgroundColor: 'var(--ayq-row-selected)',
-    boxShadow: 'inset 3px 0 0 var(--ayq-accent)',
+    boxShadow: 'inset 3px 0 0 var(--ayq-accent-line-on)',
   },
+  // The template's pane foot: 12×18, on the line.
   foot: {
-    padding: `9px ${AYQ_METRIC.row.paddingX}px`,
-    ...ayqBorderTop('var(--ayq-line-strong)'),
-    fontWeight: AYQ_TYPE.weight.semibold,
+    padding: `${AYQ_METRIC.space.wide}px ${AYQ_METRIC.panePadding}px`,
+    ...ayqBorderTop('var(--ayq-line)'),
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-quiet)',
   },
   empty: {
     padding: `26px ${AYQ_METRIC.row.paddingX}px`,

@@ -15,7 +15,7 @@
 // Rows keep the budget's own order. Categories and groups carry meaning in
 // their order (A31), so nothing here sorts them.
 
-import { Input, Select, makeStyles } from '@fluentui/react-components';
+import { Input, Select, makeStyles, mergeClasses } from '@fluentui/react-components';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { ayqAsk } from '../ayq-bridge.ts';
@@ -28,6 +28,7 @@ import { ayqCount, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorder } from '../ayq-ui/ayq-css.ts';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
@@ -43,6 +44,23 @@ const useStyles = makeStyles({
     borderRadius: 'var(--ayq-radius-medium)',
   },
   label: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)' },
+  rowActions: { display: 'flex', gap: '4px', justifyContent: 'flex-end' },
+  // Template r003's row button: 24 high, quiet until hovered.
+  rowButton: {
+    height: '24px',
+    minHeight: '24px',
+    padding: `0 ${AYQ_METRIC.space.medium}px`,
+    backgroundColor: 'transparent',
+    color: 'var(--ayq-ink-quiet)',
+    fontWeight: 400,
+    ...ayqBorder('transparent'),
+    ':hover': {
+      backgroundColor: 'var(--ayq-row-hover)',
+      color: 'var(--ayq-ink)',
+      ...ayqBorder('var(--ayq-control-edge)'),
+    },
+  },
+  danger: { ':hover': { color: 'var(--ayq-danger)' } },
   note: { margin: '0', color: 'var(--ayq-ink-quiet)' },
   said: { margin: '0', color: 'var(--ayq-ink)' },
   body: {
@@ -78,6 +96,7 @@ export function AyqSettingsCategories({
   onChanged(): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [categories, setCategories] = useState<readonly AyqCategory[] | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
@@ -284,8 +303,17 @@ export function AyqSettingsCategories({
         ) : (
           <span className={styles.inline} data-ayq-cell="name">
             <span data-ayq-category={row.id}>{row.name}</span>
+          </span>
+        ),
+    },
+    {
+      id: 'actions',
+      header: '',
+      cell: row =>
+        renaming?.id === row.id ? null : (
+          <span className={styles.rowActions} data-ayq-cell="actions">
             <AyqButton
-              size="small"
+              className={styles.rowButton}
               mark={`category-rename-${row.id}`}
               onClick={() => {
                 setSaid(null);
@@ -295,7 +323,7 @@ export function AyqSettingsCategories({
               {ayqText('categories.rename')}
             </AyqButton>
             <AyqButton
-              size="small"
+              className={styles.rowButton}
               mark={`category-move-${row.id}`}
               onClick={() => {
                 setSaid(null);
@@ -305,7 +333,7 @@ export function AyqSettingsCategories({
               {ayqText('categories.move')}
             </AyqButton>
             <AyqButton
-              size="small"
+              className={mergeClasses(styles.rowButton, styles.danger)}
               mark={`category-remove-${row.id}`}
               onClick={() => {
                 setSaid(null);
@@ -360,16 +388,17 @@ export function AyqSettingsCategories({
 
   return (
     <>
-      <div className={styles.bar} data-ayq-category-new="">
-        <span className={styles.label}>{ayqText('categories.new.name')}</span>
+      <div className={fields.bar} data-ayq-category-new="">
+        <span className={fields.label}>{ayqText('categories.new.name')}</span>
         <Input
-          className={styles.name}
+          className={mergeClasses(fields.field, styles.name)}
           value={made}
           data-ayq-new-category=""
           onChange={(_event, data) => setMade(data.value)}
         />
-        <span className={styles.label}>{ayqText('categories.new.group')}</span>
+        <span className={fields.label}>{ayqText('categories.new.group')}</span>
         <Select
+          className={fields.field}
           value={group}
           data-ayq-new-group=""
           aria-label={ayqText('categories.new.group')}
@@ -465,7 +494,7 @@ export function AyqSettingsCategories({
         </div>
       )}
 
-      <AyqPane mark="categories" title={ayqText('categories.title')}>
+      <AyqPane mark="categories">
         <AyqTable
           mark="categories"
           columns={columns}

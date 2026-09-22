@@ -19,7 +19,7 @@ import type {
   AyqTransactionDetail,
 } from '../src/ayq-ipc-contract.ts';
 import { AyqRegisterScreen } from '../src/ayq-screens/ayq-register.tsx';
-import { ayqAmount, ayqText } from '../src/ayq-strings.ts';
+import { ayqMoney, ayqText } from '../src/ayq-strings.ts';
 import { AyqGroundProvider } from '../src/ayq-ui/ayq-ground-provider.tsx';
 import { ayqOpenWindow, ayqPress } from './ayq-react.ts';
 
@@ -263,7 +263,7 @@ test('the table shows the rows the engine answered, in the accepted columns', as
   assert.equal(rows.length, ROWS.length);
 
   const first = rows[0];
-  for (const column of ['date', 'payee', 'category', 'account', 'amount']) {
+  for (const column of ['date', 'payee', 'category', 'state', 'amount']) {
     assert.ok(
       first.querySelector(`[data-ayq-cell="${column}"]`),
       `the table has no ${column} column`,
@@ -276,7 +276,7 @@ test('the table shows the rows the engine answered, in the accepted columns', as
   // 04 A19: the amount is the engine's cents, formatted, and carries no colour.
   assert.equal(
     first.querySelector('[data-ayq-cell="amount"]')?.textContent,
-    ayqAmount(ROWS[0].amountCents),
+    ayqMoney(ROWS[0].amountCents),
   );
 
   await window.close();

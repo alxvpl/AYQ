@@ -94,15 +94,17 @@ export function ayqTheme(ground: AyqGroundResolved): Theme {
     colorNeutralForeground1: surface.ink,
     colorNeutralForeground2: surface.inkQuiet,
     colorNeutralForeground3: surface.inkFaint,
+    colorNeutralForegroundDisabled: surface.disabledInk,
+    colorNeutralBackgroundDisabled: surface.disabledFill,
     colorNeutralForeground4: surface.inkFaint,
 
     // Lines.
-    colorNeutralStroke1: surface.line,
+    colorNeutralStroke1: surface.controlEdge,
     colorNeutralStroke2: surface.line,
     colorNeutralStroke3: surface.line,
-    colorNeutralStroke1Hover: surface.lineStrong,
-    colorNeutralStroke1Pressed: surface.lineStrong,
-    colorNeutralStrokeAccessible: surface.lineStrong,
+    colorNeutralStroke1Hover: surface.controlEdge,
+    colorNeutralStroke1Pressed: surface.controlEdge,
+    colorNeutralStrokeAccessible: surface.controlEdge,
 
     // The accent, and the one foreground that may sit on it (A16, A18).
     colorBrandBackground: identity.accent,

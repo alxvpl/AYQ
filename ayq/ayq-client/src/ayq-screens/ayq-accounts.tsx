@@ -38,27 +38,53 @@ import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
 const useStyles = makeStyles({
-  boundary: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)' },
+  boundary: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)', margin: '0' },
+  back: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'transparent',
+    borderTopStyle: 'none',
+    borderRightStyle: 'none',
+    borderBottomStyle: 'none',
+    borderLeftStyle: 'none',
+    padding: '0',
+    font: 'inherit',
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-quiet)',
+    cursor: 'pointer',
+    ':hover': { color: 'var(--ayq-ink)' },
+  },
   totals: {
     display: 'flex',
     gap: `${AYQ_METRIC.space.edge}px`,
     color: 'var(--ayq-ink-quiet)',
     flexWrap: 'wrap',
   },
-  pane: { padding: `${AYQ_METRIC.space.screen}px` },
+  // Template r003's account page, in the pane: the balance under its kicker,
+  // then the operational state as a fact grid on the section line.
+  pane: { padding: `${AYQ_METRIC.panePadding}px` },
   name: {
-    margin: '0 0 6px',
+    margin: '0 0 10px',
     fontFamily: 'var(--ayq-font-display)',
-    fontSize: 'var(--ayq-size-heading)',
+    fontSize: 'var(--ayq-size-screen)',
+    fontWeight: 600,
+  },
+  kicker: {
+    display: 'block',
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-label)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.45px',
+    fontWeight: 600,
+    margin: '14px 0 6px',
   },
   field: {
     display: 'grid',
-    gridTemplateColumns: '150px minmax(0, 1fr)',
-    gap: `${AYQ_METRIC.space.medium}px`,
+    gridTemplateColumns: '138px minmax(0, 1fr)',
+    gap: `${AYQ_METRIC.space.wide}px`,
     padding: `${AYQ_METRIC.space.small}px 0`,
-    ...ayqBorderTop('var(--ayq-line)'),
+    ...ayqBorderTop('var(--ayq-section)'),
   },
-  label: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
+  label: { color: 'var(--ayq-label)', fontSize: 'var(--ayq-size-small)' },
   note: {
     margin: `${AYQ_METRIC.space.wide}px 0 0`,
     color: 'var(--ayq-ink-quiet)',
@@ -96,15 +122,14 @@ function AyqAccountDetail({
     <div className={styles.pane} data-ayq-account-detail={row.id}>
       <h3 className={styles.name}>{row.name}</h3>
 
-      <Field label={ayqText('accounts.detail.balance')}>
-        <span
-          data-ayq-detail-balance={
-            row.balanceCents === null ? 'unknown' : String(row.balanceCents)
-          }
-        >
-          <AyqFigure cents={row.balanceCents} withSymbol />
-        </span>
-      </Field>
+      <span className={styles.kicker}>{ayqText('accounts.detail.balance')}</span>
+      <span
+        data-ayq-detail-balance={
+          row.balanceCents === null ? 'unknown' : String(row.balanceCents)
+        }
+      >
+        <AyqFigure cents={row.balanceCents} size="large" withSymbol align="left" />
+      </span>
 
       {/* Where the figure came from, always — a balance with no stated source
           is a balance nobody can check. */}
@@ -125,6 +150,7 @@ function AyqAccountDetail({
         </Field>
       )}
 
+      <span className={styles.kicker}>{ayqText('accounts.detail.operational')}</span>
       {/* Whether it forms available funds is stated here as a fact about the
           money; changing it is configuration and stays at Settings → Accounts
           (04 A34). */}
@@ -358,6 +384,11 @@ export function AyqAccountsScreen({
 
   return (
     <>
+      {onBack === undefined ? null : (
+        <button type="button" className={styles.back} data-ayq-action="accounts-back" onClick={onBack}>
+          {ayqText('accounts.back')}
+        </button>
+      )}
       <p className={styles.boundary} data-ayq-reliable-to={view?.reliableTo ?? ''}>
         {view === null
           ? ayqText('common.loading')
@@ -455,13 +486,7 @@ export function AyqAccountsScreen({
         }
       />
 
-      {onBack === undefined ? null : (
-        <p className={styles.boundary}>
-          <AyqButton size="small" mark="accounts-back" onClick={onBack}>
-            {ayqText('accounts.back')}
-          </AyqButton>
-        </p>
-      )}
+
     </>
   );
 }

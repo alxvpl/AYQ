@@ -9,18 +9,18 @@
 
 import { makeStyles, mergeClasses } from '@fluentui/react-components';
 import {
-  ArrowImport24Regular,
-  BuildingBank24Regular,
-  CalendarClock24Regular,
-  DataBarVertical24Regular,
-  Home24Regular,
-  Settings24Regular,
-  TableSimple24Regular,
-  TaskListLtr24Regular,
-  ContactCard24Regular,
-  TextBulletListSquare24Regular,
+  ArrowImport20Regular,
+  BuildingBank20Regular,
+  CalendarClock20Regular,
+  DataBarVertical20Regular,
+  Home20Regular,
+  Settings20Regular,
+  TableSimple20Regular,
+  TaskListLtr20Regular,
+  ContactCard20Regular,
+  TextBulletListSquare20Regular,
 } from '@fluentui/react-icons';
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import {
   AYQ_DESTINATION_LABEL,
@@ -30,99 +30,139 @@ import {
 } from '../ayq-destinations.ts';
 import { ayqCount, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
-import { AYQ_NO_BORDER } from './ayq-css.ts';
+import { AYQ_NO_BORDER, ayqBorderRight, ayqBorderTop } from './ayq-css.ts';
 
 const ICON: Record<AyqDestination, ReactNode> = {
-  today: <Home24Regular />,
-  accounts: <BuildingBank24Regular />,
-  counterparty: <ContactCard24Regular />,
-  register: <TextBulletListSquare24Regular />,
-  review: <TaskListLtr24Regular />,
-  upcoming: <CalendarClock24Regular />,
-  plan: <TableSimple24Regular />,
-  reports: <DataBarVertical24Regular />,
-  import: <ArrowImport24Regular />,
-  settings: <Settings24Regular />,
+  today: <Home20Regular />,
+  accounts: <BuildingBank20Regular />,
+  counterparty: <ContactCard20Regular />,
+  register: <TextBulletListSquare20Regular />,
+  review: <TaskListLtr20Regular />,
+  upcoming: <CalendarClock20Regular />,
+  plan: <TableSimple20Regular />,
+  reports: <DataBarVertical20Regular />,
+  import: <ArrowImport20Regular />,
+  settings: <Settings20Regular />,
 };
 
 const useStyles = makeStyles({
+  // Template r003's rail, to A39's numbers: 64 wide, items 56×58, icons 20,
+  // captions 11; the groups parted by a hairline across the rail.
   rail: {
     gridRow: '2 / span 2',
     width: `${AYQ_METRIC.railWidth}px`,
     backgroundColor: 'var(--ayq-rail)',
+    color: 'var(--ayq-rail-ink)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: `${AYQ_METRIC.space.wide}px 0`,
-    gap: `${AYQ_METRIC.space.hair}px`,
+    minHeight: '0',
     overflow: 'hidden',
+    ...ayqBorderRight('var(--ayq-rail-line)'),
   },
   wordmark: {
-    fontFamily: 'var(--ayq-font-display)',
-    fontSize: '13px',
+    height: '52px',
+    width: '100%',
+    flex: 'none',
+    display: 'grid',
+    placeItems: 'center',
+    fontSize: AYQ_TYPE.size.heading,
     fontWeight: AYQ_TYPE.weight.bold,
-    letterSpacing: '1.4px',
+    letterSpacing: '0.7px',
     color: 'var(--ayq-rail-ink-on)',
-    padding: `${AYQ_METRIC.space.tight}px 0 ${AYQ_METRIC.space.wide}px`,
     userSelect: 'none',
+  },
+  groups: {
+    flex: '1',
+    minHeight: '0',
+    width: '100%',
+    padding: `${AYQ_METRIC.space.hair}px ${AYQ_METRIC.space.tight}px`,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    scrollbarWidth: 'thin',
+  },
+  group: {
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: `${AYQ_METRIC.space.hair}px`,
+    padding: `${AYQ_METRIC.space.tight}px 0`,
+  },
+  groupAfter: {
+    ...ayqBorderTop('var(--ayq-rail-line)'),
+    marginTop: `${AYQ_METRIC.space.tight}px`,
+    paddingTop: `${AYQ_METRIC.space.medium}px`,
+  },
+  foot: {
+    flex: 'none',
+    width: '100%',
+    padding: `5px ${AYQ_METRIC.space.tight}px 7px`,
+    display: 'grid',
+    placeItems: 'center',
+    ...ayqBorderTop('var(--ayq-rail-line)'),
   },
   item: {
     position: 'relative',
-    width: '52px',
-    height: '46px',
+    width: `${AYQ_METRIC.railItemWidth}px`,
+    height: `${AYQ_METRIC.railItemHeight}px`,
+    flex: 'none',
     ...AYQ_NO_BORDER,
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    display: 'grid',
-    placeItems: 'center',
-    rowGap: '3px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: `${AYQ_METRIC.space.tight}px`,
+    padding: '0',
     borderRadius: 'var(--ayq-radius-medium)',
     color: 'var(--ayq-rail-ink)',
     font: 'inherit',
-    fontSize: '10.5px',
-    ':hover': { color: 'var(--ayq-rail-ink-on)', backgroundColor: '#ffffff14' },
+    fontSize: `${AYQ_METRIC.railCaption}px`,
+    lineHeight: '1',
+    ':hover': { backgroundColor: 'var(--ayq-rail-hover)' },
     ':focus-visible': {
       outlineWidth: `${AYQ_METRIC.focusRing}px`,
       outlineStyle: 'solid',
       outlineColor: 'var(--ayq-accent)',
       outlineOffset: '-2px',
     },
+    '& > svg': {
+      width: `${AYQ_METRIC.railIcon}px`,
+      height: `${AYQ_METRIC.railIcon}px`,
+    },
   },
   current: {
-    color: 'var(--ayq-rail-ink-on)',
-    backgroundColor: '#ffffff1a',
+    color: 'var(--ayq-rail-current-ink)',
+    backgroundColor: 'var(--ayq-rail-current)',
     '::before': {
       content: '""',
       position: 'absolute',
-      left: '-6px',
-      top: '11px',
-      bottom: '11px',
+      left: '0',
+      top: '10px',
+      bottom: '10px',
       width: '3px',
-      borderRadius: '2px',
+      borderRadius: '0 2px 2px 0',
       backgroundColor: 'var(--ayq-accent)',
     },
   },
-  separator: {
-    width: '34px',
-    height: 'var(--ayq-hairline)',
-    backgroundColor: 'var(--ayq-rail-line)',
-    margin: `${AYQ_METRIC.space.small}px 0`,
-  },
-  spacer: { flexGrow: 1 },
   tally: {
     position: 'absolute',
-    top: '5px',
-    right: '7px',
-    minWidth: '15px',
-    height: '15px',
-    padding: '0 3px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--ayq-state-overdue-bg)',
-    color: 'var(--ayq-state-overdue-fg)',
-    fontSize: '9.5px',
-    lineHeight: '15px',
+    top: '3px',
+    right: '4px',
+    minWidth: '16px',
+    height: '16px',
+    padding: '0 4px',
+    borderRadius: `${AYQ_METRIC.radiusPill}px`,
+    backgroundColor: 'var(--ayq-rail-badge)',
+    color: 'var(--ayq-rail-current-ink)',
+    fontSize: AYQ_TYPE.size.caption,
+    lineHeight: '16px',
     fontVariantNumeric: AYQ_TYPE.figures,
     fontWeight: AYQ_TYPE.weight.semibold,
+    display: 'grid',
+    placeItems: 'center',
   },
 });
 
@@ -173,30 +213,37 @@ export function AyqRail({ current, waiting, open }: AyqRailProps): ReactNode {
     <nav className={styles.rail} aria-label={ayqText('app.name')} data-ayq-rail="">
       <div className={styles.wordmark}>{ayqText('app.name')}</div>
 
-      {AYQ_RAIL_GROUPS.map((group, index) => (
-        <Fragment key={group.key}>
-          {index === 0 ? null : (
-            <div className={styles.separator} data-ayq-rail-separator="" />
-          )}
-          {group.destinations.map(destination => (
-            <AyqRailItem
-              key={destination}
-              destination={destination}
-              current={destination === current}
-              waiting={waiting?.[destination] ?? 0}
-              open={open}
-            />
-          ))}
-        </Fragment>
-      ))}
+      <div className={styles.groups}>
+        {AYQ_RAIL_GROUPS.map((group, index) => (
+          <div
+            key={group.key}
+            className={mergeClasses(
+              styles.group,
+              index === 0 ? undefined : styles.groupAfter,
+            )}
+            data-ayq-rail-separator={index === 0 ? undefined : ''}
+          >
+            {group.destinations.map(destination => (
+              <AyqRailItem
+                key={destination}
+                destination={destination}
+                current={destination === current}
+                waiting={waiting?.[destination] ?? 0}
+                open={open}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
 
-      <div className={styles.spacer} />
-      <AyqRailItem
-        destination={AYQ_RAIL_FOOT}
-        current={AYQ_RAIL_FOOT === current}
-        waiting={0}
-        open={open}
-      />
+      <div className={styles.foot}>
+        <AyqRailItem
+          destination={AYQ_RAIL_FOOT}
+          current={AYQ_RAIL_FOOT === current}
+          waiting={0}
+          open={open}
+        />
+      </div>
     </nav>
   );
 }

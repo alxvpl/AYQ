@@ -20,7 +20,7 @@
 // pressed, and the two buttons keep their meanings: one files, the other files
 // and writes one rule per counterparty. Nothing is inferred from the gathering.
 
-import { Input, Select, makeStyles } from '@fluentui/react-components';
+import { Input, Select, makeStyles, mergeClasses } from '@fluentui/react-components';
 import {
   useCallback,
   useEffect,
@@ -42,9 +42,10 @@ import {
   ayqMoney,
   ayqText,
 } from '../ayq-strings.ts';
-import { AYQ_METRIC } from '../ayq-tokens.ts';
+import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
-import { ayqBorderTop } from '../ayq-ui/ayq-css.ts';
+import { ayqBorderLeft, ayqBorderTop } from '../ayq-ui/ayq-css.ts';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
@@ -59,6 +60,49 @@ const useStyles = makeStyles({
     padding: `13px ${AYQ_METRIC.space.screen}px`,
   },
   note: { margin: '0', color: 'var(--ayq-ink-quiet)' },
+  stats: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '0',
+    marginTop: '-52px',
+    marginBottom: '6px',
+  },
+  stat: {
+    display: 'grid',
+    gap: '2px',
+    padding: `0 ${AYQ_METRIC.space.wide}px`,
+    ...ayqBorderLeft('var(--ayq-line)'),
+    ':first-child': { borderLeftWidth: '0' },
+  },
+  statFigure: {
+    fontSize: 'var(--ayq-size-screen)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    fontVariantNumeric: AYQ_TYPE.figures,
+    color: 'var(--ayq-ink)',
+  },
+  statLabel: { fontSize: 'var(--ayq-size-small)', color: 'var(--ayq-ink-faint)' },
+  sub: { margin: '0', fontSize: 'var(--ayq-size-small)', color: 'var(--ayq-ink-faint)' },
+  name: {
+    margin: '0',
+    fontSize: 'var(--ayq-size-screen)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
+  },
+  sectionTitle: {
+    margin: '0',
+    fontSize: 'var(--ayq-size-heading)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
+  },
+  transaction: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: `${AYQ_METRIC.space.ten}px`,
+    padding: `${AYQ_METRIC.space.small}px 0`,
+    ...ayqBorderTop('var(--ayq-section)'),
+    ':first-of-type': { borderTopWidth: '0' },
+  },
+  full: { width: '100%' },
   rename: {
     display: 'flex',
     alignItems: 'center',
@@ -215,35 +259,47 @@ export function AyqReviewScreen({
     },
   ];
 
+  const totalOut = backlog.reduce((sum, row) => sum + row.cents, 0);
+  const totalRows = backlog.reduce((sum, row) => sum + row.transactions, 0);
+
   return (
+    <>
+      {/* What the queue comes to, stated once (template r003's head). */}
+      <div className={styles.stats} data-ayq-backlog={String(backlog.length)}>
+        <span className={styles.stat}>
+          <span className={styles.statFigure}>{ayqCount(backlog.length)}</span>
+          <span className={styles.statLabel}>{ayqText('review.stat.counterparties')}</span>
+        </span>
+        <span className={styles.stat}>
+          <span className={styles.statFigure}>{ayqCount(totalRows)}</span>
+          <span className={styles.statLabel}>{ayqText('review.stat.transactions')}</span>
+        </span>
+        <span className={styles.stat}>
+          <span className={styles.statFigure}>{ayqMoney(totalOut)}</span>
+          <span className={styles.statLabel}>{ayqText('review.stat.out')}</span>
+        </span>
+      </div>
+      {bulkOutcome === null ? null : (
+        <p className={styles.outcome} data-ayq-bulk-outcome="">
+          {bulkOutcome}
+        </p>
+      )}
+      {gathered.length === 0 ? null : (
+        <AyqReviewBulkBar
+          gathered={gathered}
+          categories={categories}
+          onClear={() => setSelected(new Set())}
+          onDone={said => {
+            setSelected(new Set());
+            setBulkOutcome(said);
+            again();
+          }}
+          onFailure={onFailure}
+        />
+      )}
     <AyqSplit
       table={
-        <AyqPane
-          mark="review-backlog"
-          title={ayqText('review.backlog')}
-          note={ayqCount(backlog.length)}
-        >
-          <p className={`${styles.note} ${styles.body}`} data-ayq-backlog={String(backlog.length)}>
-            {ayqText('review.backlog.note')}
-          </p>
-          {bulkOutcome === null ? null : (
-            <p className={`${styles.outcome} ${styles.body}`} data-ayq-bulk-outcome="">
-              {bulkOutcome}
-            </p>
-          )}
-          {gathered.length === 0 ? null : (
-            <AyqReviewBulkBar
-              gathered={gathered}
-              categories={categories}
-              onClear={() => setSelected(new Set())}
-              onDone={said => {
-                setSelected(new Set());
-                setBulkOutcome(said);
-                again();
-              }}
-              onFailure={onFailure}
-            />
-          )}
+        <AyqPane mark="review-backlog">
           <AyqTable
             mark="review"
             columns={columns}
@@ -271,6 +327,7 @@ export function AyqReviewScreen({
               shownLabel: ayqText('review.select.shown'),
             }}
             empty={ayqText('review.backlog.none')}
+            footer={ayqText('review.backlog.note')}
           />
         </AyqPane>
       }
@@ -288,6 +345,7 @@ export function AyqReviewScreen({
         />
       }
     />
+    </>
   );
 }
 
@@ -313,6 +371,7 @@ function AyqReviewPane({
   onChanged(): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [categoryId, setCategoryId] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [typedName, setTypedName] = useState('');
@@ -415,12 +474,82 @@ function AyqReviewPane({
   };
 
   return (
-    <AyqPane mark="review-detail" title={counterparty.name}>
+    <AyqPane mark="review-detail" title={ayqText('review.pane.title')}>
       <div className={styles.body} data-ayq-counterparty={counterparty.key}>
         <div className={styles.group}>
-          {/* The owner's own name for this counterparty. Beside the figures
-              because it is a fact about who this is, not an action buried in a
-              menu. */}
+          <h3 className={styles.name}>{counterparty.name}</h3>
+          <p className={styles.sub}>
+            {ayqText('review.pane.sub', {
+              count: ayqCount(counterparty.transactions),
+              out: ayqMoney(counterparty.outgoingCents),
+              seen: ayqText('review.seen', {
+                first: ayqDate(counterparty.firstDate),
+                last: ayqDate(counterparty.lastDate),
+              }),
+            })}
+          </p>
+          {detail.recurring === null ? null : (
+            <span className={styles.quiet} data-ayq-rhythm={detail.recurring.cadence}>
+              {ayqText('review.pane.rhythm', {
+                cadence: detail.recurring.cadence,
+                amount: ayqMoney(detail.recurring.averageAmountCents),
+              })}
+            </span>
+          )}
+        </div>
+
+        <div className={styles.decide}>
+          <h4 className={styles.sectionTitle}>{ayqText('review.pane.recent')}</h4>
+          <div>
+            {detail.recent.slice(0, 6).map(row => (
+              <div key={row.id} className={styles.transaction} data-ayq-recent={row.id}>
+                <span className={styles.quiet}>{ayqDate(row.date)}</span>
+                <AyqFigure cents={row.amountCents} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {outcome === null ? null : (
+          <p className={styles.outcome} data-ayq-outcome="">
+            {outcome}
+          </p>
+        )}
+
+        {/* The two decisions, and which is which said in words. */}
+        <div className={styles.decide} data-ayq-file="">
+          <h4 className={styles.sectionTitle}>{ayqText('review.pane.file')}</h4>
+          <Select
+            className={mergeClasses(fields.field, styles.full)}
+            value={categoryId}
+            data-ayq-review-category=""
+            aria-label={ayqText('review.do.category')}
+            onChange={(_event, data) => setCategoryId(data.value)}
+          >
+            <option value="">{ayqText('review.do.category')}</option>
+            {categories
+              .filter(one => !one.isIncome)
+              .map(one => (
+                <option key={one.id} value={one.id}>
+                  {one.name}
+                </option>
+              ))}
+          </Select>
+          <p className={styles.sub}>{ayqText('review.pane.file.note')}</p>
+          <div className={styles.inline}>
+            <AyqButton filled mark="review-file" onClick={() => file(false)}>
+              {ayqText('review.do.file')}
+            </AyqButton>
+            <AyqButton mark="review-learn" onClick={() => file(true)}>
+              {ayqText('review.do.learn')}
+            </AyqButton>
+          </div>
+        </div>
+
+        <div className={styles.decide}>
+          {/* The owner's own name for this counterparty. A fact about who this
+              is, not an action buried in a menu. */}
+          <div className={styles.inline}>
           {renaming ? (
             <span className={styles.rename}>
               <Input
@@ -462,56 +591,6 @@ function AyqReviewPane({
               {ayqText('review.rename')}
             </AyqButton>
           )}
-          <AyqFigure cents={-counterparty.outgoingCents} size="large" />
-          <span className={styles.quiet}>
-            {ayqText('review.seen', {
-              first: ayqDate(counterparty.firstDate),
-              last: ayqDate(counterparty.lastDate),
-            })}{' '}
-            · {ayqCount(counterparty.transactions)}
-          </span>
-          {detail.recurring === null ? null : (
-            <span className={styles.quiet} data-ayq-rhythm={detail.recurring.cadence}>
-              {ayqText('review.pane.rhythm', {
-                cadence: detail.recurring.cadence,
-                amount: ayqMoney(detail.recurring.averageAmountCents),
-              })}
-            </span>
-          )}
-        </div>
-
-        {outcome === null ? null : (
-          <p className={styles.outcome} data-ayq-outcome="">
-            {outcome}
-          </p>
-        )}
-
-        {/* The two decisions, and which is which said in words. */}
-        <div className={styles.decide} data-ayq-file="">
-          <span className={styles.label}>{ayqText('review.pane.file')}</span>
-          <p className={styles.note}>{ayqText('review.pane.file.note')}</p>
-          <Select
-            value={categoryId}
-            data-ayq-review-category=""
-            aria-label={ayqText('review.do.category')}
-            onChange={(_event, data) => setCategoryId(data.value)}
-          >
-            <option value="">{ayqText('review.do.category')}</option>
-            {categories
-              .filter(one => !one.isIncome)
-              .map(one => (
-                <option key={one.id} value={one.id}>
-                  {one.name}
-                </option>
-              ))}
-          </Select>
-          <div className={styles.inline}>
-            <AyqButton mark="review-file" onClick={() => file(false)}>
-              {ayqText('review.do.file')}
-            </AyqButton>
-            <AyqButton filled mark="review-learn" onClick={() => file(true)}>
-              {ayqText('review.do.learn')}
-            </AyqButton>
           </div>
         </div>
 
@@ -568,14 +647,6 @@ function AyqReviewPane({
         </div>
 
         <div className={styles.decide}>
-          <span className={styles.label}>{ayqText('review.pane.recent')}</span>
-          {detail.recent.slice(0, 6).map(row => (
-            <div key={row.id} className={styles.inline} data-ayq-recent={row.id}>
-              <span className={styles.quiet}>{ayqDate(row.date)}</span>
-              <span>{row.payee ?? ''}</span>
-              <AyqFigure cents={row.amountCents} />
-            </div>
-          ))}
           <div className={styles.inline}>
             <AyqButton
               size="small"

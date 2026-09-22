@@ -73,6 +73,8 @@ export const CIVION_GREEN = '#1d3b32';
 
 export type AyqIdentityTokens = {
   accent: string;
+  /** The accent as a line: the selected tab's underline, the selected row's edge. */
+  accentLineOn: string;
   /** The foreground on any filled accent surface. */
   accentInk: string;
   accentHover: string;
@@ -91,6 +93,9 @@ export type AyqIdentityTokens = {
   buttonFill: string;
   buttonFillHover: string;
   buttonFillPressed: string;
+  /** The primary button's text: mint, lifted on the dark button (A18). */
+  buttonInk: string;
+  buttonEdge: string;
 };
 
 // --------------------------------------------------------------- state scale
@@ -103,20 +108,31 @@ export type AyqIdentityTokens = {
  */
 export type AyqStateName =
   | 'confirmed'
+  | 'rule'
   | 'suggested'
   | 'overdue'
   | 'neutral'
-  | 'uncategorised';
+  | 'uncategorised'
+  | 'operational';
 
 export const AYQ_STATES: readonly AyqStateName[] = [
   'confirmed',
+  'rule',
   'suggested',
   'overdue',
   'neutral',
   'uncategorised',
+  'operational',
 ];
 
-export type AyqStatePair = { fg: string; bg: string };
+/**
+ * A state's ink and fill, and where the template draws one, its edge.
+ *
+ * `rule` is dashed and carries the ƒ glyph; `suggested` has a solid edge;
+ * `operational` — coverage, reconciliation, the balance anchor — is an
+ * outlined chip with no fill, visibly not a domain state (TV).
+ */
+export type AyqStatePair = { fg: string; bg: string; edge?: string };
 export type AyqStateTokens = Record<AyqStateName, AyqStatePair>;
 
 // ------------------------------------------------------------------ surfaces
@@ -126,20 +142,42 @@ export type AyqSurfaceTokens = {
   ground: string;
   /** A pane: where figures and tables live. Never a material (A14). */
   pane: string;
+  /** A quiet surface inside a pane: the table header, a count box. */
+  quiet: string;
+  /** A field's fill. */
+  field: string;
+  /** The status bar's surface. */
+  status: string;
   rail: string;
   railInk: string;
   railInkOn: string;
   /** The line the rail's groups are separated by. */
   railLine: string;
+  railHover: string;
+  /** The current destination's surface, and its ink. */
+  railCurrent: string;
+  railCurrentInk: string;
+  railBadge: string;
   ink: string;
   /** Secondary text: labels, the second line of a cell. */
   inkQuiet: string;
   /** Tertiary text: the notes beside a figure. */
   inkFaint: string;
+  /** A label over a field or a table column. */
+  label: string;
   line: string;
   lineStrong: string;
+  /** The line between rows and sections inside a pane. */
+  section: string;
+  /** The edge of a control: a field, a secondary button. */
+  controlEdge: string;
   rowHover: string;
   rowSelected: string;
+  /** A secondary button, hovered. */
+  secondaryHover: string;
+  danger: string;
+  disabledFill: string;
+  disabledInk: string;
   /** Behind a dialog. */
   scrim: string;
 };
@@ -156,19 +194,23 @@ function identity(ground: AyqGroundResolved, pane: string): AyqIdentityTokens {
   if (ground === 'light') {
     return {
       accent,
+      accentLineOn: '#0d9474',
       accentInk: AYQ_ACCENT_INK,
       accentHover: shade(accent, 0.1),
       accentPressed: shade(accent, 0.25),
-      accentFocus: shade(accent, 0.32),
+      accentFocus: '#0b8f70',
       accentSoft: tint(accent, 0.88),
       accentLine: tint(accent, 0.45),
-      buttonFill: '#1b1e21',
-      buttonFillHover: '#25292d',
-      buttonFillPressed: '#15181b',
+      buttonFill: '#26231f',
+      buttonFillHover: '#33302b',
+      buttonFillPressed: '#1c1a17',
+      buttonInk: '#5fe9c4',
+      buttonEdge: '#26231f',
     };
   }
   return {
     accent,
+    accentLineOn: accent,
     accentInk: AYQ_ACCENT_INK,
     accentHover: tint(accent, 0.2),
     accentPressed: shade(accent, 0.15),
@@ -179,43 +221,75 @@ function identity(ground: AyqGroundResolved, pane: string): AyqIdentityTokens {
     accentLine: mix(accent, pane, 0.52),
     // Near-black would vanish into a dark pane, so the button surface lifts
     // away from it instead (A18).
-    buttonFill: '#2a3035',
-    buttonFillHover: '#343b41',
-    buttonFillPressed: '#22282c',
+    buttonFill: '#4a463f',
+    buttonFillHover: '#55504a',
+    buttonFillPressed: '#403c36',
+    buttonInk: '#7ef1d0',
+    buttonEdge: '#776f66',
   };
 }
 
+// The warm Light foundation and the dark neutral axis of template r003, not a
+// grey inversion (TV).
 const LIGHT_SURFACE: AyqSurfaceTokens = {
-  ground: '#f4f5f6',
+  ground: '#f7f5f0',
   pane: '#ffffff',
-  rail: '#1b1e21',
-  railInk: '#b9bfc5',
-  railInkOn: '#ffffff',
-  railLine: '#3a4044',
-  ink: '#14181b',
-  inkQuiet: '#4a545c',
-  inkFaint: '#737f88',
-  line: '#dfe3e6',
-  lineStrong: '#c3cace',
-  rowHover: '#eef1f3',
-  rowSelected: '#e4e9ed',
+  quiet: '#f4f1ea',
+  field: '#f6f3ec',
+  status: '#efece4',
+  rail: '#232120',
+  railInk: '#cfc9c1',
+  railInkOn: '#f1ede7',
+  railLine: '#363330',
+  railHover: '#2e2b29',
+  railCurrent: '#3a3633',
+  railCurrentInk: '#f6f3ee',
+  railBadge: '#4a4642',
+  ink: '#1e1b18',
+  inkQuiet: '#5b554d',
+  inkFaint: '#665f57',
+  label: '#625c54',
+  line: '#e2ddd2',
+  lineStrong: '#cfc8ba',
+  section: '#ece8df',
+  controlEdge: '#b3ab9b',
+  rowHover: '#f1eee7',
+  rowSelected: '#eceae4',
+  secondaryHover: '#f5f2ec',
+  danger: '#a33b31',
+  disabledFill: '#ece9e2',
+  disabledInk: '#8a8479',
   scrim: 'rgba(10, 12, 14, 0.55)',
 };
 
 const DARK_SURFACE: AyqSurfaceTokens = {
-  ground: '#15181b',
-  pane: '#1d2226',
-  rail: '#101315',
-  railInk: '#b9bfc5',
-  railInkOn: '#ffffff',
-  railLine: '#2b3236',
-  ink: '#eef1f3',
-  inkQuiet: '#a9b3ba',
-  inkFaint: '#7d888f',
-  line: '#2c3338',
-  lineStrong: '#3c454b',
-  rowHover: '#242a2f',
-  rowSelected: '#2b3339',
+  ground: '#1a1917',
+  pane: '#211f1d',
+  quiet: '#282623',
+  field: '#262421',
+  status: '#1e1c1a',
+  rail: '#121110',
+  railInk: '#b9b4ac',
+  railInkOn: '#f4f1ec',
+  railLine: '#2b2926',
+  railHover: '#201e1c',
+  railCurrent: '#2b2926',
+  railCurrentInk: '#f4f1ec',
+  railBadge: '#3e3b37',
+  ink: '#f2efea',
+  inkQuiet: '#c6c1ba',
+  inkFaint: '#a9a39a',
+  label: '#b5afa6',
+  line: '#3a3733',
+  lineStrong: '#4e4a45',
+  section: '#302e2b',
+  controlEdge: '#665f58',
+  rowHover: '#2c2a27',
+  rowSelected: '#302e2b',
+  secondaryHover: '#302e2b',
+  danger: '#f28b82',
+  disabledFill: '#2a2825',
+  disabledInk: '#7a756e',
   scrim: 'rgba(4, 6, 8, 0.62)',
 };
 
@@ -235,19 +309,23 @@ const DARK_SURFACE: AyqSurfaceTokens = {
  * any of them.
  */
 const LIGHT_STATE: AyqStateTokens = {
-  confirmed: { fg: '#1b4f8a', bg: '#e4ecf7' },
-  suggested: { fg: '#7a5406', bg: '#fbf0d8' },
-  overdue: { fg: '#8d2b21', bg: '#f8e3e0' },
-  neutral: { fg: '#4a545c', bg: '#eceff1' },
-  uncategorised: { fg: '#5b4a76', bg: '#efeaf6' },
+  confirmed: { fg: '#1f6b47', bg: '#e1f0e7' },
+  rule: { fg: '#5b554d', bg: '#f4f1ea', edge: '#b3ab9b' },
+  suggested: { fg: '#7a5610', bg: '#fff3d2', edge: '#d6ae50' },
+  overdue: { fg: '#9a2f26', bg: '#fbe9e6' },
+  neutral: { fg: '#4e5761', bg: '#edeff2' },
+  uncategorised: { fg: '#66506d', bg: '#f1ebf3' },
+  operational: { fg: '#5b554d', bg: 'transparent', edge: '#cfc8ba' },
 };
 
 const DARK_STATE: AyqStateTokens = {
-  confirmed: { fg: '#9dc4ef', bg: '#16283d' },
-  suggested: { fg: '#e8c273', bg: '#392f16' },
-  overdue: { fg: '#f0a79c', bg: '#3d201c' },
-  neutral: { fg: '#aab4bb', bg: '#262c31' },
-  uncategorised: { fg: '#c3b0e0', bg: '#2b2436' },
+  confirmed: { fg: '#8fd9b0', bg: '#1b3f2c' },
+  rule: { fg: '#c6c1ba', bg: '#282623', edge: '#665f58' },
+  suggested: { fg: '#e9c874', bg: '#43340f', edge: '#8f742e' },
+  overdue: { fg: '#f2a59c', bg: '#4a2420' },
+  neutral: { fg: '#bac3cc', bg: '#30363d' },
+  uncategorised: { fg: '#d2bbda', bg: '#3b2f40' },
+  operational: { fg: '#c6c1ba', bg: 'transparent', edge: '#4e4a45' },
 };
 
 export const AYQ_TOKENS: Record<AyqGroundResolved, AyqTokenSet> = {
@@ -273,29 +351,45 @@ export const AYQ_TOKENS: Record<AyqGroundResolved, AyqTokenSet> = {
  * report can list what was chosen. PROVISIONAL.
  */
 export const AYQ_METRIC = {
-  /** 04 A20. */
+  /** 04 A20, A39. */
   railWidth: 64,
+  railItemWidth: 56,
+  railItemHeight: 58,
+  railIcon: 20,
+  railCaption: 11,
   /** The title bar, in the rail's surface, with the native controls on it. */
   titleBarHeight: 32,
-  /** 04 A20: a status bar, carrying no version number. */
-  statusHeight: 28,
-  /** 04 A4: the detail pane beside the table. */
+  /** 04 A20: a status bar, carrying no version number. A39: 24. */
+  statusHeight: 24,
+  /** The screen strip, and the hit target of a tab on it (A39). */
+  stripHeight: 38,
+  stripHit: 36,
+  /** A pane's header, and its padding (A39). */
+  paneHeaderHeight: 40,
+  panePadding: 18,
+  /** The gap between the table and the detail (A39). */
+  splitGap: 8,
+  /** 04 A4: the detail pane beside the table, at every width. */
   paneWidth: 390,
+  /** AYQ-owned compact controls: buttons, chips' hosts (A39). */
+  controlHeight: 28,
   hairline: 1,
   radiusSmall: 3,
-  radiusMedium: 5,
+  radiusMedium: 4,
   radiusPill: 11,
+  /** The 2 / 4 / 6 / 8 / 10 / 12 / 18 scale (A39). */
   space: {
     hair: 2,
     tight: 4,
     small: 6,
     medium: 8,
+    ten: 10,
     wide: 12,
-    screen: 14,
-    edge: 22,
+    screen: 18,
+    edge: 18,
   },
-  row: { paddingY: 7, paddingX: 12 },
-  header: { paddingY: 8, paddingX: 12 },
+  row: { paddingY: 6, paddingX: 10 },
+  header: { paddingY: 6, paddingX: 10 },
   focusRing: 2,
 } as const;
 
@@ -314,9 +408,11 @@ export const AYQ_TYPE = {
     display: '"Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif',
     mono: '"Cascadia Mono", Consolas, ui-monospace, monospace',
   },
+  /** A39: 11 / 12.5 / 14 / 15 / 20 / 28 / 38. */
   size: {
+    caption: '11px',
     small: '12.5px',
-    body: '13.5px',
+    body: '14px',
     heading: '15px',
     screen: '20px',
     figure: '28px',
@@ -353,7 +449,7 @@ export function ayqFilledAccentSurfaces(
 ): AyqFilledSurface[] {
   const { accent, accentInk, accentHover, accentPressed, accentSoft } =
     AYQ_TOKENS[ground].identity;
-  const { buttonFill, buttonFillHover, buttonFillPressed } =
+  const { buttonFill, buttonFillHover, buttonFillPressed, buttonInk } =
     AYQ_TOKENS[ground].identity;
   const { ink } = AYQ_TOKENS[ground].surface;
   return [
@@ -361,12 +457,16 @@ export function ayqFilledAccentSurfaces(
     { name: 'accent fill, hovered', surface: accentHover, ink: accentInk },
     { name: 'accent fill, pressed', surface: accentPressed, ink: accentInk },
     { name: 'accent wash', surface: accentSoft, ink },
-    { name: 'primary button', surface: buttonFill, ink: accent },
-    { name: 'primary button, hovered', surface: buttonFillHover, ink: accent },
+    { name: 'primary button', surface: buttonFill, ink: buttonInk },
+    {
+      name: 'primary button, hovered',
+      surface: buttonFillHover,
+      ink: buttonInk,
+    },
     {
       name: 'primary button, pressed',
       surface: buttonFillPressed,
-      ink: accent,
+      ink: buttonInk,
     },
   ];
 }
@@ -380,7 +480,9 @@ export function ayqIdentityColours(ground: AyqGroundResolved): string[] {
 export function ayqStateColours(ground: AyqGroundResolved): string[] {
   return AYQ_STATES.flatMap(name => {
     const pair = AYQ_TOKENS[ground].state[name];
-    return [pair.fg, pair.bg];
+    return [pair.fg, pair.bg, ...(pair.edge ? [pair.edge] : [])].filter(
+      one => one !== 'transparent',
+    );
   });
 }
 
@@ -408,29 +510,48 @@ export function ayqCssVariables(
     '--ayq-button-fill': id.buttonFill,
     '--ayq-button-fill-hover': id.buttonFillHover,
     '--ayq-button-fill-pressed': id.buttonFillPressed,
+    '--ayq-button-ink': id.buttonInk,
+    '--ayq-button-edge': id.buttonEdge,
+    '--ayq-accent-line-on': id.accentLineOn,
     '--ayq-ground': surface.ground,
     '--ayq-pane': surface.pane,
+    '--ayq-quiet': surface.quiet,
+    '--ayq-field': surface.field,
+    '--ayq-status': surface.status,
     '--ayq-rail': surface.rail,
     '--ayq-rail-ink': surface.railInk,
     '--ayq-rail-ink-on': surface.railInkOn,
     '--ayq-rail-line': surface.railLine,
+    '--ayq-rail-hover': surface.railHover,
+    '--ayq-rail-current': surface.railCurrent,
+    '--ayq-rail-current-ink': surface.railCurrentInk,
+    '--ayq-rail-badge': surface.railBadge,
     '--ayq-ink': surface.ink,
     '--ayq-ink-quiet': surface.inkQuiet,
     '--ayq-ink-faint': surface.inkFaint,
+    '--ayq-label': surface.label,
     '--ayq-line': surface.line,
     '--ayq-line-strong': surface.lineStrong,
+    '--ayq-section': surface.section,
+    '--ayq-control-edge': surface.controlEdge,
     '--ayq-row-hover': surface.rowHover,
     '--ayq-row-selected': surface.rowSelected,
+    '--ayq-secondary-hover': surface.secondaryHover,
+    '--ayq-danger': surface.danger,
+    '--ayq-disabled-fill': surface.disabledFill,
+    '--ayq-disabled-ink': surface.disabledInk,
     '--ayq-scrim': surface.scrim,
     '--ayq-rail-width': `${AYQ_METRIC.railWidth}px`,
     '--ayq-status-height': `${AYQ_METRIC.statusHeight}px`,
     '--ayq-pane-width': `${AYQ_METRIC.paneWidth}px`,
+    '--ayq-control-height': `${AYQ_METRIC.controlHeight}px`,
     '--ayq-hairline': `${AYQ_METRIC.hairline}px`,
     '--ayq-radius-small': `${AYQ_METRIC.radiusSmall}px`,
     '--ayq-radius-medium': `${AYQ_METRIC.radiusMedium}px`,
     '--ayq-font-ui': AYQ_TYPE.family.ui,
     '--ayq-font-display': AYQ_TYPE.family.display,
     '--ayq-font-mono': AYQ_TYPE.family.mono,
+    '--ayq-size-caption': AYQ_TYPE.size.caption,
     '--ayq-size-small': AYQ_TYPE.size.small,
     '--ayq-size-body': AYQ_TYPE.size.body,
     '--ayq-size-heading': AYQ_TYPE.size.heading,
@@ -441,6 +562,7 @@ export function ayqCssVariables(
   for (const name of AYQ_STATES) {
     variables[`--ayq-state-${name}-fg`] = state[name].fg;
     variables[`--ayq-state-${name}-bg`] = state[name].bg;
+    variables[`--ayq-state-${name}-edge`] = state[name].edge ?? 'transparent';
   }
   return variables;
 }

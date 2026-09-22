@@ -29,10 +29,10 @@ const useStyles = makeStyles({
     height: `${AYQ_METRIC.titleBarHeight}px`,
     display: 'flex',
     alignItems: 'center',
-    gap: `${AYQ_METRIC.space.small}px`,
+    gap: `${AYQ_METRIC.space.medium}px`,
     paddingLeft: `${AYQ_METRIC.space.wide}px`,
     backgroundColor: 'var(--ayq-rail)',
-    color: 'var(--ayq-rail-ink-on)',
+    color: 'var(--ayq-rail-ink)',
     ...ayqBorderBottom('var(--ayq-rail-line)'),
     userSelect: 'none',
     // The whole bar moves the window; the native controls sit over its right end.
@@ -43,10 +43,8 @@ const useStyles = makeStyles({
     boxSizing: 'border-box',
   },
   name: {
-    fontFamily: 'var(--ayq-font-display)',
-    fontSize: '12px',
-    fontWeight: AYQ_TYPE.weight.semibold,
-    letterSpacing: '1.2px',
+    fontSize: AYQ_TYPE.size.small,
+    fontWeight: AYQ_TYPE.weight.regular,
   },
 });
 

@@ -22,23 +22,28 @@ import type { AyqCategory, AyqUnfiled } from '../ayq-ipc-contract.ts';
 import { ayqCount, ayqMoney, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
-import { ayqBorderBottom } from '../ayq-ui/ayq-css.ts';
+import { ayqBorder } from '../ayq-ui/ayq-css.ts';
 
 const useStyles = makeStyles({
+  // Template r003's bulk bar: the selection surface on the strong line, 6×10.
   bar: {
     display: 'flex',
     flexDirection: 'column',
     gap: `${AYQ_METRIC.space.small}px`,
-    padding: `${AYQ_METRIC.space.medium}px ${AYQ_METRIC.space.screen}px`,
-    ...ayqBorderBottom('var(--ayq-line-strong)'),
+    minHeight: '40px',
+    justifyContent: 'center',
+    padding: `${AYQ_METRIC.space.small}px ${AYQ_METRIC.space.ten}px`,
+    backgroundColor: 'var(--ayq-row-selected)',
+    ...ayqBorder('var(--ayq-line-strong)'),
+    borderRadius: 'var(--ayq-radius-medium)',
   },
   line: {
     display: 'flex',
     alignItems: 'center',
-    gap: `${AYQ_METRIC.space.medium}px`,
+    gap: `${AYQ_METRIC.space.ten}px`,
     flexWrap: 'wrap',
   },
-  count: { fontWeight: AYQ_TYPE.weight.semibold, color: 'var(--ayq-ink)' },
+  count: { fontWeight: AYQ_TYPE.weight.semibold, color: 'var(--ayq-ink)', fontSize: 'var(--ayq-size-small)' },
   basis: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)' },
   note: {
     margin: '0',

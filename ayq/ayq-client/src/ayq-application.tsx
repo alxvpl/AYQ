@@ -211,7 +211,16 @@ export function AyqApplication(): ReactNode {
       />
     );
   } else if (destination === 'import') {
-    body = <AyqImportScreen onImported={reload} onFailure={say} />;
+    body = (
+      <AyqImportScreen
+        onImported={reload}
+        onFailure={say}
+        onOpenAccount={accountId => {
+          setAccount(accountId);
+          setDestination('accounts');
+        }}
+      />
+    );
   } else if (destination === 'settings') {
     body = (
       <AyqSettingsScreen
@@ -331,7 +340,11 @@ export function AyqApplication(): ReactNode {
         />
         <AyqScreen
           name={destination}
-          title={ayqText(AYQ_DESTINATION_LABEL[destination])}
+          title={
+            destination === 'counterparty'
+              ? ''
+              : ayqText(AYQ_DESTINATION_LABEL[destination])
+          }
           blurb={
             AYQ_DESTINATION_BLURB[destination] === undefined
               ? undefined

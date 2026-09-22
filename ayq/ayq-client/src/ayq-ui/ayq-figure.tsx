@@ -28,15 +28,18 @@ const useStyles = makeStyles({
     color: 'var(--ayq-ink)',
   },
   body: { fontSize: 'var(--ayq-size-body)' },
+  left: { textAlign: 'left' },
+  // Template r003: the financial figure is 28 regular, the headline 38
+  // semibold, both a little tight (A39).
   large: {
-    fontFamily: 'var(--ayq-font-display)',
     fontSize: 'var(--ayq-size-figure)',
-    fontWeight: AYQ_TYPE.weight.semibold,
+    fontWeight: AYQ_TYPE.weight.regular,
+    letterSpacing: '-0.3px',
   },
   headline: {
-    fontFamily: 'var(--ayq-font-display)',
     fontSize: 'var(--ayq-size-headline)',
     fontWeight: AYQ_TYPE.weight.semibold,
+    letterSpacing: '-0.7px',
     lineHeight: 1.12,
   },
   // Quieter than a figure and in the interface face rather than the figure
@@ -45,8 +48,9 @@ const useStyles = makeStyles({
   unknown: {
     fontFamily: 'var(--ayq-font-ui)',
     fontVariantNumeric: 'normal',
-    fontWeight: AYQ_TYPE.weight.regular,
-    color: 'var(--ayq-ink-quiet)',
+    fontWeight: AYQ_TYPE.weight.medium,
+    letterSpacing: '0',
+    color: 'var(--ayq-ink-faint)',
   },
 });
 
@@ -55,20 +59,28 @@ export type AyqFigureSize = 'body' | 'large' | 'headline';
 export function AyqFigure({
   cents,
   size = 'body',
-  withSymbol = false,
+  withSymbol = true,
+  align = 'right',
 }: {
   /** Null is Unknown, and is drawn as the word. Never as nought (§5). */
   cents: number | null;
   size?: AyqFigureSize;
-  /** A column of figures carries the symbol in its heading, not in every row. */
+  /** Template r003 carries the symbol on every figure, in the rows too. */
   withSymbol?: boolean;
+  /** Right in a column; left where the figure stands in a block. */
+  align?: 'left' | 'right';
 }): ReactNode {
   const styles = useStyles();
 
   if (cents === null) {
     return (
       <span
-        className={mergeClasses(styles.figure, styles[size], styles.unknown)}
+        className={mergeClasses(
+          styles.figure,
+          styles[size],
+          styles.unknown,
+          align === 'left' ? styles.left : undefined,
+        )}
         data-ayq-figure="unknown"
       >
         {ayqText('figure.unknown')}
@@ -78,7 +90,11 @@ export function AyqFigure({
 
   return (
     <span
-      className={mergeClasses(styles.figure, styles[size])}
+      className={mergeClasses(
+        styles.figure,
+        styles[size],
+        align === 'left' ? styles.left : undefined,
+      )}
       data-ayq-figure={String(cents)}
     >
       {withSymbol ? ayqMoney(cents) : ayqAmount(cents)}

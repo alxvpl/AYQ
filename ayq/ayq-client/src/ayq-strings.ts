@@ -78,13 +78,22 @@ const EN = {
   'import.categorised': '{count} categorised by rules',
   'import.skipped': '{count} skipped',
   'import.problems': '{count} could not be read',
-  'import.history': 'What AYQ has read',
+  'import.history': 'Import history',
+  'import.history.note': 'Newest first',
+  'import.freshness': 'Import freshness by account',
+  'import.column.anchor': 'Balance anchor',
+  'import.coverage.through': 'Complete through {date}',
+  'import.anchor.none': 'None',
+  'import.anchor.missing': '{account} has no balance anchor',
+  'import.anchor.missing.note':
+    'The import succeeded and the movements are held, but the balance stays ' +
+    'Unknown until you set it. Net imported movements are not shown as a balance.',
   'import.history.none': 'Nothing has been imported yet.',
-  'import.column.at': 'Read',
+  'import.column.at': 'Date',
   'import.column.file': 'File',
   'import.column.account': 'Account',
-  'import.column.records': 'Records',
-  'import.column.imported': 'Imported',
+  'import.column.records': 'Records read',
+  'import.column.imported': 'New',
   'import.column.duplicates': 'Already held',
   'import.column.outcome': 'And then',
   'import.outcome.categorised': '{count} filed by a rule',
@@ -123,6 +132,11 @@ const EN = {
   'register.filter.dates.from': 'from {from}',
   'register.filter.dates.to': 'to {to}',
 
+  'settings.accounts.blurb':
+    'Configuration only. Balances, coverage and reconciliation live in account details.',
+  'settings.categories.blurb':
+    'Removing a category never destroys or reclassifies records on its own.',
+  'settings.about.blurb': 'Product and build identity live here, not in ordinary chrome.',
   'settings.tab.accounts': 'Accounts',
   'settings.tab.categories': 'Categories',
   'settings.tab.rules': 'Rules',
@@ -141,6 +155,10 @@ const EN = {
   'about.development':
     'This is a development build. It was not produced by the release ' +
     'workflow and carries no revision.',
+  'about.pane': 'About AYQ',
+  'about.technical': 'Technical information',
+  'about.technical.note':
+    'Structured details are available here instead of permanent diagnostic chrome.',
   'about.copy': 'Copy technical information',
   'about.copied': 'Copied.',
 
@@ -168,6 +186,9 @@ const EN = {
   'register.column.category': 'Category',
   'register.column.account': 'Account',
   'register.column.amount': 'Amount',
+  'register.column.state': 'State',
+  'register.state.none': '—',
+  'detail.title': 'Transaction',
   'register.totals.filtered':
     'These totals describe the {count} transactions this filter matched, not ' +
     'everything AYQ holds. In {in} · out {out} · net {net}',
@@ -282,9 +303,13 @@ const EN = {
   'today.open.upcoming': 'Open Upcoming',
   'today.open.review': 'Open Review',
   'today.open.register': 'Open Register',
+  'today.open': 'Open',
+  'today.accounts.select': 'Select an account for its details',
+  'today.account.open': '›',
+  'today.account.noAnchor': 'No balance anchor',
   'detail.action.manageCounterparty': 'Manage counterparty…',
   'review.manage': 'Manage counterparty…',
-  'counterparty.back': 'Back',
+  'counterparty.back': '‹ Back',
   'counterparty.none': 'No counterparty in this budget has that key.',
   'counterparty.seen': 'Seen {first} to {last} · {count} transactions',
   'counterparty.name': 'Display name',
@@ -301,7 +326,11 @@ const EN = {
     'printed is kept as it was.',
   'counterparty.renamed.cleared': 'The statement’s own name is back.',
   'counterparty.cancel': 'Leave it as it is',
-  'counterparty.evidence': 'What the bank printed',
+  'counterparty.evidence': 'Names seen in statements',
+  'counterparty.evidence.kind': 'evidence, not a decision',
+  'counterparty.operational':
+    'This surface is operational. Long-term spending behaviour by counterparty ' +
+    'is a question for AYQ Analyses, not for this view (A37).',
   'counterparty.evidence.note':
     'One line per imported name variant, kept as evidence. A display name ' +
     'never replaces it.',
@@ -369,6 +398,11 @@ const EN = {
     'is a statement about every one that arrives from now on — two decisions, ' +
     'and AYQ will not make the second one for you (03 §4.1).',
   'review.do.category': 'Category',
+  'review.pane.title': 'Review group',
+  'review.pane.sub': '{count} transactions · {out} total out · seen {seen}',
+  'review.stat.counterparties': 'counterparties',
+  'review.stat.transactions': 'transactions',
+  'review.stat.out': 'total out',
   'review.do.file': 'File these',
   'review.do.learn': 'File these and remember',
   'review.filed': '{count} filed.',
@@ -500,6 +534,12 @@ const EN = {
   'upcoming.column.amount': 'Amount',
   'upcoming.column.balance': 'Position after',
   'upcoming.column.state': 'State',
+  'upcoming.column.recurrence': 'Recurrence',
+  'upcoming.recurrence.plan': 'Plan amount',
+  'upcoming.position.note':
+    'Position after is Unknown where the paying account has no balance anchor; ' +
+    'it is never derived from net imported movements. A matched payment is ' +
+    'already reflected in the account balance.',
   'upcoming.state.expected': 'Expected',
   'upcoming.state.overdue': 'Overdue, still counted',
   'upcoming.state.suggested': 'Suggested',
@@ -512,7 +552,9 @@ const EN = {
   'upcoming.match.note':
     'Matching runs by itself every time this screen is opened. Check again ' +
     'only if something that has happened is still shown as expected.',
-  'upcoming.match.again': 'Check again',
+  'upcoming.match.again': 'Check what has already happened',
+  'upcoming.match.title': 'Automatic matching is the normal path',
+  'upcoming.match.glyph': 'i',
   'upcoming.empty': 'Nothing is expected yet.',
   'upcoming.lowest': 'Lowest point {amount} on {date}',
   'upcoming.lowest.unknown':
@@ -533,6 +575,7 @@ const EN = {
   'upcoming.matches.no': 'Not this one',
 
   // The pane. Every action says what it reaches (03 §7.17).
+  'upcoming.pane.title': 'Planned payment',
   'upcoming.pane.occurrence': 'This occurrence',
   'upcoming.pane.record': 'The record it comes from',
   'upcoming.pane.none': 'Choose a row to see what is behind it.',
@@ -611,6 +654,7 @@ const EN = {
   'plan.blurb':
     'What each category is planned to take this month, what it has taken, and ' +
     'what AYQ still expects before the month is out.',
+  'plan.currency': '€',
   'plan.month': 'Month',
   'plan.column.category': 'Category',
   'plan.column.plan': 'Planned',
@@ -672,6 +716,7 @@ const EN = {
   'accounts.detail.counts': 'Counts toward available funds',
   'accounts.detail.statements': 'Statements through',
   'accounts.detail.balance': 'Balance',
+  'accounts.detail.operational': 'Operational state',
   'accounts.detail.anchor': 'Anchor',
   'accounts.detail.anchor.bank': 'the bank stated it on {date}',
   'accounts.detail.anchor.manual': 'you set it, for {date}',
@@ -686,7 +731,7 @@ const EN = {
   'accounts.detail.configure':
     'Whether this account counts toward available funds is set in ' +
     'Settings \u2192 Accounts.',
-  'accounts.back': 'Back to Today',
+  'accounts.back': '‹ Back to Today',
 
   // Setting and correcting a balance (§4.4, §4.5).
   'balance.set.title': 'Set account balance',
@@ -732,6 +777,7 @@ const EN = {
     'A transfer between a counted and an uncounted account moves money in or ' +
     'out of available funds; it is never income or expense.',
   'settings.accounts.open': 'Open Accounts',
+  'settings.accounts.kind': 'Bank account',
   'settings.accounts.openOne': 'Open account details',
 
   'detail.none': 'Choose a transaction to see what is behind it.',
@@ -802,16 +848,21 @@ const EN = {
   'appearance.buttons.heading': 'Buttons',
   'appearance.buttons.note':
     'One treatment for a filled button everywhere: dark, with mint text.',
+  'appearance.buttons.disabled': 'Disabled',
   'appearance.buttons.primary': 'Filled',
   'appearance.buttons.secondary': 'Plain',
   'appearance.saving': 'Saving…',
   'appearance.failed': 'The ground could not be saved: {reason}',
 
-  'state.confirmed': 'Confirmed',
+  'state.confirmed': 'Owner set',
+  'state.rule': 'Rule applied',
   'state.suggested': 'Suggested',
-  'state.overdue': 'Overdue',
+  'state.overdue': 'Attention',
   'state.neutral': 'Neutral',
   'state.uncategorised': 'Uncategorised',
+  'state.operational': 'Coverage complete',
+  'state.rule.glyph': 'ƒ',
+  'state.operational.tick': '✓',
 
   'sample.figure.label': 'Available funds',
   'sample.figure.note': 'Sample values. Nothing here is anybody’s money.',
@@ -901,9 +952,17 @@ const LIST = new Intl.ListFormat(AYQ_LOCALE, {
   type: 'conjunction',
 });
 
+/**
+ * The minus sign carrying direction (04 A19): the typographic minus, U+2212,
+ * never the hyphen the formatter falls back to.
+ */
+function minus(text: string): string {
+  return text.replace(/^-/, '−');
+}
+
 /** Integer cents with the currency symbol. */
 export function ayqMoney(cents: number): string {
-  return MONEY.format(cents / 100);
+  return minus(MONEY.format(cents / 100));
 }
 
 /**
@@ -913,7 +972,7 @@ export function ayqMoney(cents: number): string {
  * nothing after the first; the column heading carries it.
  */
 export function ayqAmount(cents: number): string {
-  return AMOUNT.format(cents / 100);
+  return minus(AMOUNT.format(cents / 100));
 }
 
 /** A count, grouped: 50 000 rather than 50000. */

@@ -369,26 +369,24 @@ test('Settings keeps only the switch, and it reaches the engine', async () => {
     </AyqGroundProvider>,
   );
 
-  const columns = [
-    ...window.container.querySelectorAll('[data-ayq-table="settings-accounts"] thead th'),
-  ].map(one => one.textContent);
-  assert.deepEqual(
-    columns,
-    [
-      ayqText('accounts.column.name'),
-      ayqText('accounts.column.counts'),
-      ayqText('accounts.column.details'),
-    ],
-    'Settings shows more than the switch it is supposed to keep',
-  );
+  // One row per account, each carrying the switch and the way to the detail
+  // (template r003), and nothing else.
+  const rows = [
+    ...window.container.querySelectorAll('[data-ayq-pane="settings-accounts"] [data-ayq-setting-row]'),
+  ];
+  assert.equal(rows.length, 3, 'Settings does not list every account');
+  for (const row of rows) {
+    assert.ok(row.querySelector('[data-ayq-funds-switch]'), 'a row has no switch');
+    assert.ok(row.querySelector('[data-ayq-action^="open-account-"]'), 'a row has no way to the detail');
+  }
   // No operational evidence here: not a balance, not a date, not a verdict.
   assert.equal(
-    window.container.querySelector('[data-ayq-table="settings-accounts"] [data-ayq-figure]'),
+    window.container.querySelector('[data-ayq-pane="settings-accounts"] [data-ayq-figure]'),
     null,
     'a balance is operational evidence and belongs on the Accounts screen (A34)',
   );
   assert.ok(
-    !(window.container.querySelector('[data-ayq-table="settings-accounts"]')?.textContent ?? '')
+    !(window.container.querySelector('[data-ayq-pane="settings-accounts"]')?.textContent ?? '')
       .includes(ayqMoney(EVERYDAY.balanceCents ?? 0)),
   );
 

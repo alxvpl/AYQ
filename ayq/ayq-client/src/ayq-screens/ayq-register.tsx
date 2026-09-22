@@ -12,6 +12,7 @@ import {
   Input,
   Select,
   makeStyles,
+  mergeClasses,
 } from '@fluentui/react-components';
 import {
   useCallback,
@@ -32,7 +33,7 @@ import type {
 import { ayqAmount, ayqCount, ayqDate, ayqMoney, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
-import { ayqBorder } from '../ayq-ui/ayq-css.ts';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import {
   AyqFilterChips,
   type AyqAppliedFilter,
@@ -41,18 +42,8 @@ import { AyqLedgerPane } from './ayq-ledger-pane.tsx';
 import { AyqRegisterBulkBar } from './ayq-register-bulk.tsx';
 
 const useStyles = makeStyles({
-  filters: {
-    display: 'flex',
-    gap: `${AYQ_METRIC.space.medium}px`,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    padding: `10px ${AYQ_METRIC.space.wide}px`,
-    backgroundColor: 'var(--ayq-pane)',
-    ...ayqBorder('var(--ayq-line)'),
-    borderRadius: 'var(--ayq-radius-medium)',
-  },
-  search: { flexGrow: 1, minWidth: '220px' },
-  amount: { width: '110px' },
+  search: { minWidth: '165px', width: '165px' },
+  amount: { width: '110px', minWidth: '110px' },
   totals: { color: 'var(--ayq-ink-quiet)' },
   quiet: { color: 'var(--ayq-ink-faint)' },
   outcome: { margin: '0', color: 'var(--ayq-ink)' },
@@ -138,6 +129,7 @@ export function AyqRegisterScreen({
   onLoaded(ledger: AyqLedger): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [ledger, setLedger] = useState<AyqLedger | null>(null);
   const [categories, setCategories] = useState<readonly AyqCategory[]>([]);
   const [period, setPeriod] = useState<AyqPeriod>('allTime');
@@ -349,34 +341,11 @@ export function AyqRegisterScreen({
 
   return (
     <>
-      <div className={styles.filters} data-ayq-filter-bar="">
-        <Input
-          className={styles.search}
-          data-ayq-search=""
-          placeholder={ayqText('register.search')}
-          value={filter.search ?? ''}
-          onChange={(_event, data) =>
-            change({ ...filter, search: data.value === '' ? undefined : data.value })
-          }
-        />
+      {/* Template r003's order: account, period, the search, the category. */}
+      <div className={fields.bar} data-ayq-filter-bar="">
+        <span className={fields.label}>{ayqText('register.filter.account')}</span>
         <Select
-          data-ayq-filter-period=""
-          aria-label={ayqText('register.filter.period')}
-          value={period}
-          onChange={(_event, data) => {
-            const next = data.value as AyqPeriod;
-            setPeriod(next);
-            const today = new Date().toISOString().slice(0, 10);
-            change({ ...filter, ...ayqPeriodBounds(next, today), to: undefined });
-          }}
-        >
-          {PERIODS.map(one => (
-            <option key={one} value={one}>
-              {ayqText(PERIOD_LABEL[one])}
-            </option>
-          ))}
-        </Select>
-        <Select
+          className={fields.field}
           data-ayq-filter-account=""
           aria-label={ayqText('register.filter.account')}
           value={filter.accountId ?? ''}
@@ -394,7 +363,36 @@ export function AyqRegisterScreen({
             </option>
           ))}
         </Select>
+        <span className={fields.label}>{ayqText('register.filter.period')}</span>
         <Select
+          className={fields.field}
+          data-ayq-filter-period=""
+          aria-label={ayqText('register.filter.period')}
+          value={period}
+          onChange={(_event, data) => {
+            const next = data.value as AyqPeriod;
+            setPeriod(next);
+            const today = new Date().toISOString().slice(0, 10);
+            change({ ...filter, ...ayqPeriodBounds(next, today), to: undefined });
+          }}
+        >
+          {PERIODS.map(one => (
+            <option key={one} value={one}>
+              {ayqText(PERIOD_LABEL[one])}
+            </option>
+          ))}
+        </Select>
+        <Input
+          className={mergeClasses(fields.field, styles.search)}
+          data-ayq-search=""
+          placeholder={ayqText('register.search')}
+          value={filter.search ?? ''}
+          onChange={(_event, data) =>
+            change({ ...filter, search: data.value === '' ? undefined : data.value })
+          }
+        />
+        <Select
+          className={fields.field}
           data-ayq-filter-category=""
           aria-label={ayqText('register.filter.category')}
           value={filter.categoryId ?? ''}
@@ -413,7 +411,7 @@ export function AyqRegisterScreen({
           ))}
         </Select>
         <Input
-          className={styles.amount}
+          className={mergeClasses(fields.field, styles.amount)}
           data-ayq-filter-amount-from=""
           placeholder={ayqText('register.filter.amountFrom')}
           defaultValue={
@@ -424,7 +422,7 @@ export function AyqRegisterScreen({
           }
         />
         <Input
-          className={styles.amount}
+          className={mergeClasses(fields.field, styles.amount)}
           data-ayq-filter-amount-to=""
           placeholder={ayqText('register.filter.amountTo')}
           defaultValue={
