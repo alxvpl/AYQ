@@ -71,13 +71,19 @@ const useStyles = makeStyles({
   },
   // The one scroller. `scrollbar-gutter: stable` keeps the rows from shifting
   // sideways when a screen grows past the window.
+  // The scroller carries no padding of its own: a sticky table header sticks
+  // to the top of its scrollport, and padding there would hold it 18 below the
+  // edge (A22). The padding is the inner layer's, as the template has it.
   body: {
     flexGrow: 1,
     minHeight: '0',
-    padding: `${AYQ_METRIC.panePadding}px`,
     overflowY: 'auto',
     overflowX: 'hidden',
     scrollbarColor: 'var(--ayq-line-strong) transparent',
+  },
+  inner: {
+    minHeight: '100%',
+    padding: `${AYQ_METRIC.panePadding}px`,
     display: 'flex',
     flexDirection: 'column',
     gap: `${AYQ_METRIC.splitGap}px`,
@@ -178,6 +184,7 @@ export function AyqScreen<T extends string>({
         </div>
       ) : null}
       <div className={styles.body} data-ayq-scroller="">
+        <div className={styles.inner}>
         {hasTabs ? null : (
           <div className={styles.head}>
             <div>
@@ -194,6 +201,7 @@ export function AyqScreen<T extends string>({
           </div>
         )}
         {children}
+        </div>
       </div>
     </section>
     </ActionsContext.Provider>

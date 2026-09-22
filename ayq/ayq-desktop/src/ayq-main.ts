@@ -2754,7 +2754,9 @@ async function shellShown(window: BrowserWindow): Promise<string> {
         if (!rail) return JSON.stringify({ rail: null });
         const items = [...rail.querySelectorAll('[data-ayq-tab]')]
           .map(one => one.dataset.ayqTab);
-        const children = [...rail.children];
+        const children = [
+          ...rail.querySelectorAll('[data-ayq-tab], [data-ayq-rail-separator]'),
+        ];
         const separators = children
           .map((one, index) => (one.hasAttribute('data-ayq-rail-separator') ? index : -1))
           .filter(index => index >= 0);
@@ -2775,7 +2777,7 @@ async function shellShown(window: BrowserWindow): Promise<string> {
           review: at('review'),
           plan: at('plan'),
           reports: at('reports'),
-          last: children.length > 0 ? children[children.length - 1].dataset.ayqTab : '',
+          last: items.length > 0 ? items[items.length - 1] : '',
           wordmark: (rail.textContent || '').slice(0, 3),
           keyboard,
           scrollers: scrollers.length,
