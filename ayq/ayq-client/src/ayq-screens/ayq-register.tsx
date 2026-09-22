@@ -29,7 +29,7 @@ import type {
   AyqLedger,
   AyqLedgerFilter,
 } from '../ayq-ipc-contract.ts';
-import { ayqAmount, ayqCount, ayqMoney, ayqText } from '../ayq-strings.ts';
+import { ayqAmount, ayqCount, ayqDate, ayqMoney, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorder } from '../ayq-ui/ayq-css.ts';
@@ -287,6 +287,28 @@ export function AyqRegisterScreen({
       name: ayqText('register.filter.uncategorised'),
       value: ayqText('register.category.none'),
       remove: () => change({ ...filter, uncategorised: undefined }),
+    });
+  }
+  // Dates the shell handed over — Reports opening the Register on a period
+  // (03 §7.26) — are shown as the filter they are, not silently applied.
+  if (
+    period === 'allTime' &&
+    (filter.from !== undefined || filter.to !== undefined)
+  ) {
+    applied.push({
+      id: 'dates',
+      name: ayqText('register.filter.dates'),
+      value: [
+        filter.from === undefined
+          ? null
+          : ayqText('register.filter.dates.from', { from: ayqDate(filter.from) }),
+        filter.to === undefined
+          ? null
+          : ayqText('register.filter.dates.to', { to: ayqDate(filter.to) }),
+      ]
+        .filter(one => one !== null)
+        .join(' '),
+      remove: () => change({ ...filter, from: undefined, to: undefined }),
     });
   }
   if (period !== 'allTime') {

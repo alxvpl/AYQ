@@ -1791,86 +1791,125 @@ async function suggestionsShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
- * Reports, which is not built — and the two things that has to mean.
+ * Reports, and the route from it (04 A32; 03 §7.26).
  *
- * It draws nothing that could be read as an answer, and it says so without
- * inventing a reason. The second half is the one worth a check on the packaged
- * application: a screen that blames a person's data for being empty is a screen
- * that tells them something untrue, and it is the kind of sentence that gets
- * written when somebody fills an empty page.
+ * Two things are checked on the packaged window. Reports draws the engine's
+ * spending answer as a table with one row per category, Uncategorised among
+ * them. And choosing a row opens the Register with the same filter actually
+ * applied: the chip is on the screen and the Register's own count is the count
+ * Reports stated for that row — the real filter, not a claim of one.
  */
 async function reportsShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'reports'))) {
     return 'the Reports destination never opened';
   }
 
+  // The period opens on the last three months; the fixture's statement may
+  // be older than that, so the whole budget is asked for, the way a person
+  // would by choosing it.
+  const periodSet = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(`(() => {
+      const period = document.querySelector('[data-ayq-reports-period]');
+      if (!period) return false;
+      if (period.value !== 'allTime') {
+        period.value = 'allTime';
+        period.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return true;
+    })()`)) === true;
+  const periodBy = Date.now() + 30_000;
+  while (Date.now() < periodBy && !(await periodSet())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
   const drawn = async (): Promise<boolean> =>
     (await window.webContents.executeJavaScript(
-      "!!document.querySelector('[data-ayq-not-built=\"reports\"]')",
+      'document.querySelectorAll(\'[data-ayq-table="reports"] tbody tr\').length > 0',
     )) === true;
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !(await drawn())) {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!(await drawn())) return 'Reports drew nothing at all, not even a reason';
+  if (!(await drawn()))
+    {return 'Reports drew no category rows on a budget that holds transactions';}
 
   const seen = JSON.parse(
     String(
       await window.webContents.executeJavaScript(`(() => {
         const screen = document.querySelector('[data-ayq-screen="reports"]');
+        const rows = [...screen.querySelectorAll('[data-ayq-table="reports"] tbody tr')];
+        const first = rows[0];
         return JSON.stringify({
-          said: screen.innerText.replace(/\\s+/g, ' ').trim(),
           figures: screen.querySelectorAll('[data-ayq-figure]').length,
           tables: screen.querySelectorAll('[data-ayq-table]').length,
           chips: screen.querySelectorAll('[data-ayq-state]').length,
           charts: screen.querySelectorAll('canvas, svg').length,
-          spending: !!screen.querySelector('[data-ayq-reports-spending]'),
+          rows: rows.length,
+          totals: !!screen.querySelector('[data-ayq-reports-totals]'),
+          firstCategory: first.querySelector('[data-ayq-report-category]')?.getAttribute('data-ayq-report-category') ?? null,
+          firstUncategorised: !!first.querySelector('[data-ayq-state="uncategorised"]'),
+          firstCount: Number(first.querySelector('[data-ayq-report-transactions]')?.getAttribute('data-ayq-report-transactions') ?? -1),
         });
       })()`),
     ),
   ) as {
-    said: string;
     figures: number;
     tables: number;
     chips: number;
     charts: number;
-    spending: boolean;
+    rows: number;
+    totals: boolean;
+    firstCategory: string | null;
+    firstUncategorised: boolean;
+    firstCount: number;
   };
 
   process.stdout.write(
     `[ayq-smoke] reports: ${seen.figures} figures, ${seen.tables} tables, ` +
-      `${seen.chips} chips, ${seen.charts} charts\n`,
+      `${seen.chips} chips, ${seen.charts} charts, ${seen.rows} category rows\n`,
   );
+  if (!seen.totals) return 'Reports does not state income, expenses and net';
+  if (seen.firstCount < 0)
+    {return 'a Reports row does not state how many transactions it counts';}
 
-  // Nothing on it can be mistaken for an answer.
-  if (seen.figures + seen.tables + seen.chips + seen.charts > 0) {
-    return 'Reports draws something that could be read as an answer';
+  // The route: the first row opens the Register with that filter applied.
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-table="reports"] tbody tr\').click(); true',
+  );
+  const chip = seen.firstUncategorised ? 'uncategorised' : 'category';
+  const arrived = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      `!!document.querySelector('[data-ayq-screen="register"] [data-ayq-filter="${chip}"]')` +
+        ' && document.body.dataset.ayqLedgerRows !== undefined',
+    )) === true;
+  const until = Date.now() + 30_000;
+  while (Date.now() < until && !(await arrived())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!/not built/i.test(seen.said)) return 'Reports does not say it is not built';
-  if (!/for no other reason/i.test(seen.said)) {
-    return 'Reports does not say that nothing else is the reason';
+  if (!(await arrived())) {
+    return `choosing a category did not open the Register with a ${chip} filter shown`;
   }
-  // And no threshold, invented or implied.
-  for (const invented of [
-    'not enough',
-    'insufficient',
-    'at least',
-    'more data',
-    'come back',
-    'once you have',
-  ]) {
-    if (seen.said.toLowerCase().includes(invented)) {
-      return `Reports blames the budget: "${invented}"`;
-    }
-  }
-  // 04 A20 removed the Spending screen and this is where its question went, so
-  // this is where the removal is readable.
-  if (!seen.spending) {
-    return 'Reports does not record the Spending screen the design removed';
+  const settled = async (): Promise<number> =>
+    Number(
+      await window.webContents.executeJavaScript(
+        'Number(document.body.dataset.ayqLedgerTotal ?? -1)',
+      ),
+    );
+  let total = await settled();
+  const wait = Date.now() + 30_000;
+  while (Date.now() < wait && total < seen.firstCount) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    total = await settled();
   }
   process.stdout.write(
-    '[ayq-smoke] reports: says it is not built, blames nothing, draws nothing\n',
+    `[ayq-smoke] reports: the Register opened on ${chip} with ${total} rows; Reports said ${seen.firstCount}\n`,
   );
+  // Reports counts the expense transactions behind a category (its figures
+  // are magnitudes); the Register's category filter holds every transaction in
+  // it, whichever way the money went. So the Register may hold more, never
+  // fewer: fewer would mean the filter that opened is not the one Reports named.
+  if (total < seen.firstCount) {
+    return 'the Register filter reached from Reports is not the filter Reports stated';
+  }
   return '';
 }
 

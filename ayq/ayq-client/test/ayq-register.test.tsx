@@ -354,6 +354,30 @@ test('a filter that is on is shown, and can be taken off', async () => {
   await window.close();
 });
 
+test('dates handed over by the shell are shown as the filter they are (03 §7.26)', async () => {
+  let filter: Record<string, unknown> = { from: '2026-07-01', categoryId: 'cat-1' };
+  const window = await ayqOpenWindow(engineOver(ROWS));
+  await window.render(
+    screen(next => {
+      filter = next;
+    }, filter),
+  );
+  const sent = window.asked.find(one => one.kind === 'transactions.list');
+  assert.deepEqual(
+    (sent?.filter as Record<string, unknown>).from,
+    '2026-07-01',
+    'the dates were not actually applied',
+  );
+  const dates = window.container.querySelector('[data-ayq-filter="dates"]');
+  assert.ok(dates, 'the dates are applied and the screen does not say so');
+  assert.match(dates.textContent ?? '', /from/);
+  assert.ok(window.container.querySelector('[data-ayq-filter="category"]'));
+  await ayqPress(window.container.querySelector('[data-ayq-filter-remove="dates"]'));
+  assert.equal(filter.from, undefined);
+  assert.equal(filter.categoryId, 'cat-1', 'taking the dates off left the category on');
+  await window.close();
+});
+
 test('clearing takes every filter off at once', async () => {
   let filter: Record<string, unknown> = { uncategorised: true, search: 'fuel' };
   const window = await ayqOpenWindow(engineOver(ROWS));

@@ -300,10 +300,13 @@ export function AyqApplication(): ReactNode {
   } else {
     body = (
       <AyqReportsScreen
-        onOpenRegister={() => {
-          setFilter({});
+        accounts={summary?.accounts ?? []}
+        onOpenRegister={chosen => {
+          // The real filter, not a claim that one was applied (03 §7.26).
+          setFilter(chosen);
           setDestination('register');
         }}
+        onFailure={say}
       />
     );
   }

@@ -101,24 +101,27 @@ const EN = {
 
   'notBuilt.title': 'Not built yet',
 
-  // Reports (04 A2, A20). Not built, and the screen says only that.
+  // Reports (04 A2, A20, A32): what was spent, by category, over a period.
   'reports.title': 'Reports',
-  'reports.notBuilt':
-    'Reports is not built. This screen is empty because that view has not been ' +
-    'written, and for no other reason — there is no amount of history to ' +
-    'gather first and nothing here is waiting on you.',
-  'reports.willAnswer':
-    'It is the last step of the working cycle (04 A2), and the question it is ' +
-    'for is what has been spent, by category and over a period.',
-  'reports.spending':
-    'AYQ had a Spending screen before the accepted design. 04 A20’s rail has no ' +
-    'such destination and that question belongs here, so the screen was ' +
-    'removed. The engine still answers it, so nothing has to be rebuilt when ' +
-    'this screen is written.',
-  'reports.meanwhile':
-    'Until then: the Register filters by period, account, category and ' +
-    'counterparty and states the totals for whatever set it is showing.',
-  'reports.open.register': 'Open the Register',
+  'reports.magnitudes': 'Spent and Expenses are magnitudes.',
+  'reports.income': 'Income',
+  'reports.expenses': 'Expenses',
+  'reports.net': 'Net',
+  'reports.byCategory': 'Spending by category',
+  'reports.period': '{from} to {to}',
+  'reports.select': 'Select a category to open the Register with that filter applied.',
+  'reports.column.category': 'Category',
+  'reports.column.spent': 'Spent',
+  'reports.column.share': '% of total',
+  'reports.column.average': 'Monthly average',
+  'reports.column.transactions': 'Transactions',
+  'reports.empty': 'Nothing was spent in this period.',
+  'reports.transfers':
+    '{count} transfers between your own accounts are left out: they move money, ' +
+    'they do not spend it.',
+  'register.filter.dates': 'Dates',
+  'register.filter.dates.from': 'from {from}',
+  'register.filter.dates.to': 'to {to}',
 
   'settings.tab.accounts': 'Accounts',
   'settings.tab.categories': 'Categories',
@@ -503,6 +506,13 @@ const EN = {
   'upcoming.state.plan': 'Rest of the plan',
   'upcoming.state.dismissed': 'Dismissed',
   'upcoming.notCounted': 'not counted',
+  'upcoming.position.unknown': 'Unknown',
+  'upcoming.pane.position': 'Position after',
+  'upcoming.pane.category': 'Category',
+  'upcoming.match.note':
+    'Matching runs by itself every time this screen is opened. Check again ' +
+    'only if something that has happened is still shown as expected.',
+  'upcoming.match.again': 'Check again',
   'upcoming.empty': 'Nothing is expected yet.',
   'upcoming.lowest': 'Lowest point {amount} on {date}',
   'upcoming.lowest.unknown':

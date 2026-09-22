@@ -67,6 +67,15 @@ const useStyles = makeStyles({
     borderRadius: 'var(--ayq-radius-medium)',
   },
   lowest: { marginLeft: 'auto', color: 'var(--ayq-ink-quiet)' },
+  rematch: {
+    display: 'flex',
+    gap: `${AYQ_METRIC.space.medium}px`,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    margin: `${AYQ_METRIC.space.small}px 2px 0`,
+    color: 'var(--ayq-ink-faint)',
+    fontSize: 'var(--ayq-size-small)',
+  },
   body: {
     display: 'flex',
     flexDirection: 'column',
@@ -324,9 +333,17 @@ export function AyqUpcomingScreen({
     {
       id: 'category',
       header: ayqText('upcoming.column.category'),
+      // Every row states a category or Uncategorised; never a blank (A32).
       cell: row => (
         <span data-ayq-cell="category" className={styles.quiet}>
-          {row.categoryName ?? ''}
+          {row.categoryName === null ? (
+            <AyqStateChip
+              state="uncategorised"
+              label={ayqText('register.category.none')}
+            />
+          ) : (
+            row.categoryName
+          )}
         </span>
       ),
     },
@@ -345,11 +362,19 @@ export function AyqUpcomingScreen({
       header: ayqText('upcoming.column.balance'),
       figures: true,
       // A dismissed occurrence is not in the projection, so there is no
-      // position after it. Said in words rather than drawn as a figure.
+      // position after it. And where available funds are unknown — a counted
+      // account with no balance anchor — no position is fabricated: it is
+      // Unknown, said in words (03 §7.5, A32).
       cell: row => (
         <span data-ayq-cell="balance">
           {row.balanceCents === null ? (
-            <span className={styles.quiet}>{ayqText('upcoming.notCounted')}</span>
+            row.state === 'dismissed' ? (
+              <span className={styles.quiet}>{ayqText('upcoming.notCounted')}</span>
+            ) : (
+              <span className={styles.quiet} data-ayq-position="unknown">
+                {ayqText('upcoming.position.unknown')}
+              </span>
+            )
           ) : (
             <AyqFigure cents={row.balanceCents} />
           )}
@@ -393,9 +418,6 @@ export function AyqUpcomingScreen({
         >
           {ayqText('upcoming.new')}
         </AyqButton>
-        <AyqButton mark="plan-match" onClick={lookForMatches}>
-          {ayqText('upcoming.match')}
-        </AyqButton>
         <AyqButton
           mark="plan-suggest"
           onClick={() => decide({ kind: 'plan.suggest' })}
@@ -418,6 +440,15 @@ export function AyqUpcomingScreen({
           </span>
         )}
       </div>
+
+      {/* Matching is automatic (03 §7.16); a re-check is a recovery action,
+          kept out of the working bar and said to be secondary. */}
+      <p className={styles.rematch} data-ayq-rematch="">
+        <span>{ayqText('upcoming.match.note')}</span>
+        <AyqButton size="small" mark="plan-match" onClick={lookForMatches}>
+          {ayqText('upcoming.match.again')}
+        </AyqButton>
+      </p>
 
       {proposals.length === 0 ? null : (
         <AyqPane
@@ -647,6 +678,27 @@ function AyqOccurrencePane({
           </span>
           <AyqFigure cents={row.amountCents} size="large" />
           <span>{ayqText('upcoming.pane.due', { date: ayqDate(dueDate) })}</span>
+          <span className={styles.quiet} data-ayq-pane-category="">
+            {ayqText('upcoming.pane.category')}:{' '}
+            {record.categoryName ?? ayqText('register.category.none')}
+          </span>
+          <span
+            className={styles.quiet}
+            data-ayq-pane-position={
+              row.balanceCents === null ? 'unknown' : String(row.balanceCents)
+            }
+          >
+            {ayqText('upcoming.pane.position')}:{' '}
+            {row.balanceCents === null ? (
+              row.state === 'dismissed' ? (
+                ayqText('upcoming.notCounted')
+              ) : (
+                ayqText('upcoming.position.unknown')
+              )
+            ) : (
+              <AyqFigure cents={row.balanceCents} withSymbol />
+            )}
+          </span>
           {dueDate === row.date ? null : (
             <span className={styles.quiet}>
               {ayqText('upcoming.pane.moved', { date: ayqDate(row.date) })}

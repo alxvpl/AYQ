@@ -111,7 +111,9 @@ if (has('register')) env.AYQ_SMOKE_REGISTER = '1';
 // again on fifty thousand records.
 if (has('import-once')) env.AYQ_SMOKE_IMPORT_ONCE = '1';
 
-// `--reports` opens Reports and requires it to say it is not built, to invent no
+// `--reports` opens Reports, requires a category table, and follows the first
+// row into the Register to check the filter actually applied. It used to
+// require the screen to say it is not built, to invent no
 // reason for being empty, to draw nothing that could be read as an answer, and
 // to record the Spending screen 04 A20 removed — whose question is this one.
 if (has('reports')) env.AYQ_SMOKE_REPORTS = '1';

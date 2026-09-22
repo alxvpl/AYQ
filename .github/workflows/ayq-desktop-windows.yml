@@ -405,7 +405,7 @@ jobs:
       # worth checking — a screen that blames a person's data for being empty
       # tells them something untrue, and that is the sentence that gets written
       # when somebody fills an empty page.
-      - name: Reports says it is not built, and blames nothing
+      - name: Reports draws spending by category, and its route into the Register is the real filter
         working-directory: ayq/ayq-desktop
         shell: pwsh
         timeout-minutes: 10
@@ -421,12 +421,13 @@ jobs:
           if ($said -notmatch 'Reports: held') {
             throw 'the run did not check Reports at all'
           }
-          if ($said -notmatch 'reports: (\d+) figures, (\d+) tables, (\d+) chips, (\d+) charts') {
+          if ($said -notmatch 'reports: (\d+) figures, (\d+) tables, (\d+) chips, (\d+) charts, (\d+) category rows') {
             throw 'the run did not count what Reports draws'
           }
-          # A budget with transactions in it, so "it drew nothing" is a decision
-          # and not an accident of there being nothing to draw.
-          Write-Host "Reports drew $($Matches[1]) figures and $($Matches[2]) tables on a budget that holds transactions"
+          if ($said -notmatch 'the Register opened on (category|uncategorised) with (\d+) rows; Reports said (\d+)') {
+            throw 'the run did not follow a category into the Register'
+          }
+          Write-Host "Reports drew $($Matches[2]) rows behind its category; the Register opened on the same filter"
 
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
