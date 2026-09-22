@@ -61,6 +61,39 @@ No new string, no other change in behaviour.
 |---|---|
 | `main.body` scrolls **and `html` scrolls** (document 999–2 440 px): two bars on the window edge | `main.body` scrolls; the flyout scrolls **in itself** (clamped to 729 / 572 / 1 001 px of the 860 / 720 / 1080 viewports); `html` does not scroll: one bar on the window edge |
 
+## 4. After the fix: every other portal, and the owner's open item
+
+The flyout was not the only portal in the context bar. The period menu and
+the two multiselect dropdowns also render outside `main.body`, so each could
+overflow the document the way the flyout did. `scale/trace-scrollbars.mjs`
+now surveys all of them (period menu, comparison, accounts and category
+dropdowns) beside the bare result, the detail pane and the flyout.
+
+50 accounts, 147 and 241 rows, at the owner's own viewport (3840 × 2160 at
+175 % = 2 194 × 1 234 CSS px) and at the minimum window (1 100 × 720):
+
+| state | scrollers |
+|---|---|
+| bare · detail pane open · period menu open · comparison dropdown open | `main.body` only |
+| coverage flyout open | `main.body` + the flyout, bounded and scrolling inside itself |
+| accounts dropdown open · category dropdown open (at 1 100 × 720) | `main.body` + Fluent's listbox, bounded to the viewport and scrolling inside itself |
+
+**In no state does the document scroll.** Every second bar belongs to a panel
+that bounds itself and sits inside that panel, not on the window edge.
+
+So the double scrollbar in the owner's capture of 2026-09-21 — which 043 §1
+establishes was taken with the coverage flyout closed — is not reproducible
+on this build with generated data at his own viewport. The remaining
+variables are his own snapshot, which is not read, and the build he saw it
+on (the 032 candidate, where the flyout was still unbounded). The open item
+stays open; the next evidence has to come from his screen on this build.
+
+One cosmetic observation, reported and not acted on: with 50 accounts the
+accounts listbox is as tall as the whole viewport (client height 1 234 of
+1 234, and 720 of 720 at the minimum window). It scrolls correctly and
+nothing is hidden; whether a dropdown should reach both window edges is a
+shell question (r004 §3), not mine.
+
 ## The candidate
 
 | | |

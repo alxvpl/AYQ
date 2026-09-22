@@ -107,11 +107,23 @@ const shapes = (process.env.SCROLL_SHAPES ?? 'few,S2,A50').split(',').map(name =
   const match = /^A(\d+)$/.exec(name);
   return { name, ...(preset ?? { accounts: Number(match[1]), counterparties: 60, transactions: 2_000, years: 2, nameLength: [8, 24] }) };
 });
-/** The states a screen can be in besides the bare result: the detail pane open, the coverage flyout open. */
+const openCombo = label =>
+  `(async () => { [...document.querySelectorAll('[role=combobox]')].find(c => c.getAttribute('aria-label') === '${label}')?.click(); await new Promise(r => setTimeout(r, 500)); })()`;
+
+/**
+ * The states a screen can be in besides the bare result. Beside the detail
+ * pane and the coverage flyout, the context bar has three more portals — the
+ * period menu and the two multiselect dropdowns — and each could overflow the
+ * document the way the flyout did before r004 (040 §3).
+ */
 const STATES = {
   bare: `(async () => {})()`,
   'detail pane open': `(async () => { document.querySelector('table.rows tbody tr')?.click(); await new Promise(r => setTimeout(r, 500)); })()`,
   'coverage flyout open': `(async () => { document.querySelector('.context-coverage button')?.click(); await new Promise(r => setTimeout(r, 500)); })()`,
+  'period menu open': `(async () => { document.querySelector('.period-control button')?.click(); await new Promise(r => setTimeout(r, 500)); })()`,
+  'comparison dropdown open': openCombo('Comparison'),
+  'accounts dropdown open': openCombo('Accounts'),
+  'category dropdown open': openCombo('Category'),
 };
 const UNDO = `(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(r => setTimeout(r, 300)); })()`;
 const windows = (process.env.SCROLL_WINDOWS ?? '1360x860,1100x720,1920x1080').split(',').map(pair => pair.split('x').map(Number));
