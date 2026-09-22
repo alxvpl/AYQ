@@ -2331,14 +2331,38 @@ async function reviewShown(window: BrowserWindow): Promise<string> {
     `[ayq-smoke] Settings holds the rule for ${afterLearning.join(', ')}\n`,
   );
 
-  // 04 A7: visible, and reversible. Taking it away is offered and works.
-  const forgot = await window.webContents.executeJavaScript(`(() => {
-    const button = document.querySelector('[data-ayq-table="rules"] tbody tr [data-ayq-action]');
+  // 04 A7: visible, and reversible. Taking it away is offered and works —
+  // through the card the rule is inspected on, which states what removal
+  // does and does not do before the button that does it.
+  const opened = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-ayq-table="rules"] tbody tr [data-ayq-action^="rule-inspect-"]');
     if (!button) return false;
     button.click();
     return true;
   })()`);
-  if (forgot !== true) return 'a rule cannot be taken away (04 A7)';
+  if (opened !== true) return 'a rule cannot be inspected where it is listed (04 A7)';
+  const press = async (action: string): Promise<boolean> => {
+    const by = Date.now() + 30_000;
+    while (Date.now() < by) {
+      const pressed = await window.webContents.executeJavaScript(`(() => {
+        const button = document.querySelector('[data-ayq-rule-card] [data-ayq-action="${action}"]');
+        if (!button || button.disabled) return false;
+        button.click();
+        return true;
+      })()`);
+      if (pressed === true) return true;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return false;
+  };
+  if (!(await press('rule-remove'))) return 'the rule card offers no removal (04 A7)';
+  const consequence = await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-rule-remove-consequence]')?.textContent ?? ''",
+  );
+  if (!/nothing is re-filed/.test(String(consequence))) {
+    return 'removal does not say first that what the rule filed stays where it is';
+  }
+  if (!(await press('rule-remove-confirm'))) return 'a rule cannot be taken away (04 A7)';
   const gone = Date.now() + 30_000;
   let left = afterLearning.length;
   while (Date.now() < gone && left >= afterLearning.length) {
