@@ -331,6 +331,75 @@ export type AyqCounterpartyFiled = {
   ruleWritten: boolean;
 };
 
+/**
+ * The bounded set of existing transactions a bulk correction is about.
+ *
+ * 03 §4.7 gives a manual correction an explicit scope, and §4.8 names the two
+ * forms it may take: the rows a person picked, one by one, or a clearly stated
+ * existing-record scope. The second is the Register's own filter — every row it
+ * admits, not only the page that happens to be on the screen. Amount alone is
+ * never such a scope (§4.8): a filter that says nothing but "between ten and
+ * twenty euros" is refused by the engine, and the screen does not offer it.
+ *
+ * Either way it is a decision about records that already exist. No rule is
+ * written and no automation is widened by it (04 A36).
+ */
+export type AyqBulkScope =
+  | { kind: 'selected'; transactionIds: string[] }
+  | { kind: 'filter'; filter: AyqLedgerFilter };
+
+/**
+ * What a bulk correction would touch, stated before it is executed (04 A36).
+ *
+ * `transactions` is the size of the scope itself. A counterparty correction
+ * reaches further than that: it is an identity decision about the names the
+ * bank printed (03 §3.11), so every transaction under those names moves, not
+ * only the ones in the scope. `variants` lists those names, each with the
+ * number of transactions in the whole budget that carry it, so the screen can
+ * say how far the decision reaches before anyone makes it.
+ */
+export type AyqBulkScopeReport = {
+  transactions: number;
+  /**
+   * How many of them already carry a decision made by hand. A bulk correction
+   * keeps those unless it is told otherwise (03 §4.9), so the screen says how
+   * many there are before the decision is made, not after.
+   */
+  byHand: number;
+  variants: Array<{
+    variantKey: string;
+    variant: string;
+    /** Every transaction in the budget imported under this name. */
+    transactions: number;
+  }>;
+  /** The sum over `variants` — what a counterparty correction would move. */
+  variantTransactions: number;
+};
+
+/** What filing a scope by hand came to. */
+export type AyqBulkCategorised = {
+  /** How many the scope held when the decision was executed. */
+  scoped: number;
+  categorised: number;
+  /**
+   * Already filed by hand into something else, and left exactly as they were
+   * because `includeByHand` was not set: a bulk correction never overwrites
+   * an earlier manual decision silently (03 §4.9). Counted so the screen can
+   * say so.
+   */
+  keptByHand: number;
+};
+
+/** What recording the names behind a scope as one counterparty came to. */
+export type AyqBulkCounterparty = {
+  /** How many bank names were recorded as the counterparty. */
+  variants: number;
+  /** Every transaction that now carries it, in or out of the scope. */
+  moved: number;
+  counterpartyKey: string;
+  counterpartyName: string;
+};
+
 /** Which period, and which account, the spending question is being asked of. */
 export type AyqSpendingFilter = {
   /** Inclusive YYYY-MM-DD bounds; both absent means everything there is. */
@@ -1216,6 +1285,9 @@ export type AyqResults = {
   'transaction.detail': AyqTransactionDetail;
   'transaction.categorise': AyqCategorised;
   'transaction.categoriseCounterparty': AyqCounterpartyFiled;
+  'transactions.scope': AyqBulkScopeReport;
+  'transactions.categoriseMany': AyqBulkCategorised;
+  'transactions.correctCounterparty': AyqBulkCounterparty;
   'categories.list': AyqCategory[];
   'categories.create': AyqCategory[];
   'categories.rename': AyqCategory[];
@@ -1364,6 +1436,47 @@ export type AyqRequestBody =
       counterpartyKey: string;
       categoryId: string;
       createRule: boolean;
+    }
+  | {
+      /** What a bulk correction over this scope would touch, before it is made. */
+      kind: 'transactions.scope';
+      scope: AyqBulkScope;
+    }
+  | {
+      /**
+       * Files every transaction in the scope, by hand, and learns nothing.
+       *
+       * A manual decision about each of them (03 §4.7), recorded as such, so no
+       * rule may overwrite it afterwards. One already filed by hand into
+       * something else is kept and counted (§4.9). No rule is written: that is a
+       * separate statement, and this request cannot make it.
+       */
+      kind: 'transactions.categoriseMany';
+      scope: AyqBulkScope;
+      /** null clears the category. */
+      categoryId: string | null;
+      /**
+       * Also change the rows already filed by hand into something else.
+       *
+       * Off, they are kept and counted (03 §4.9): a bulk correction does not
+       * overwrite an earlier manual decision silently. On, the person has been
+       * told how many there are and has said so — a newer decision by hand over
+       * an older one, which is theirs to make (§4.4).
+       */
+      includeByHand?: boolean;
+    }
+  | {
+      /**
+       * Records every bank name behind the scope as this counterparty.
+       *
+       * An identity decision (03 §3.11, §3.14), made once per name the bank
+       * printed rather than once per transaction, which is why it reaches every
+       * transaction under those names and not only the scope. The report from
+       * `transactions.scope` says how far that is.
+       */
+      kind: 'transactions.correctCounterparty';
+      scope: AyqBulkScope;
+      counterpartyKey: string;
     }
   | { kind: 'categories.list' }
   | { kind: 'categories.create'; name: string; groupId: string }

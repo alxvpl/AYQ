@@ -4,8 +4,14 @@
 // A20 ask for are decided once: the header stays while the rows move, a row is
 // selectable by keyboard as well as by mouse, focus is visible, and a column of
 // figures is right-aligned with tabular numerals (A19).
+//
+// Two kinds of choosing, kept apart (04 A36). Opening a row — click, Enter,
+// Space — is "what am I looking at", and there is one of those. Ticking a row
+// is "this one is part of what I am about to change", and there may be many.
+// The tick lives in its own column, is a real checkbox, and does not open the
+// row it is on, so a person can gather a set without the pane chasing them.
 
-import { makeStyles, mergeClasses } from '@fluentui/react-components';
+import { Checkbox, makeStyles, mergeClasses } from '@fluentui/react-components';
 import type { ReactNode } from 'react';
 
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
@@ -63,6 +69,12 @@ const useStyles = makeStyles({
     padding: `26px ${AYQ_METRIC.row.paddingX}px`,
     color: 'var(--ayq-ink-faint)',
   },
+  tick: {
+    width: '32px',
+    paddingTop: '2px',
+    paddingBottom: '2px',
+    paddingRight: '0',
+  },
 });
 
 export type AyqColumn<T> = {
@@ -71,6 +83,16 @@ export type AyqColumn<T> = {
   /** Right-aligned, tabular numerals (04 A19). */
   figures?: boolean;
   cell(row: T): ReactNode;
+};
+
+/** The rows a person has ticked, and the words the checkboxes say. */
+export type AyqSelection = {
+  selected: ReadonlySet<string>;
+  onToggle(id: string, checked: boolean): void;
+  /** Tick, or untick, every row on the screen. */
+  onToggleShown(checked: boolean): void;
+  rowLabel: string;
+  shownLabel: string;
 };
 
 export function AyqTable<T>({
@@ -82,12 +104,15 @@ export function AyqTable<T>({
   footer,
   empty,
   mark,
+  selection,
 }: {
   columns: readonly AyqColumn<T>[];
   rows: readonly T[];
   keyOf(row: T): string;
   selected?: string | null;
   onSelect?(row: T): void;
+  /** Present when rows can be gathered for a bulk decision (04 A36). */
+  selection?: AyqSelection;
   /** One cell per column, or fewer — the last is stretched by the caller. */
   footer?: ReactNode;
   /** What to say when there is nothing, which is not the same as nothing. */
@@ -104,10 +129,29 @@ export function AyqTable<T>({
     );
   }
 
+  const ticked = selection === undefined
+    ? 0
+    : rows.filter(row => selection.selected.has(keyOf(row))).length;
+  const span = columns.length + (selection === undefined ? 0 : 1);
+
   return (
     <table className={styles.table} data-ayq-table={mark}>
       <thead>
         <tr>
+          {selection === undefined ? null : (
+            <th scope="col" className={mergeClasses(styles.head, styles.tick)}>
+              <Checkbox
+                data-ayq-select-shown=""
+                aria-label={selection.shownLabel}
+                checked={
+                  ticked === 0 ? false : ticked === rows.length ? true : 'mixed'
+                }
+                onChange={(_event, data) =>
+                  selection.onToggleShown(data.checked === true)
+                }
+              />
+            </th>
+          )}
           {columns.map(column => (
             <th
               key={column.id}
@@ -144,6 +188,24 @@ export function AyqTable<T>({
                 onSelect?.(row);
               }}
             >
+              {selection === undefined ? null : (
+                <td
+                  className={mergeClasses(styles.cell, styles.tick)}
+                  data-ayq-cell="select"
+                  // A tick is not an opening: the click stops here.
+                  onClick={event => event.stopPropagation()}
+                  onKeyDown={event => event.stopPropagation()}
+                >
+                  <Checkbox
+                    data-ayq-select-row={id}
+                    aria-label={selection.rowLabel}
+                    checked={selection.selected.has(id)}
+                    onChange={(_event, data) =>
+                      selection.onToggle(id, data.checked === true)
+                    }
+                  />
+                </td>
+              )}
               {columns.map(column => (
                 <td
                   key={column.id}
@@ -163,7 +225,7 @@ export function AyqTable<T>({
       {footer === undefined ? null : (
         <tfoot>
           <tr>
-            <td className={styles.foot} colSpan={columns.length}>
+            <td className={styles.foot} colSpan={span}>
               {footer}
             </td>
           </tr>

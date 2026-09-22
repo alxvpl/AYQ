@@ -12,6 +12,7 @@ import api from '@actual-app/api';
 
 import type {
   AyqAccountSummary,
+  AyqBulkScope,
   AyqBalanceAnchorView,
   AyqReconciliation,
   AyqCategorySource,
@@ -574,6 +575,89 @@ function totalsOf(
     netCents: incomeCents - expenseCents,
     uncategorised,
   };
+}
+
+/** A queried row, as the bulk operations need to see it. */
+export type AyqScopedRow = {
+  id: string;
+  imported_id: string | null;
+  categoryId: string | null;
+};
+
+/**
+ * Whether a filter names a scope a bulk correction may be made over.
+ *
+ * 03 §4.8: amount alone is never sufficient to define which transactions share
+ * a correction, and a filter that says nothing at all is not a stated scope
+ * either — "everything" is not a decision about a bounded set. Anything else
+ * the Register can filter on (an account, a period, a category, a
+ * counterparty, a word, the unfiled) is a clearly stated existing-record scope.
+ *
+ * Pure, and duplicated in words by the screen, which offers the whole filter
+ * as a scope only where this would admit it; the engine is the one that
+ * refuses.
+ */
+export function ayqFilterIsAScope(filter: AyqLedgerFilter): boolean {
+  return (
+    (filter.search ?? '').trim() !== '' ||
+    filter.accountId !== undefined ||
+    filter.from !== undefined ||
+    filter.to !== undefined ||
+    filter.uncategorised === true ||
+    filter.categoryId !== undefined ||
+    filter.counterpartyKey !== undefined
+  );
+}
+
+/**
+ * Every transaction a bulk scope admits (03 §4.7, §4.8).
+ *
+ * A selection is read back by id, so a row that has meanwhile gone is simply
+ * not in the answer rather than an error. A filter is read exactly as the
+ * Register reads it — the same conditions, the same canonical-counterparty
+ * test — and never through the page limit: the scope is what the filter
+ * admits, which is what the Register's total states.
+ */
+export async function ayqRowsInScope(
+  dataDir: string,
+  scope: AyqBulkScope,
+): Promise<AyqScopedRow[]> {
+  if (scope.kind === 'selected') {
+    if (scope.transactionIds.length === 0) return [];
+    const answer = (await api.aqlQuery(
+      selection()
+        .filter({ starting_balance_flag: false })
+        .filter({ id: { $oneof: scope.transactionIds } }),
+    )) as { data?: AyqQueriedRow[] };
+    return (answer.data ?? []).map(strip);
+  }
+
+  if (!ayqFilterIsAScope(scope.filter)) {
+    throw new Error(
+      'a bulk correction needs a stated scope: an account, a period, a ' +
+        'category, a counterparty, a word or the unfiled — the amount alone is ' +
+        'not one (03 §4.8)',
+    );
+  }
+  const { limit: _limit, ...whole } = scope.filter;
+  const rows = await queried(whole);
+  if (!whole.counterpartyKey) return rows.map(strip);
+
+  const store = ayqReadStore(dataDir);
+  return rows
+    .filter(
+      row =>
+        ayqCanonicalKey(
+          store,
+          store.provenance[ayqRowKey(row)]?.counterpartyKey,
+          store.provenance[ayqRowKey(row)]?.counterpartyName,
+        ) === whole.counterpartyKey,
+    )
+    .map(strip);
+}
+
+function strip(row: AyqQueriedRow): AyqScopedRow {
+  return { id: row.id, imported_id: row.imported_id, categoryId: row.categoryId };
 }
 
 /** One transaction, with what the bank said and what AYQ made of it. */

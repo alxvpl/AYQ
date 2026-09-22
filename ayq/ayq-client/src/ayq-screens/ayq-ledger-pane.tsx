@@ -22,7 +22,11 @@ import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
-import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
+import {
+  AyqTable,
+  type AyqColumn,
+  type AyqSelection,
+} from '../ayq-ui/ayq-table.tsx';
 import { AyqTransactionDetailPane } from './ayq-transaction-detail.tsx';
 
 const useStyles = makeStyles({
@@ -45,6 +49,7 @@ export function AyqLedgerPane({
   onShowTheRule,
   onLoaded,
   reloadToken,
+  selection,
 }: {
   filter: AyqLedgerFilter;
   mark: string;
@@ -59,6 +64,8 @@ export function AyqLedgerPane({
   onLoaded(ledger: AyqLedger): void;
   /** Changed by the caller to make this read the engine again. */
   reloadToken?: number;
+  /** Rows can be gathered for a bulk decision (04 A36); the Register's own. */
+  selection?: AyqSelection;
 }): ReactNode {
   const [ledger, setLedger] = useState<AyqLedger | null>(null);
   const [categories, setCategories] = useState<readonly AyqCategory[]>([]);
@@ -187,6 +194,7 @@ export function AyqLedgerPane({
               keyOf={row => row.id}
               selected={openId}
               onSelect={row => setOpenId(row.id)}
+              selection={selection}
               empty={empty}
               footer={footer}
             />

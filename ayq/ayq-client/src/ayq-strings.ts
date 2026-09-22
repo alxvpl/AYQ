@@ -173,6 +173,54 @@ const EN = {
   'register.totals.uncategorised':
     '{count} of them are uncategorised, and are counted here.',
   'register.showing': 'Showing the newest {shown} of {total}.',
+  'register.select.row': 'Select this transaction',
+  'register.select.shown': 'Select every transaction shown',
+  'register.select.count': '{count} selected',
+  'register.select.basis': 'of {shown} shown · this filter holds {total}',
+  'register.select.basis.all': 'of {shown} shown',
+  'register.select.whole': 'All {total} in this filter selected',
+  'register.select.whole.basis':
+    'every transaction the filter holds, not only the rows shown',
+  'register.select.wholeFilter': 'Select all {total} in this filter',
+  'register.select.shownOnly': 'Select only the {shown} shown',
+  'register.select.clear': 'Clear selection',
+  'register.bulk.category': 'Set category',
+  'register.bulk.category.choose': 'Choose a category',
+  'register.bulk.category.clear': 'No category',
+  'register.bulk.category.apply': 'Apply to {count}',
+  'register.bulk.byHand':
+    '{count} of these were filed by hand. They are kept unless you say otherwise.',
+  'register.bulk.byHand.include': 'Also change the {count} filed by hand',
+  'register.bulk.counterparty': 'Set counterparty',
+  'register.bulk.counterparty.choose': 'Choose a counterparty',
+  'register.bulk.counterparty.reach':
+    'This records the {names} bank names behind your selection as that ' +
+    'counterparty. Every transaction under those names moves: {reach} in all, ' +
+    '{beyond} of them not in your selection.',
+  'register.bulk.counterparty.apply': 'Record {names} names as this counterparty',
+  'register.bulk.counterparty.none':
+    'Nothing in this selection was imported under a bank name AYQ can record.',
+  'register.bulk.filed': '{count} filed.',
+  'register.bulk.filed.kept':
+    '{count} filed. {kept} kept as you had filed them by hand.',
+  'register.bulk.moved':
+    '{names} bank names recorded as {name}; {moved} transactions now belong to it.',
+  'register.bulk.moved.none': 'Those names already belonged to {name}. Nothing moved.',
+  'review.select.row': 'Select this counterparty',
+  'review.select.shown': 'Select every counterparty shown',
+  'review.select.count': '{count} selected',
+  'review.select.basis': '{transactions} transactions · {out} out',
+  'review.select.clear': 'Clear selection',
+  'review.bulk.note':
+    'One category for all of them. Filing changes these transactions; ' +
+    'remembering also writes one rule per counterparty.',
+  'review.bulk.filed': '{count} filed across {counterparties} counterparties.',
+  'review.bulk.filed.kept':
+    '{count} filed across {counterparties} counterparties. {kept} kept as you ' +
+    'had filed them by hand.',
+  'review.bulk.learned':
+    '{count} filed, and AYQ will file these {counterparties} counterparties ' +
+    'from now on.',
   'register.showMore': 'Show more',
   'register.empty':
     'Nothing has been imported yet. A statement makes an account and fills ' +

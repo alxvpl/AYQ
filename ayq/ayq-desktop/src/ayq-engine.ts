@@ -28,6 +28,11 @@ import {
 } from './ayq-aliases.ts';
 import { ayqUseSend } from './ayq-batch.ts';
 import {
+  ayqBulkScope,
+  ayqCategoriseScope,
+  ayqCorrectScopeCounterparty,
+} from './ayq-bulk.ts';
+import {
   ayqBudgetMonth,
   ayqBudgetType,
   ayqEnsureTrackingBudget,
@@ -635,6 +640,39 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         result: { ...filed, ruleWritten: false },
       };
     }
+
+    case 'transactions.scope':
+      return {
+        id,
+        ok: true,
+        kind: 'transactions.scope',
+        result: await ayqBulkScope(dataDir, request.scope),
+      };
+
+    case 'transactions.categoriseMany':
+      return {
+        id,
+        ok: true,
+        kind: 'transactions.categoriseMany',
+        result: await ayqCategoriseScope(
+          dataDir,
+          request.scope,
+          request.categoryId,
+          request.includeByHand === true,
+        ),
+      };
+
+    case 'transactions.correctCounterparty':
+      return {
+        id,
+        ok: true,
+        kind: 'transactions.correctCounterparty',
+        result: await ayqCorrectScopeCounterparty(
+          dataDir,
+          request.scope,
+          request.counterpartyKey,
+        ),
+      };
 
     case 'categories.create':
       return {

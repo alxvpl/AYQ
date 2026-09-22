@@ -24,6 +24,7 @@ import {
 import { ayqAsk } from '../ayq-bridge.ts';
 import type {
   AyqAccountSummary,
+  AyqBulkScope,
   AyqCategory,
   AyqLedger,
   AyqLedgerFilter,
@@ -37,6 +38,7 @@ import {
   type AyqAppliedFilter,
 } from '../ayq-ui/ayq-filter-chips.tsx';
 import { AyqLedgerPane } from './ayq-ledger-pane.tsx';
+import { AyqRegisterBulkBar } from './ayq-register-bulk.tsx';
 
 const useStyles = makeStyles({
   filters: {
@@ -53,6 +55,7 @@ const useStyles = makeStyles({
   amount: { width: '110px' },
   totals: { color: 'var(--ayq-ink-quiet)' },
   quiet: { color: 'var(--ayq-ink-faint)' },
+  outcome: { margin: '0', color: 'var(--ayq-ink)' },
 });
 
 export type AyqPeriod = 'thisMonth' | 'threeMonths' | 'thisYear' | 'allTime';
@@ -88,6 +91,26 @@ export function ayqPeriodBounds(
     : { from: `${year - 1}-${pad(start + 12)}-01` };
 }
 
+/**
+ * Whether the filter names a scope a bulk decision may be made over.
+ *
+ * The screen's reading of 03 §4.8, so that "select everything in this filter"
+ * is never offered where the engine would refuse it: the amount alone is not a
+ * scope, and neither is no filter at all. The engine holds the same rule and is
+ * the one that refuses.
+ */
+export function ayqFilterIsAScope(filter: AyqLedgerFilter): boolean {
+  return (
+    (filter.search ?? '').trim() !== '' ||
+    filter.accountId !== undefined ||
+    filter.from !== undefined ||
+    filter.to !== undefined ||
+    filter.uncategorised === true ||
+    filter.categoryId !== undefined ||
+    filter.counterpartyKey !== undefined
+  );
+}
+
 /** Cents from what somebody typed, or nothing if it was not a number. */
 function cents(typed: string): number | undefined {
   const value = Number(typed.replace(',', '.'));
@@ -121,6 +144,19 @@ export function AyqRegisterScreen({
   // own rather than the shell's, because it is about this table and not about
   // what is being looked at.
   const [limit, setLimit] = useState<number | undefined>(undefined);
+  // The rows a person has gathered, and whether they asked for the whole
+  // filter instead. Both are the Register's: they are about this table.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [wholeFilter, setWholeFilter] = useState(false);
+  const [outcome, setOutcome] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  // A different question is a different set of rows: nothing gathered under
+  // the old one may be claimed under the new (04 A36 — no stale scope).
+  useEffect(() => {
+    setSelected(new Set());
+    setWholeFilter(false);
+  }, [filter]);
 
   // The categories the filter offers. The pane beside the table reads its own
   // — this one is the filter bar's, and it is asked for once.
@@ -162,6 +198,49 @@ export function AyqRegisterScreen({
     },
     [onLoaded],
   );
+
+  // The ids the decision is about are the ticked rows that are on the screen
+  // now — never a row that was ticked and has since gone — so the count stated
+  // is the count sent.
+  const shownIds = useMemo(
+    () => new Set((ledger?.rows ?? []).map(row => row.id)),
+    [ledger],
+  );
+  const chosenIds = useMemo(
+    () => [...selected].filter(id => shownIds.has(id)),
+    [selected, shownIds],
+  );
+  // The whole filter is the question without its page depth: the page is how
+  // much of the answer is on the screen, and the scope is the whole answer.
+  const scope: AyqBulkScope = useMemo(() => {
+    if (!wholeFilter) return { kind: 'selected', transactionIds: chosenIds };
+    const { limit: _page, ...whole } = asked;
+    return { kind: 'filter', filter: whole };
+  }, [wholeFilter, chosenIds, asked]);
+  const counted = wholeFilter ? (ledger?.total ?? 0) : chosenIds.length;
+
+  const toggle = (id: string, checked: boolean): void => {
+    setWholeFilter(false);
+    setSelected(before => {
+      const next = new Set(before);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+  const toggleShown = (checked: boolean): void => {
+    setWholeFilter(false);
+    setSelected(checked ? new Set(shownIds) : new Set());
+  };
+  const clear = (): void => {
+    setWholeFilter(false);
+    setSelected(new Set());
+  };
+  const done = (said: string): void => {
+    clear();
+    setOutcome(said);
+    setReloadToken(one => one + 1);
+  };
 
   const applied: AyqAppliedFilter[] = [];
   if ((filter.search ?? '') !== '') {
@@ -352,9 +431,43 @@ export function AyqRegisterScreen({
         }}
       />
 
+      {outcome === null ? null : (
+        <p className={styles.outcome} data-ayq-bulk-outcome="">
+          {outcome}
+        </p>
+      )}
+
+      {counted === 0 || ledger === null ? null : (
+        <AyqRegisterBulkBar
+          scope={scope}
+          count={counted}
+          shown={ledger.shown}
+          total={ledger.total}
+          wholeFilter={wholeFilter}
+          canWholeFilter={ayqFilterIsAScope(filter) && ledger.total > ledger.shown}
+          categories={categories}
+          onWholeFilter={on => {
+            setWholeFilter(on);
+            // The whole filter includes every row on the screen; the ticks say so.
+            if (on) setSelected(new Set(shownIds));
+          }}
+          onClear={clear}
+          onDone={done}
+          onFailure={onFailure}
+        />
+      )}
+
       <AyqLedgerPane
         mark="register"
         filter={asked}
+        reloadToken={reloadToken}
+        selection={{
+          selected,
+          onToggle: toggle,
+          onToggleShown: toggleShown,
+          rowLabel: ayqText('register.select.row'),
+          shownLabel: ayqText('register.select.shown'),
+        }}
         onFailure={onFailure}
         onShowTheRule={onShowTheRule}
         onLoaded={loaded}

@@ -13,6 +13,12 @@
 // is a statement about the transactions in front of you; learning a rule is a
 // statement about every one that arrives from now on (03 §4.1). AYQ will not
 // make the second from the first, and the screen says which is which.
+//
+// Several counterparties can be gathered and filed into one category at once
+// (04 A36). The bar over the table states what that is — how many
+// counterparties, how many transactions, how much — before either button is
+// pressed, and the two buttons keep their meanings: one files, the other files
+// and writes one rule per counterparty. Nothing is inferred from the gathering.
 
 import { Input, Select, makeStyles } from '@fluentui/react-components';
 import {
@@ -43,6 +49,7 @@ import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
+import { AyqReviewBulkBar } from './ayq-review-bulk.tsx';
 
 const useStyles = makeStyles({
   body: {
@@ -107,6 +114,9 @@ export function AyqReviewScreen({
   const [detail, setDetail] = useState<AyqCounterpartyDetail | null>(null);
   const [outcome, setOutcome] = useState<string | null>(null);
   const [round, setRound] = useState(0);
+  // The counterparties gathered for one decision (04 A36). The Review's own.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [bulkOutcome, setBulkOutcome] = useState<string | null>(null);
 
   const ask = useCallback(async <T,>(body: AyqRequestBody): Promise<T> => {
     const answer = await ayqAsk(body);
@@ -162,6 +172,10 @@ export function AyqReviewScreen({
     return <p className={styles.note}>{ayqText('common.loading')}</p>;
   }
 
+  // The gathered counterparties that are still in the backlog: one filed since
+  // has left it, and is no part of what the bar claims.
+  const gathered = backlog.filter(row => selected.has(row.key));
+
   const columns: readonly AyqColumn<AyqUnfiled>[] = [
     {
       id: 'name',
@@ -209,6 +223,24 @@ export function AyqReviewScreen({
           <p className={`${styles.note} ${styles.body}`} data-ayq-backlog={String(backlog.length)}>
             {ayqText('review.backlog.note')}
           </p>
+          {bulkOutcome === null ? null : (
+            <p className={`${styles.outcome} ${styles.body}`} data-ayq-bulk-outcome="">
+              {bulkOutcome}
+            </p>
+          )}
+          {gathered.length === 0 ? null : (
+            <AyqReviewBulkBar
+              gathered={gathered}
+              categories={categories}
+              onClear={() => setSelected(new Set())}
+              onDone={said => {
+                setSelected(new Set());
+                setBulkOutcome(said);
+                again();
+              }}
+              onFailure={onFailure}
+            />
+          )}
           <AyqTable
             mark="review"
             columns={columns}
@@ -218,6 +250,22 @@ export function AyqReviewScreen({
             onSelect={row => {
               setOutcome(null);
               setOpenKey(row.key);
+            }}
+            selection={{
+              selected,
+              onToggle: (key, checked) =>
+                setSelected(before => {
+                  const next = new Set(before);
+                  if (checked) next.add(key);
+                  else next.delete(key);
+                  return next;
+                }),
+              onToggleShown: checked =>
+                setSelected(
+                  checked ? new Set(backlog.map(row => row.key)) : new Set(),
+                ),
+              rowLabel: ayqText('review.select.row'),
+              shownLabel: ayqText('review.select.shown'),
             }}
             empty={ayqText('review.backlog.none')}
           />

@@ -1886,6 +1886,160 @@ async function reportsShown(window: BrowserWindow): Promise<string> {
  * Nothing about the wording decides any of it. A screen that had one control
  * doing both would pass a check that read labels and fail this one.
  */
+/**
+ * Gathering rows in the Register, and what the bar over them says (04 A36).
+ *
+ * Two rows are ticked and the bar is required to state that count, to say
+ * that it is a count of rows shown, and — with no filter on — to offer no
+ * "whole filter" scope at all, which is 03 §4.8 on the window. A category is
+ * then chosen and applied, and what is read back is the *table*, redrawn from
+ * the engine's answer: the two rows carry the category, the bar is gone, and
+ * the outcome names the count that changed. Nothing here presses a control
+ * that could learn a rule, because the bar has none.
+ */
+async function bulkShown(window: BrowserWindow): Promise<string> {
+  await openRegister(window);
+
+  const rows = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rows = [...document.querySelectorAll('[data-ayq-table="register"] tbody tr')];
+        return JSON.stringify(rows.slice(0, 3).map(row => row.getAttribute('data-ayq-row') || ''));
+      })()`),
+    ),
+  ) as string[];
+  if (rows.length < 3) return `the Register shows ${rows.length} rows, and this check needs three`;
+
+  const [first, second] = rows;
+  const tick = async (id: string): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(`(() => {
+      const box = document.querySelector('[data-ayq-select-row="${id}"]');
+      if (!box) return false;
+      box.click();
+      return true;
+    })()`)) === true;
+  if (!(await tick(first)) || !(await tick(second))) {
+    return 'the rows offer nothing to tick';
+  }
+
+  const bar = async (): Promise<{
+    there: boolean;
+    count: string;
+    basis: string;
+    scopeOffered: boolean;
+    detailOpened: boolean;
+  }> =>
+    JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const bar = document.querySelector('[data-ayq-bulk]');
+          return JSON.stringify({
+            there: !!bar,
+            count: bar ? (bar.querySelector('[data-ayq-bulk-count]') || {}).innerText || '' : '',
+            basis: bar ? (bar.querySelector('[data-ayq-bulk-basis]') || {}).getAttribute('data-ayq-bulk-basis') || '' : '',
+            scopeOffered: !!document.querySelector('[data-ayq-action="bulk-scope"]'),
+            detailOpened: !!document.querySelector('[data-ayq-detail]'),
+          });
+        })()`),
+      ),
+    );
+  const stated = await bar();
+  if (!stated.there) return 'two rows are ticked and there is no bar over them';
+  if (!/^2 /.test(stated.count)) return `the bar says "${stated.count}" for two ticked rows`;
+  if (stated.basis !== 'shown') return `the bar claims a "${stated.basis}" scope for a tick`;
+  if (stated.scopeOffered) return 'with no filter on, the bar still offers the whole filter as a scope (03 §4.8)';
+  if (stated.detailOpened) return 'ticking a row opened it';
+
+  // Set category: the scope is stated by the engine first, then applied.
+  const opened = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-ayq-action="bulk-category"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (opened !== true) return 'the bar offers no category action';
+
+  let by = Date.now() + 60_000;
+  let ready = false;
+  while (Date.now() < by && !ready) {
+    ready =
+      (await window.webContents.executeJavaScript(`(() => {
+        const apply = document.querySelector('[data-ayq-action="bulk-category-apply"]');
+        return !!apply && !apply.disabled;
+      })()`)) === true;
+    if (!ready) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!ready) return 'the scope was never stated, so the decision could not be made';
+
+  const chosen = String(
+    await window.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector('[data-ayq-bulk-category-choice]');
+      if (!select) return '';
+      const option = [...select.options].find(one => one.value !== '');
+      if (!option) return '';
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(select), 'value');
+      if (setter && setter.set) setter.set.call(select, option.value);
+      else select.value = option.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return option.textContent || '';
+    })()`),
+  );
+  if (chosen === '') return 'no category to file into';
+
+  const pressed = await window.webContents.executeJavaScript(`(() => {
+    const apply = document.querySelector('[data-ayq-action="bulk-category-apply"]');
+    if (!apply) return false;
+    apply.click();
+    return true;
+  })()`);
+  if (pressed !== true) return 'the apply button went away before it was pressed';
+
+  by = Date.now() + 60_000;
+  let said = '';
+  while (Date.now() < by && said === '') {
+    said = String(
+      await window.webContents.executeJavaScript(
+        "(document.querySelector('[data-ayq-bulk-outcome]') || {}).innerText || ''",
+      ),
+    );
+    if (said === '') await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (said === '') {
+    const problem = await problemShown(window);
+    return `nothing came back${problem === '' ? '' : ` — the screen said: ${problem}`}`;
+  }
+  process.stdout.write(`[ayq-smoke] bulk filed as ${chosen}: ${said}\n`);
+  if (!/^2 filed/.test(said)) return `the outcome says "${said}" for two rows`;
+
+  // The table, redrawn from the engine's answer, and not the control.
+  by = Date.now() + 60_000;
+  let shown: string[] = [];
+  while (Date.now() < by) {
+    shown = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          return JSON.stringify([${JSON.stringify(first)}, ${JSON.stringify(second)}].map(id => {
+            const cell = document.querySelector(
+              '[data-ayq-table="register"] tbody tr[data-ayq-row="' + id + '"] [data-ayq-cell="category"]');
+            return cell ? cell.innerText.trim() : '';
+          }));
+        })()`),
+      ),
+    ) as string[];
+    if (shown.every(one => one === chosen)) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!shown.every(one => one === chosen)) {
+    return `the two rows read ${JSON.stringify(shown)} after filing as ${chosen}`;
+  }
+  const after = await bar();
+  if (after.there) return 'the decision was made and the bar is still claiming a selection';
+
+  // Left ticked on the way out, so the capture at the end shows the bar.
+  await tick(rows[2]);
+  return '';
+}
+
 async function reviewShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'review'))) {
     return 'the Review destination never opened';
@@ -3064,6 +3218,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await openRegister(window);
   }
 
+  // Gathering rows, and the bar that states the scope before acting (04 A36).
+  const bulkAsked = process.env.AYQ_SMOKE_BULK === '1';
+  let bulk = 'not asked';
+  let bulkOk = true;
+  if (bulkAsked) {
+    const wrong = await bulkShown(window);
+    bulk = wrong === '' ? 'held' : wrong;
+    bulkOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] bulk: ${bulkOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // Review and Settings: the two decisions of 03 §4.1, and what Settings owns.
   const reviewAsked = process.env.AYQ_SMOKE_REVIEW === '1';
   let review = 'not asked';
@@ -3219,6 +3386,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     accountsOk &&
     todayOk &&
     reviewOk &&
+    bulkOk &&
     reportsOk &&
     balanceOk &&
     aboutOk &&
@@ -3262,6 +3430,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           todayOk,
           review,
           reviewOk,
+          bulk,
+          bulkOk,
           reports,
           reportsOk,
           balance,

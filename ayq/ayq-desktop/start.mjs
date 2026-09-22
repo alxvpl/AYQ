@@ -124,6 +124,12 @@ if (has('reports')) env.AYQ_SMOKE_REPORTS = '1';
 // will and will not do.
 if (has('review')) env.AYQ_SMOKE_REVIEW = '1';
 
+// `--bulk` ticks two Register rows, requires the bar over them to state that
+// count as a count of rows shown and to offer no whole-filter scope while no
+// filter is on (03 §4.8), files them into a category through the bar, and
+// requires the redrawn table to carry it and the bar to be gone (04 A36).
+if (has('bulk')) env.AYQ_SMOKE_BULK = '1';
+
 // `--today` opens Today and requires available funds to be first and the
 // largest figure on the screen — both measured on the drawn window — the
 // reliability boundary stated beside them, Import reachable from there, and

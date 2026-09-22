@@ -373,6 +373,32 @@ jobs:
           }
           Write-Host "and then learned one: $($Matches[1])"
 
+      # Gathering rows in the Register (04 A36; 03 §4.7–§4.9). The bar over
+      # two ticked rows must state that count as a count of rows shown, must
+      # offer no "whole filter" scope while no filter is on, and filing through
+      # it must leave the redrawn table carrying the category and the bar gone.
+      # The capture is taken with three rows ticked again, so the bar is on it.
+      - name: Bulk selection states its scope before it acts
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-bulk-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml `
+            --bulk `
+            --screenshot "${{ runner.temp }}\ayq-desktop-bulk.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'the bulk bar did not hold on the window' }
+          if ($said -notmatch 'bulk: held') {
+            throw 'the run did not check the bulk bar at all'
+          }
+          if ($said -notmatch 'bulk filed as ([^:]+): (\d+) filed') {
+            throw 'the run did not file a selection through the bar'
+          }
+          Write-Host "filed two ticked rows as $($Matches[1]): $($Matches[2])"
+
       # Reports, which is not built. Two things that has to mean, on the
       # packaged application: nothing on the screen that could be read as an
       # answer, and no reason invented for it being empty. The second is the one
@@ -1172,6 +1198,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-accounts.png
             ${{ runner.temp }}\ayq-desktop-today.png
             ${{ runner.temp }}\ayq-desktop-review.png
+            ${{ runner.temp }}\ayq-desktop-bulk.png
             ${{ runner.temp }}\ayq-desktop-reports.png
             ${{ runner.temp }}\ayq-desktop-balance.png
             ${{ runner.temp }}\ayq-desktop-suggest.png
