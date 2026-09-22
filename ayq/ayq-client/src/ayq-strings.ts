@@ -566,6 +566,7 @@ const EN = {
   'accounts.column.statements': 'Statements to',
   'accounts.column.balance': 'Balance',
   'accounts.column.agrees': 'Agrees with the bank',
+  'accounts.column.details': 'Details',
   'accounts.counts.yes': 'Counted',
   'accounts.counts.no': 'Not counted',
   'accounts.statements.none': 'Nothing imported',
@@ -589,6 +590,7 @@ const EN = {
   'accounts.detail.readFrom': 'Read from',
   'accounts.detail.readAt': 'Read on',
   'accounts.detail.counts': 'Counts toward available funds',
+  'accounts.detail.statements': 'Statements through',
   'accounts.detail.balance': 'Balance',
   'accounts.detail.anchor': 'Anchor',
   'accounts.detail.anchor.bank': 'the bank stated it on {date}',
@@ -650,6 +652,7 @@ const EN = {
     'A transfer between a counted and an uncounted account moves money in or ' +
     'out of available funds; it is never income or expense.',
   'settings.accounts.open': 'Open Accounts',
+  'settings.accounts.openOne': 'Open account details',
 
   'detail.none': 'Choose a transaction to see what is behind it.',
   'detail.bankSaid': 'What the bank said',

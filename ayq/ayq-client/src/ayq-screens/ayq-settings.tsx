@@ -43,11 +43,13 @@ export function AyqSettingsScreen({
   onFailure,
   onChanged,
   onOpenAccounts,
+  onOpenAccount,
 }: {
   tab: AyqSettingsTab;
   onFailure(message: string): void;
   onChanged(): void;
   onOpenAccounts(): void;
+  onOpenAccount(accountId: string): void;
 }): ReactNode {
   if (tab === 'appearance') return <AyqAppearanceScreen />;
 
@@ -59,6 +61,7 @@ export function AyqSettingsScreen({
         onFailure={onFailure}
         onChanged={onChanged}
         onOpenAccounts={onOpenAccounts}
+        onOpenAccount={onOpenAccount}
       />
     );
   }

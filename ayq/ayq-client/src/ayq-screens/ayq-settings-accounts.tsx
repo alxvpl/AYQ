@@ -1,9 +1,10 @@
-// Settings → Accounts: one switch, and nothing else (03 §7.6).
+// Settings → Accounts: one switch, and nothing else (03 §7.6, 04 A34).
 //
 // Which balances make up available funds is a setting, so it is here. What each
 // account holds, how far its statements reach and whether AYQ agrees with the
 // bank are facts about the money, so they are on the Accounts screen — and this
-// surface says so rather than showing a second, smaller copy of them.
+// surface says so, and opens that screen for the account in question, rather
+// than showing a second, smaller copy of them.
 
 import { Switch, makeStyles } from '@fluentui/react-components';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
@@ -13,7 +14,6 @@ import type { AyqAccountSummary } from '../ayq-ipc-contract.ts';
 import { ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
-import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
@@ -33,10 +33,13 @@ export function AyqSettingsAccounts({
   onFailure,
   onChanged,
   onOpenAccounts,
+  onOpenAccount,
 }: {
   onFailure(message: string): void;
   onChanged(): void;
   onOpenAccounts(): void;
+  /** Opens the Accounts screen on this one account. */
+  onOpenAccount(accountId: string): void;
 }): ReactNode {
   const styles = useStyles();
   const [accounts, setAccounts] = useState<readonly AyqAccountSummary[]>([]);
@@ -98,10 +101,17 @@ export function AyqSettingsAccounts({
       ),
     },
     {
-      id: 'balance',
-      header: ayqText('accounts.column.balance'),
-      figures: true,
-      cell: account => <AyqFigure cents={account.balanceCents} />,
+      id: 'details',
+      header: ayqText('accounts.column.details'),
+      cell: account => (
+        <AyqButton
+          size="small"
+          mark={`open-account-${account.id}`}
+          onClick={() => onOpenAccount(account.id)}
+        >
+          {ayqText('settings.accounts.openOne')}
+        </AyqButton>
+      ),
     },
   ];
 

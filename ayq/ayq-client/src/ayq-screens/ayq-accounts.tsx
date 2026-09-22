@@ -125,6 +125,17 @@ function AyqAccountDetail({
         </Field>
       )}
 
+      {/* Whether it forms available funds is stated here as a fact about the
+          money; changing it is configuration and stays at Settings → Accounts
+          (04 A34). */}
+      <Field label={ayqText('accounts.detail.counts')}>
+        <span data-ayq-detail-counts={row.countsTowardFunds ? 'yes' : 'no'}>
+          {ayqText(
+            row.countsTowardFunds ? 'accounts.counts.yes' : 'accounts.counts.no',
+          )}
+        </span>
+      </Field>
+
       {/* The two freshness facts, apart, because they are two facts (§6). */}
       <Field label={ayqText('accounts.detail.lastImport')}>
         <span data-ayq-detail-last-import={row.lastImportAt ?? ''}>
@@ -138,6 +149,16 @@ function AyqAccountDetail({
           {row.bankDataThrough === null
             ? ayqText('accounts.detail.bankThrough.none')
             : ayqDate(row.bankDataThrough)}
+        </span>
+      </Field>
+
+      {/* How far the statements AYQ has read reach: coverage, which is
+          neither of the two dates above. */}
+      <Field label={ayqText('accounts.detail.statements')}>
+        <span data-ayq-detail-statements={coverage.toDate ?? ''}>
+          {coverage.toDate === null
+            ? ayqText('accounts.statements.none')
+            : ayqDate(coverage.toDate)}
         </span>
       </Field>
 

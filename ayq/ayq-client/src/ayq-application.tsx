@@ -207,6 +207,10 @@ export function AyqApplication(): ReactNode {
         onFailure={say}
         onChanged={reload}
         onOpenAccounts={() => setDestination('accounts')}
+        onOpenAccount={accountId => {
+          setAccount(accountId);
+          setDestination('accounts');
+        }}
       />
     );
   } else if (destination === 'review') {
