@@ -207,14 +207,26 @@ test('there is one scroller per screen, and no top panel above it', async () => 
     );
   }
 
-  // No top panel (A20): the window is the rail and one column beside it, and
-  // the system title bar is the system's — there is no banner of AYQ's own.
+  // No top panel (A20): the window is the rail and one column beside it.
+  // The title bar is the one thing across the top (A26 as the owner decided
+  // it): the rail's surface, the mark and the name, and nothing else — no
+  // control of AYQ's own, no path, no version.
   const frame = window.container.querySelector('[data-ayq-window]');
   assert.ok(frame);
   assert.equal(
     frame.querySelectorAll('header').length,
     0,
     'the window has a panel across the top',
+  );
+  const titleBar = frame.querySelector('[data-ayq-title-bar]');
+  assert.ok(titleBar, 'there is no title bar in the rail surface');
+  assert.ok(titleBar.querySelector('[data-ayq-mark]'), 'the bar carries no mark');
+  assert.equal(titleBar.textContent?.trim(), ayqText('app.name'));
+  assert.equal(titleBar.querySelectorAll('button, input, select, a').length, 0);
+  // And the host was told which ground to paint the native controls for.
+  assert.ok(
+    window.asked.some(one => one.kind === 'window.ground'),
+    'the host was never told the ground',
   );
   assert.equal(AYQ_METRIC.railWidth, 64);
 

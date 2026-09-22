@@ -250,9 +250,37 @@ async function pickCamtFile(): Promise<AyqPickedFile> {
   return { paths: chosen.canceled ? [] : chosen.filePaths };
 }
 
+/** The native controls' colours for a ground: the rail's surface and ink. */
+function titleBarOverlay(resolved: 'light' | 'dark'): {
+  color: string;
+  symbolColor: string;
+  height: number;
+} {
+  const surface = AYQ_TOKENS[resolved].surface;
+  return {
+    color: surface.rail,
+    symbolColor: surface.railInkOn,
+    height: AYQ_METRIC.titleBarHeight,
+  };
+}
+
+/** What the controls were last painted for; read by the acceptance run. */
+let titleBarPainted: 'light' | 'dark' | null = null;
+
 async function ask(request: AyqRequest): Promise<AyqResponse> {
-  // The one request the host answers itself, because it is about this window
-  // and not about the budget. Everything else is relayed untouched.
+  // The two requests the host answers itself, because they are about this
+  // window and not about the budget. Everything else is relayed untouched.
+  if (request?.kind === 'window.ground') {
+    const resolved = request.resolved === 'dark' ? 'dark' : 'light';
+    let applied = false;
+    if (process.platform === 'win32' && mainWindow !== null) {
+      const { color, symbolColor } = titleBarOverlay(resolved);
+      mainWindow.setTitleBarOverlay({ color, symbolColor });
+      titleBarPainted = resolved;
+      applied = true;
+    }
+    return { id: request.id, ok: true, kind: 'window.ground', result: { applied } };
+  }
   if (request?.kind === 'import.pick') {
     try {
       return {
@@ -367,6 +395,15 @@ function createWindow(): BrowserWindow {
     // The ground the token module defines, so that the frame a person sees
     // before the first paint is the one the application then paints.
     backgroundColor: AYQ_TOKENS.light.surface.ground,
+    // The title bar is drawn by the renderer in the rail's surface, and the
+    // window controls stay Windows' own, painted over it in the rail's ink
+    // (04 A26 as the owner decided it). Repainted whenever the ground changes.
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: titleBarOverlay('light'),
+        }
+      : {}),
     // Mica where Windows has it (04 A14), and nothing pretending to be it
     // where it does not. Never behind figures: it is the window's background
     // and the rail's, and every pane the figures sit on is solid.
@@ -2999,12 +3036,18 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
           const node = document.querySelector('[data-ayq-ground]');
           if (!node) return JSON.stringify({ chosen: '', resolved: '' });
           const style = getComputedStyle(node);
+          const bar = document.querySelector('[data-ayq-title-bar]');
+          const rgb = bar ? getComputedStyle(bar).backgroundColor : '';
+          const hex = rgb.startsWith('rgb(')
+            ? '#' + rgb.slice(4, -1).split(',').map(one => Number(one).toString(16).padStart(2, '0')).join('')
+            : rgb;
           return JSON.stringify({
             chosen: node.dataset.ayqGround,
             resolved: node.dataset.ayqGroundResolved,
             pane: style.getPropertyValue('--ayq-pane').trim(),
             accent: style.getPropertyValue('--ayq-accent').trim(),
             painted: style.backgroundColor,
+            titleBar: hex,
           });
         })()`),
       ),
@@ -3014,6 +3057,7 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
       pane?: string;
       accent?: string;
       painted?: string;
+      titleBar?: string;
     };
 
     if (seen.chosen !== ground) {
@@ -3034,6 +3078,13 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
     }
     if (!seen.painted || seen.painted === 'rgba(0, 0, 0, 0)') {
       return `${ground} painted nothing`;
+    }
+    // The bar is the rail's surface, live, and the native controls followed.
+    if (seen.titleBar !== want.surface.rail) {
+      return `${ground} drew the title bar ${seen.titleBar} rather than the rail's ${want.surface.rail}`;
+    }
+    if (titleBarPainted !== seen.resolved) {
+      return `${ground} left the window controls painted for ${titleBarPainted ?? 'nothing'}`;
     }
     process.stdout.write(
       `[ayq-smoke] ground ${ground} -> ${seen.resolved}, panes ${seen.pane}, ` +

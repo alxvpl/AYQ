@@ -47,7 +47,7 @@ const ICON: Record<AyqDestination, ReactNode> = {
 
 const useStyles = makeStyles({
   rail: {
-    gridRow: '1 / span 2',
+    gridRow: '2 / span 2',
     width: `${AYQ_METRIC.railWidth}px`,
     backgroundColor: 'var(--ayq-rail)',
     display: 'flex',

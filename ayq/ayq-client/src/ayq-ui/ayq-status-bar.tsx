@@ -19,6 +19,7 @@ import type {
 const useStyles = makeStyles({
   bar: {
     gridColumn: '2',
+    gridRow: '3',
     height: 'var(--ayq-status-height)',
     display: 'flex',
     alignItems: 'center',

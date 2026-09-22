@@ -275,6 +275,8 @@ export const AYQ_TOKENS: Record<AyqGroundResolved, AyqTokenSet> = {
 export const AYQ_METRIC = {
   /** 04 A20. */
   railWidth: 64,
+  /** The title bar, in the rail's surface, with the native controls on it. */
+  titleBarHeight: 32,
   /** 04 A20: a status bar, carrying no version number. */
   statusHeight: 28,
   /** 04 A4: the detail pane beside the table. */

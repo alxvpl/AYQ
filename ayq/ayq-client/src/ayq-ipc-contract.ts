@@ -1404,6 +1404,7 @@ export type AyqResults = {
   spending: AyqSpending;
   'counterparties.unfiled': AyqUnfiled[];
   'import.pick': AyqPickedFile;
+  'window.ground': { applied: boolean };
   'import.camt': AyqImportSummary;
   'plan.list': AyqPlan;
   'plan.save': AyqPlan;
@@ -1663,6 +1664,15 @@ export type AyqRequestBody =
   | { kind: 'spending'; filter?: AyqSpendingFilter }
   | { kind: 'counterparties.unfiled'; filter?: AyqSpendingFilter }
   | { kind: 'import.pick' }
+  | {
+      /**
+       * The ground the window resolved to, told to the host so the native
+       * title-bar controls are painted to match (04 A26). Answered by the
+       * host, not the engine: it is about this window, not the budget.
+       */
+      kind: 'window.ground';
+      resolved: 'light' | 'dark';
+    }
   | { kind: 'import.camt'; paths: string[] }
   | {
       /**
