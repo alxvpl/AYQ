@@ -2532,7 +2532,6 @@ async function todayShown(window: BrowserWindow): Promise<string> {
     'today-funds',
     'today-lasts',
     'today-movements',
-    'today-movements-detail',
     'today-waiting',
   ];
   if (seen.order.join(',') !== wanted.join(',')) {
