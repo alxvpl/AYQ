@@ -68,6 +68,8 @@ await build({
   platform: 'node',
   target: 'node22',
   jsx: 'automatic',
+  // The mark's vector master comes in as text and is drawn inline.
+  loader: { '.svg': 'text' },
   // React's development build, on purpose: it is the one whose `act` waits
   // for a render to settle, and a test that asserts on a half-rendered tree
   // is worse than no test. The shipped bundle is built the other way.

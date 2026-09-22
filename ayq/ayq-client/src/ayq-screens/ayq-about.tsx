@@ -21,6 +21,7 @@ import { ayqAsk } from '../ayq-bridge.ts';
 import type { AyqAbout } from '../ayq-ipc-contract.ts';
 import { ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
+import { AyqMark } from '../ayq-brand/ayq-mark.tsx';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 
@@ -38,6 +39,11 @@ const useStyles = makeStyles({
     fontSize: 'var(--ayq-size-heading)',
   },
   tagline: { margin: '0', color: 'var(--ayq-ink-quiet)' },
+  identity: {
+    display: 'flex',
+    gap: `${AYQ_METRIC.space.wide}px`,
+    alignItems: 'center',
+  },
   facts: {
     display: 'grid',
     gridTemplateColumns: '170px minmax(0, 1fr)',
@@ -98,9 +104,13 @@ export function AyqAboutScreen({
   return (
     <AyqPane mark="about">
       <div className={styles.body} data-ayq-about-screen="">
-        <div>
-          <h2 className={styles.name}>{about.productName}</h2>
-          <p className={styles.tagline}>{about.tagline}</p>
+        <div className={styles.identity}>
+          {/* The mark, from the same master the icon is built from (06 §3.6). */}
+          <AyqMark size={48} />
+          <div>
+            <h2 className={styles.name}>{about.productName}</h2>
+            <p className={styles.tagline}>{about.tagline}</p>
+          </div>
         </div>
 
         <dl className={styles.facts}>
