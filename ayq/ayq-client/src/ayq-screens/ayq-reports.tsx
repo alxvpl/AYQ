@@ -161,10 +161,12 @@ export function AyqReportsScreen({
       header: ayqText('reports.column.category'),
       cell: row =>
         row.categoryId === null ? (
-          <AyqStateChip
-            state="uncategorised"
-            label={ayqText('register.category.none')}
-          />
+          <span data-ayq-report-transactions={String(row.transactions)}>
+            <AyqStateChip
+              state="uncategorised"
+              label={ayqText('register.category.none')}
+            />
+          </span>
         ) : (
           <span
             className={styles.link}

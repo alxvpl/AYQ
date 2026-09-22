@@ -398,6 +398,7 @@ export function AyqTodayScreen({
                 state="operational"
                 ok={accounts.reliableTo !== null}
                 label={coverage}
+                wrap
               />
               <AyqButton
                 mark="today-accounts"

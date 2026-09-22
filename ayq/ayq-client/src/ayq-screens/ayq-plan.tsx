@@ -26,13 +26,14 @@ import {
 
 import { ayqAsk } from '../ayq-bridge.ts';
 import type { AyqPlanSheet, AyqPlanSheetRow } from '../ayq-ipc-contract.ts';
-import { ayqCount, ayqMonthName, ayqText } from '../ayq-strings.ts';
+import { ayqCount, ayqMoney, ayqMonthName, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorder } from '../ayq-ui/ayq-css.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
+import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqScreenActions } from '../ayq-ui/ayq-screen.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
@@ -56,10 +57,25 @@ const useStyles = makeStyles({
   name: { fontWeight: 600 },
   quiet: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
   suggestion: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: '2px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: `${AYQ_METRIC.space.medium}px`,
+    flexWrap: 'wrap',
+  },
+  rowButton: {
+    height: '24px',
+    minHeight: '24px',
+    padding: `0 ${AYQ_METRIC.space.medium}px`,
+    backgroundColor: 'transparent',
+    color: 'var(--ayq-ink-quiet)',
+    fontWeight: 400,
+    ...ayqBorder('transparent'),
+    ':hover': {
+      backgroundColor: 'var(--ayq-row-hover)',
+      color: 'var(--ayq-ink)',
+      ...ayqBorder('var(--ayq-control-edge)'),
+    },
   },
   totals: {
     display: 'flex',
@@ -274,15 +290,27 @@ export function AyqPlanScreen({
             data-ayq-suggestion={String(suggestion.suggestedCents)}
             data-ayq-suggestion-months={String(suggestion.monthsUsed)}
           >
-            <AyqFigure cents={suggestion.suggestedCents} />
-            <span className={styles.quiet}>
+            {/* A suggestion that differs from the plan is a chip; one that
+                agrees is a plain figure (template r003). The basis is said
+                once, in the column's heading. */}
+            {suggestion.suggestedCents === row.planCents ? (
+              <span className={styles.quiet}>
+                <AyqFigure cents={suggestion.suggestedCents} />
+              </span>
+            ) : (
+              <AyqStateChip
+                state="suggested"
+                label={ayqMoney(suggestion.suggestedCents)}
+              />
+            )}
+            <span className={styles.quiet} data-ayq-suggestion-basis={String(suggestion.monthsUsed)}>
               {ayqText('plan.suggestion.basis', {
                 months: ayqCount(suggestion.monthsUsed),
               })}
             </span>
             {sheet.editable ? (
               <AyqButton
-                size="small"
+                className={styles.rowButton}
                 mark={`plan-use-${row.categoryId}`}
                 onClick={() => use({ categoryId: row.categoryId })}
               >

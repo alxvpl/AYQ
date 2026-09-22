@@ -35,6 +35,7 @@ const useStyles = makeStyles({
     fontSize: AYQ_TYPE.size.caption,
   },
   tick: { fontSize: AYQ_TYPE.size.caption },
+  wrap: { whiteSpace: 'normal', alignItems: 'flex-start' },
   confirmed: {
     color: 'var(--ayq-state-confirmed-fg)',
     backgroundColor: 'var(--ayq-state-confirmed-bg)',
@@ -73,16 +74,19 @@ export function AyqStateChip({
   state,
   label,
   ok = false,
+  wrap = false,
 }: {
   state: AyqStateName;
   label: string;
   /** An operational fact that holds carries a tick before its word. */
   ok?: boolean;
+  /** A long operational sentence may wrap; a state never does. */
+  wrap?: boolean;
 }): ReactNode {
   const styles = useStyles();
   return (
     <span
-      className={mergeClasses(styles.chip, styles[state])}
+      className={mergeClasses(styles.chip, styles[state], wrap ? styles.wrap : undefined)}
       data-ayq-state={state}
     >
       {state === 'rule' ? (

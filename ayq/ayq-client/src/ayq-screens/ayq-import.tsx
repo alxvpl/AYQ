@@ -288,8 +288,9 @@ export function AyqImportScreen({
         </div>
       ))}
 
+      {wanted === null ? null : (
       <AyqPane mark="import">
-        {wanted === null ? null : (
+        {(
           <AyqBalanceForm
             title={ayqText('balance.set.title')}
             accountName={wanted.accountName}
@@ -319,6 +320,7 @@ export function AyqImportScreen({
           />
         )}
       </AyqPane>
+      )}
 
       <AyqPane
         title={ayqText('import.history')}

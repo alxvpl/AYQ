@@ -307,45 +307,6 @@ export function AyqSettingsCategories({
         ),
     },
     {
-      id: 'actions',
-      header: '',
-      cell: row =>
-        renaming?.id === row.id ? null : (
-          <span className={styles.rowActions} data-ayq-cell="actions">
-            <AyqButton
-              className={styles.rowButton}
-              mark={`category-rename-${row.id}`}
-              onClick={() => {
-                setSaid(null);
-                setRenaming({ id: row.id, name: row.name });
-              }}
-            >
-              {ayqText('categories.rename')}
-            </AyqButton>
-            <AyqButton
-              className={styles.rowButton}
-              mark={`category-move-${row.id}`}
-              onClick={() => {
-                setSaid(null);
-                setMoving(moving === row.id ? null : row.id);
-              }}
-            >
-              {ayqText('categories.move')}
-            </AyqButton>
-            <AyqButton
-              className={mergeClasses(styles.rowButton, styles.danger)}
-              mark={`category-remove-${row.id}`}
-              onClick={() => {
-                setSaid(null);
-                setRemoving(removing === row.id ? null : row.id);
-              }}
-            >
-              {ayqText('categories.remove')}
-            </AyqButton>
-          </span>
-        ),
-    },
-    {
       id: 'group',
       header: ayqText('categories.column.group'),
       cell: row =>
@@ -383,6 +344,45 @@ export function AyqSettingsCategories({
             : ayqText('categories.kind.expense')}
         </span>
       ),
+    },
+    {
+      id: 'actions',
+      header: '',
+      cell: row =>
+        renaming?.id === row.id ? null : (
+          <span className={styles.rowActions} data-ayq-cell="actions">
+            <AyqButton
+              className={styles.rowButton}
+              mark={`category-rename-${row.id}`}
+              onClick={() => {
+                setSaid(null);
+                setRenaming({ id: row.id, name: row.name });
+              }}
+            >
+              {ayqText('categories.rename')}
+            </AyqButton>
+            <AyqButton
+              className={styles.rowButton}
+              mark={`category-move-${row.id}`}
+              onClick={() => {
+                setSaid(null);
+                setMoving(moving === row.id ? null : row.id);
+              }}
+            >
+              {ayqText('categories.move')}
+            </AyqButton>
+            <AyqButton
+              className={mergeClasses(styles.rowButton, styles.danger)}
+              mark={`category-remove-${row.id}`}
+              onClick={() => {
+                setSaid(null);
+                setRemoving(removing === row.id ? null : row.id);
+              }}
+            >
+              {ayqText('categories.remove')}
+            </AyqButton>
+          </span>
+        ),
     },
   ];
 
