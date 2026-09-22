@@ -1055,7 +1055,7 @@ async function planShown(
       await window.webContents.executeJavaScript(`(() => {
         const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
         const row = rows.find(one => {
-          const cell = one.querySelector('[data-ayq-cell="category"]');
+          const cell = one.querySelector('[data-ayq-category-name]') || one.querySelector('[data-ayq-cell="category"]');
           return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
         });
         if (!row) return 'no such category on the sheet';
@@ -1088,7 +1088,7 @@ async function planShown(
         await window.webContents.executeJavaScript(`(() => {
           const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
           const row = rows.find(one => {
-            const cell = one.querySelector('[data-ayq-cell="category"]');
+            const cell = one.querySelector('[data-ayq-category-name]') || one.querySelector('[data-ayq-cell="category"]');
             return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
           });
           if (!row) return -1;

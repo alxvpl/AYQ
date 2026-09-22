@@ -192,7 +192,9 @@ export function AyqPlanScreen({
       header: ayqText('plan.column.category'),
       cell: row => (
         <span data-ayq-cell="category" data-ayq-category={row.categoryId}>
-          <span className={styles.name}>{row.categoryName}</span>{' '}
+          <span className={styles.name} data-ayq-category-name="">
+            {row.categoryName}
+          </span>{' '}
           <span className={styles.quiet}>{row.groupName}</span>
         </span>
       ),
