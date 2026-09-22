@@ -1947,6 +1947,18 @@ async function reportsShown(window: BrowserWindow): Promise<string> {
   if (total < seen.firstCount) {
     return 'the Register filter reached from Reports is not the filter Reports stated';
   }
+  // Leave the Register as it was found: what runs after this reads it whole.
+  await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-action=\"clear-filters\"]')?.click(); true",
+  );
+  const cleared = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!document.querySelector('[data-ayq-screen=\"register\"] [data-ayq-filter]')",
+    )) === true;
+  const clearBy = Date.now() + 30_000;
+  while (Date.now() < clearBy && !(await cleared())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
   return '';
 }
 
