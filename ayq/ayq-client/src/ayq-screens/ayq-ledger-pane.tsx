@@ -257,6 +257,8 @@ export function AyqLedgerPane({
               })();
             }}
             onShowTheRule={onShowTheRule}
+            onRuleChanged={() => reload()}
+            onFailure={onFailure}
           />
         </AyqPane>
       }

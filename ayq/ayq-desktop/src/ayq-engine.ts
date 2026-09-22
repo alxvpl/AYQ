@@ -90,12 +90,14 @@ import { ayqRecurring } from './ayq-recurring.ts';
 import {
   ayqApplyFiling,
   ayqApplyRules,
+  ayqCorrectRule,
   ayqFileCounterparty,
   ayqForgetRule,
   ayqKeyOfTransaction,
   ayqPendingForCounterparty,
   ayqRecordDecision,
   ayqRememberRule,
+  ayqRuleImpact,
   ayqRules,
 } from './ayq-rules.ts';
 import { ayqSettle } from './ayq-settle.ts';
@@ -744,6 +746,22 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
 
     case 'rules.list':
       return { id, ok: true, kind: 'rules.list', result: ayqRules(dataDir) };
+
+    case 'rules.impact':
+      return {
+        id,
+        ok: true,
+        kind: 'rules.impact',
+        result: await ayqRuleImpact(dataDir, request.ruleId),
+      };
+
+    case 'rules.correct':
+      return {
+        id,
+        ok: true,
+        kind: 'rules.correct',
+        result: await ayqCorrectRule(dataDir, request.ruleId, request.categoryId),
+      };
 
     case 'rules.remove':
       return {

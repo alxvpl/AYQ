@@ -405,8 +405,29 @@ const EN = {
   'rules.column.counterparty': 'Counterparty',
   'rules.column.category': 'Files into',
   'rules.column.since': 'Learned',
-  'rules.column.remove': 'Forget',
-  'rules.remove': 'Forget this rule',
+  'rules.column.inspect': 'Inspect',
+  'rules.inspect': 'Inspect…',
+  'rules.card.stands': '{counterparty} files into {category}, learned {date}.',
+  'rules.card.filed': 'It has filed {filed} transactions.',
+  'rules.card.byHand':
+    '{byHand} of this counterparty’s transactions were filed by hand and are ' +
+    'outside its reach.',
+  'rules.card.correct': 'Correct…',
+  'rules.card.remove': 'Remove…',
+  'rules.card.cancel': 'Leave it as it is',
+  'rules.card.category': 'Files into',
+  'rules.card.correctConsequence':
+    'Correcting re-files the {filed} transactions the rule filed into ' +
+    '{category}. The {byHand} you filed yourself stay as they are, and later ' +
+    'imports follow the corrected rule.',
+  'rules.card.correctApply': 'Correct the rule',
+  'rules.card.removeConsequence':
+    'Removing stops the rule applying to later imports. The {filed} ' +
+    'transactions it filed stay where they are: nothing is re-filed.',
+  'rules.card.removeConfirm': 'Remove the rule',
+  'rules.corrected':
+    'The rule now files {counterparty} into {category}; {filed} transactions ' +
+    'follow it.',
   'rules.apply': 'Apply the rules now',
   'rules.applied': '{count} transactions filed.',
   'rules.removed': 'That rule is gone. What it filed stays where it is.',

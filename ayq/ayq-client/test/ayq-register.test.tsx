@@ -180,6 +180,10 @@ function engineOver(rows: AyqLedgerRow[], total = rows.length) {
         return { row: ROWS[1], counterpartyKey: 'TESTFUEL', counterpartyName: 'TESTFUEL', pendingForCounterparty: 0 };
       case 'alias.create':
         return { aliases: [], recategorised: 0 };
+      case 'rules.impact':
+        return { rule: DETAIL.rule, filed: 4, byHand: 0, categoryExists: true };
+      case 'rules.remove':
+        return [];
       case 'settings.get':
       case 'settings.set':
         return { ground: 'light' };
@@ -398,6 +402,42 @@ test('choosing a row opens the evidence, the provenance and the decisions', asyn
   );
   assert.match(said, /Utilities/, 'the decision that was overruled is not shown');
 
+  await window.close();
+});
+
+test('the rule that filed a row is named there, with what it did, and can be removed there', async () => {
+  const window = await ayqOpenWindow(engineOver(ROWS));
+  await window.render(screen());
+  await ayqPress(
+    window.container.querySelector('[data-ayq-table="register"] tbody tr[data-ayq-row="t-2"]'),
+  );
+  const pane = window.container.querySelector('[data-ayq-detail="t-2"]');
+  assert.ok(pane);
+  const card = pane.querySelector('[data-ayq-rule-card="rule-1"]');
+  assert.ok(card, 'the rule is not inspectable where it is seen (A7)');
+  assert.match(card.textContent ?? '', /TESTFUEL files into Groceries/);
+  assert.match(
+    card.querySelector('[data-ayq-rule-impact]')?.textContent ?? '',
+    /filed 4 transactions/,
+  );
+
+  await ayqPress(card.querySelector('[data-ayq-action="rule-remove"]'));
+  assert.match(
+    card.querySelector('[data-ayq-rule-remove-consequence]')?.textContent ?? '',
+    /nothing is re-filed/,
+  );
+  assert.equal(window.asked.filter(one => one.kind === 'rules.remove').length, 0);
+  await ayqPress(card.querySelector('[data-ayq-action="rule-remove-confirm"]'));
+  assert.deepEqual(
+    window.asked.filter(one => one.kind === 'rules.remove').map(one => one.ruleId),
+    ['rule-1'],
+  );
+  // Removing the rule did not re-file the row, or change anything else.
+  assert.ok(
+    !window.asked.some(
+      one => one.kind === 'transaction.categorise' || one.kind === 'rules.correct',
+    ),
+  );
   await window.close();
 });
 

@@ -22,6 +22,7 @@ import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorderTop } from '../ayq-ui/ayq-css.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
+import { AyqRuleCard } from './ayq-rule-card.tsx';
 
 const useStyles = makeStyles({
   pane: { padding: `${AYQ_METRIC.space.screen}px` },
@@ -96,6 +97,8 @@ export function AyqTransactionDetailPane({
   onCorrectCounterparty,
   onShowTheRule,
   onNeedCounterparties,
+  onRuleChanged,
+  onFailure,
 }: {
   detail: AyqTransactionDetail | null;
   categories: readonly AyqCategory[];
@@ -105,6 +108,9 @@ export function AyqTransactionDetailPane({
   onCorrectCounterparty(counterpartyKey: string): void;
   onShowTheRule(): void;
   onNeedCounterparties(): void;
+  /** The rule that files this row was corrected or removed here (04 A7). */
+  onRuleChanged(said: string): void;
+  onFailure(message: string): void;
 }): ReactNode {
   const styles = useStyles();
   const [correcting, setCorrecting] = useState(false);
@@ -270,14 +276,18 @@ export function AyqTransactionDetailPane({
         </AyqButton>
       </div>
 
-      <p className={styles.line}>
-        {rule === null
-          ? ayqText('detail.rule.none')
-          : ayqText('detail.rule.stands', {
-              counterparty: rule.counterpartyKey,
-              category: rule.categoryName,
-            })}
-      </p>
+      {/* The rule that files this counterparty is inspected, corrected and
+          removed where it is seen, with the consequence stated first (A7). */}
+      {rule === null ? (
+        <p className={styles.line}>{ayqText('detail.rule.none')}</p>
+      ) : (
+        <AyqRuleCard
+          rule={rule}
+          categories={categories}
+          onFailure={onFailure}
+          onDone={onRuleChanged}
+        />
+      )}
 
       {!correcting ? null : (
         <div className={styles.form} data-ayq-correct-counterparty="">

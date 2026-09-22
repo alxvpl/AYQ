@@ -607,6 +607,32 @@ export type AyqCategoryRule = {
   createdAt: string;
 };
 
+/**
+ * What a rule has done, counted now (04 A7, 03 §4.4).
+ *
+ * Stated wherever the rule is seen, before correction or removal is offered:
+ * a person deciding about a rule is deciding about these transactions too, and
+ * about the ones the rule may not touch.
+ */
+export type AyqRuleImpact = {
+  rule: AyqCategoryRule;
+  /** Transactions the rule filed and that still stand as it filed them. */
+  filed: number;
+  /** Transactions of this counterparty filed by hand — outside its reach. */
+  byHand: number;
+  /** False when the budget lacks the category: the rule files nothing. */
+  categoryExists: boolean;
+};
+
+/** What correcting a rule came to. */
+export type AyqRuleCorrected = {
+  rules: AyqCategoryRule[];
+  rule: AyqCategoryRule;
+  /** Transactions that now stand as the corrected rule files them. */
+  filed: number;
+  byHand: number;
+};
+
 export type AyqRecurring = {
   /** The canonical counterparty key. */
   key: string;
@@ -1343,6 +1369,8 @@ export type AyqResults = {
   'categories.impact': AyqCategoryImpact;
   'categories.remove': AyqCategoryRemoved;
   'rules.list': AyqCategoryRule[];
+  'rules.impact': AyqRuleImpact;
+  'rules.correct': AyqRuleCorrected;
   'rules.remove': AyqCategoryRule[];
   'rules.apply': { categorised: number };
   'recurring.list': AyqRecurring[];
@@ -1556,7 +1584,29 @@ export type AyqRequestBody =
       destination?: AyqCategoryDestination;
     }
   | { kind: 'rules.list' }
-  | { kind: 'rules.remove'; ruleId: string }
+  | {
+      /** What a rule has filed, and what it may not touch, counted now. */
+      kind: 'rules.impact';
+      ruleId: string;
+    }
+  | {
+      /**
+       * Changes where a rule files, and re-files what the rule itself filed
+       * (03 §4.4). Never a transaction filed by hand: a manual decision
+       * outranks the rule, before and after the correction.
+       */
+      kind: 'rules.correct';
+      ruleId: string;
+      categoryId: string;
+    }
+  | {
+      /**
+       * Removes a rule. It stops applying to later imports; what it already
+       * filed stays where it is, and nothing is re-filed (04 A7).
+       */
+      kind: 'rules.remove';
+      ruleId: string;
+    }
   | { kind: 'rules.apply' }
   | { kind: 'recurring.list' }
   | { kind: 'counterparties.list'; filter?: AyqCounterpartyFilter }
