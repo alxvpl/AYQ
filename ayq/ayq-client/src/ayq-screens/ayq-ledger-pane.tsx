@@ -50,6 +50,7 @@ export function AyqLedgerPane({
   onLoaded,
   reloadToken,
   selection,
+  onOpenCounterparty,
 }: {
   filter: AyqLedgerFilter;
   mark: string;
@@ -66,6 +67,8 @@ export function AyqLedgerPane({
   reloadToken?: number;
   /** Rows can be gathered for a bulk decision (04 A36); the Register's own. */
   selection?: AyqSelection;
+  /** The counterparty's page can be opened from here (04 A37). */
+  onOpenCounterparty?(counterpartyKey: string): void;
 }): ReactNode {
   const [ledger, setLedger] = useState<AyqLedger | null>(null);
   const [categories, setCategories] = useState<readonly AyqCategory[]>([]);
@@ -259,6 +262,7 @@ export function AyqLedgerPane({
             onShowTheRule={onShowTheRule}
             onRuleChanged={() => reload()}
             onFailure={onFailure}
+            onManageCounterparty={onOpenCounterparty}
           />
         </AyqPane>
       }

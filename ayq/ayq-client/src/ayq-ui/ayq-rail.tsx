@@ -17,6 +17,7 @@ import {
   Settings24Regular,
   TableSimple24Regular,
   TaskListLtr24Regular,
+  ContactCard24Regular,
   TextBulletListSquare24Regular,
 } from '@fluentui/react-icons';
 import { Fragment, type ReactNode } from 'react';
@@ -34,6 +35,7 @@ import { AYQ_NO_BORDER } from './ayq-css.ts';
 const ICON: Record<AyqDestination, ReactNode> = {
   today: <Home24Regular />,
   accounts: <BuildingBank24Regular />,
+  counterparty: <ContactCard24Regular />,
   register: <TextBulletListSquare24Regular />,
   review: <TaskListLtr24Regular />,
   upcoming: <CalendarClock24Regular />,

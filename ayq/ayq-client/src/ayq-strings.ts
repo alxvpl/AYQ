@@ -24,6 +24,7 @@ const EN = {
 
   'destination.today': 'Today',
   'destination.accounts': 'Accounts',
+  'destination.counterparty': 'Counterparty',
   'destination.register': 'Register',
   'destination.review': 'Review',
   'destination.upcoming': 'Upcoming',
@@ -278,6 +279,54 @@ const EN = {
   'today.open.upcoming': 'Open Upcoming',
   'today.open.review': 'Open Review',
   'today.open.register': 'Open Register',
+  'detail.action.manageCounterparty': 'Manage counterparty…',
+  'review.manage': 'Manage counterparty…',
+  'counterparty.back': 'Back',
+  'counterparty.none': 'No counterparty in this budget has that key.',
+  'counterparty.seen': 'Seen {first} to {last} · {count} transactions',
+  'counterparty.name': 'Display name',
+  'counterparty.name.owner':
+    'Your name for it. What the bank printed is kept below, unchanged.',
+  'counterparty.name.automatic':
+    'The name the statement gave. You can call it something else; the ' +
+    'statement text stays as evidence.',
+  'counterparty.name.edit': 'Rename…',
+  'counterparty.name.save': 'Save name',
+  'counterparty.name.clear': 'Use the statement’s name',
+  'counterparty.renamed':
+    'This counterparty is now called {name} everywhere. What the bank ' +
+    'printed is kept as it was.',
+  'counterparty.renamed.cleared': 'The statement’s own name is back.',
+  'counterparty.cancel': 'Leave it as it is',
+  'counterparty.evidence': 'What the bank printed',
+  'counterparty.evidence.note':
+    'One line per imported name variant, kept as evidence. A display name ' +
+    'never replaces it.',
+  'counterparty.variant.byHand': 'By your decision',
+  'counterparty.variant.byStatement': 'By the statement',
+  'counterparty.variant.undo': 'Undo this identity decision…',
+  'counterparty.variant.undo.consequence':
+    'The {count} transactions printed as {variant} go back to being their ' +
+    'own counterparty, {key}. Every record is kept.',
+  'counterparty.variant.undo.confirm': 'Undo it',
+  'counterparty.variant.undone':
+    '{variant} is its own counterparty again; {count} transactions moved.',
+  'counterparty.rules': 'Rules that mention it',
+  'counterparty.rules.none':
+    'No learned rule files this counterparty. One is learned on Review, or ' +
+    'when a transaction is categorised and you choose to remember it.',
+  'counterparty.identity': 'Identity',
+  'counterparty.merge': 'This is really another counterparty…',
+  'counterparty.merge.search': 'Find a counterparty',
+  'counterparty.merge.choose': 'Choose the counterparty this really is',
+  'counterparty.merge.consequence':
+    'Every one of the {variants} statement variants of {name} becomes ' +
+    '{target}: {count} transactions move, and every record is kept. A merge ' +
+    'is undone only by a further identity decision — removing those ' +
+    'variants from {target}, one at a time, on its page.',
+  'counterparty.merge.confirm': 'Merge into {target}',
+  'counterparty.merged': '{name} is now {target}; {moved} transactions moved.',
+  'counterparty.recent': 'Recent transactions',
   'today.open.accounts': 'Account details',
   'today.open.import': 'Import statements',
 

@@ -712,6 +712,8 @@ export type AyqCounterpartyVariant = {
   lastDate: string;
   /** True when this variant is under this counterparty because a person said so. */
   aliased: boolean;
+  /** The identity decision that put it here, when one did — what undoes it. */
+  aliasId: string | null;
 };
 
 export type AyqCounterpartyDetail = {
@@ -721,6 +723,23 @@ export type AyqCounterpartyDetail = {
   recurring: AyqRecurring | null;
   /** The newest transactions of this counterparty. */
   recent: AyqLedgerRow[];
+  /** The learned rules keyed on it (03 §4.1). */
+  rules: AyqCategoryRule[];
+  /** True when `counterparty.name` is the owner's; the statement's stays in variants. */
+  ownerNamed: boolean;
+};
+
+/** What merging one counterparty into another came to (04 A37). */
+export type AyqCounterpartyMerged = {
+  /** The survivor. */
+  counterpartyKey: string;
+  counterpartyName: string;
+  /** Identity decisions written: one per statement variant of the merged one. */
+  variants: number;
+  /** Transactions whose payee moved. */
+  moved: number;
+  rulesMoved: number;
+  rulesRemoved: number;
 };
 
 /**
@@ -1376,6 +1395,7 @@ export type AyqResults = {
   'recurring.list': AyqRecurring[];
   'counterparties.list': AyqCounterpartyList;
   'counterparty.detail': AyqCounterpartyDetail;
+  'counterparty.merge': AyqCounterpartyMerged;
   'aliases.list': AyqAliasRecord[];
   'alias.create': AyqAliasApplied;
   'alias.remove': AyqAliasApplied;
@@ -1611,6 +1631,18 @@ export type AyqRequestBody =
   | { kind: 'recurring.list' }
   | { kind: 'counterparties.list'; filter?: AyqCounterpartyFilter }
   | { kind: 'counterparty.detail'; key: string }
+  | {
+      /**
+       * Says that one counterparty is really another (04 A37; 03 §3.6).
+       *
+       * One alias per statement variant of `counterpartyKey`, into `intoKey`;
+       * every transaction moves and every record is kept. Reversible only by
+       * removing those aliases, one at a time, from the survivor.
+       */
+      kind: 'counterparty.merge';
+      counterpartyKey: string;
+      intoKey: string;
+    }
   | { kind: 'aliases.list' }
   | {
       /**

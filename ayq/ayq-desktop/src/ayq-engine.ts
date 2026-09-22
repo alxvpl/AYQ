@@ -100,6 +100,7 @@ import {
   ayqRuleImpact,
   ayqRules,
 } from './ayq-rules.ts';
+import { ayqMergeCounterparty } from './ayq-merge.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import {
   AYQ_COUNTERPARTY_FOLD,
@@ -802,6 +803,18 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'counterparty.detail',
         result: await ayqCounterpartyDetail(dataDir, request.key),
+      };
+
+    case 'counterparty.merge':
+      return {
+        id,
+        ok: true,
+        kind: 'counterparty.merge',
+        result: await ayqMergeCounterparty(
+          dataDir,
+          request.counterpartyKey,
+          request.intoKey,
+        ),
       };
 
     case 'aliases.list':

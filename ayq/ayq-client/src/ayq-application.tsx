@@ -32,6 +32,7 @@ import type {
   AyqSummary,
 } from './ayq-ipc-contract.ts';
 import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
+import { AyqCounterpartyScreen } from './ayq-screens/ayq-counterparty.tsx';
 import { AyqPlanScreen } from './ayq-screens/ayq-plan.tsx';
 import { AyqReportsScreen } from './ayq-screens/ayq-reports.tsx';
 import { AyqReviewScreen } from './ayq-screens/ayq-review.tsx';
@@ -77,6 +78,11 @@ export function AyqApplication(): ReactNode {
   const [settingsTab, setSettingsTab] = useState<AyqSettingsTab>('appearance');
   /** Which account's detail Today opened, if it opened one (7 §7.3). */
   const [account, setAccount] = useState<string | null>(null);
+  /** Which counterparty's page is open, and where it was opened from (A37). */
+  const [counterparty, setCounterparty] = useState<{
+    key: string;
+    from: AyqDestination;
+  } | null>(null);
   const [status, setStatus] = useState<AyqEngineStatus | null>(null);
   const [summary, setSummary] = useState<AyqSummary | null>(null);
   // Two different things, and conflating them would be a defect rather than an
@@ -194,6 +200,10 @@ export function AyqApplication(): ReactNode {
           setDestination('settings');
           setSettingsTab('rules');
         }}
+        onOpenCounterparty={key => {
+          setCounterparty({ key, from: 'register' });
+          setDestination('counterparty');
+        }}
         onFailure={say}
         onLoaded={ledgerLoaded}
       />
@@ -221,7 +231,29 @@ export function AyqApplication(): ReactNode {
           setFilter({ counterpartyKey });
           setDestination('register');
         }}
+        onManage={key => {
+          setCounterparty({ key, from: 'review' });
+          setDestination('counterparty');
+        }}
         onChanged={reload}
+      />
+    );
+  } else if (destination === 'counterparty' && counterparty !== null) {
+    // A secondary surface, like Accounts: reached from a transaction or from
+    // Review, never from the rail, and it offers the way back to where it was
+    // opened from (04 A37).
+    body = (
+      <AyqCounterpartyScreen
+        key={counterparty.key}
+        counterpartyKey={counterparty.key}
+        onFailure={say}
+        onChanged={reload}
+        onOpenRegister={counterpartyKey => {
+          setFilter({ counterpartyKey });
+          setDestination('register');
+        }}
+        onOpenKey={key => setCounterparty({ key, from: counterparty.from })}
+        onBack={() => setDestination(counterparty.from)}
       />
     );
   } else if (destination === 'accounts') {

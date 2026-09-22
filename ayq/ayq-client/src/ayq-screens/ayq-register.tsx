@@ -124,6 +124,7 @@ export function AyqRegisterScreen({
   filter,
   onFilter,
   onShowTheRule,
+  onOpenCounterparty,
   onFailure,
   onLoaded,
 }: {
@@ -132,6 +133,7 @@ export function AyqRegisterScreen({
   filter: AyqLedgerFilter;
   onFilter(filter: AyqLedgerFilter): void;
   onShowTheRule(): void;
+  onOpenCounterparty?(counterpartyKey: string): void;
   onFailure(message: string): void;
   onLoaded(ledger: AyqLedger): void;
 }): ReactNode {
@@ -470,6 +472,7 @@ export function AyqRegisterScreen({
         }}
         onFailure={onFailure}
         onShowTheRule={onShowTheRule}
+        onOpenCounterparty={onOpenCounterparty}
         onLoaded={loaded}
         empty={
           applied.length === 0

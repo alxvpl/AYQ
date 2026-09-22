@@ -99,6 +99,7 @@ export function AyqTransactionDetailPane({
   onNeedCounterparties,
   onRuleChanged,
   onFailure,
+  onManageCounterparty,
 }: {
   detail: AyqTransactionDetail | null;
   categories: readonly AyqCategory[];
@@ -111,6 +112,8 @@ export function AyqTransactionDetailPane({
   /** The rule that files this row was corrected or removed here (04 A7). */
   onRuleChanged(said: string): void;
   onFailure(message: string): void;
+  /** Opens the counterparty's own page (04 A37), when the caller has one. */
+  onManageCounterparty?(counterpartyKey: string): void;
 }): ReactNode {
   const styles = useStyles();
   const [correcting, setCorrecting] = useState(false);
@@ -274,6 +277,16 @@ export function AyqTransactionDetailPane({
         <AyqButton mark="show-the-rule" onClick={onShowTheRule}>
           {ayqText('detail.action.showTheRule')}
         </AyqButton>
+
+        {onManageCounterparty === undefined ||
+        detail.counterpartyKey === null ? null : (
+          <AyqButton
+            mark="manage-counterparty"
+            onClick={() => onManageCounterparty(detail.counterpartyKey ?? '')}
+          >
+            {ayqText('detail.action.manageCounterparty')}
+          </AyqButton>
+        )}
       </div>
 
       {/* The rule that files this counterparty is inspected, corrected and

@@ -354,6 +354,8 @@ test('the rail is the eight destinations of A20, and Accounts is not one', async
     !items.includes('accounts'),
     'Accounts is back in the rail',
   );
+  // Nor is a counterparty (04 A37): a secondary surface, opened from a row.
+  assert.ok(!items.includes('counterparty'), 'Counterparty is in the rail');
   assert.equal(
     window.container.querySelector('[data-ayq-tab="accounts"]'),
     null,

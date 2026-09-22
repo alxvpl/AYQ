@@ -99,11 +99,14 @@ const useStyles = makeStyles({
 export function AyqReviewScreen({
   onFailure,
   onOpenRegister,
+  onManage,
   onChanged,
 }: {
   onFailure(message: string): void;
   /** Review does not navigate; it asks the shell to open the Register. */
   onOpenRegister(counterpartyKey: string): void;
+  /** Likewise the counterparty's own page (04 A37). */
+  onManage?(counterpartyKey: string): void;
   /** Something was filed, so what the shell is holding has moved. */
   onChanged(): void;
 }): ReactNode {
@@ -278,6 +281,7 @@ export function AyqReviewScreen({
           outcome={outcome}
           onFailure={onFailure}
           onOpenRegister={onOpenRegister}
+          onManage={onManage}
           onOutcome={setOutcome}
           onOpenKey={setOpenKey}
           onChanged={again}
@@ -293,6 +297,7 @@ function AyqReviewPane({
   outcome,
   onFailure,
   onOpenRegister,
+  onManage,
   onOutcome,
   onOpenKey,
   onChanged,
@@ -302,6 +307,7 @@ function AyqReviewPane({
   outcome: string | null;
   onFailure(message: string): void;
   onOpenRegister(counterpartyKey: string): void;
+  onManage?(counterpartyKey: string): void;
   onOutcome(said: string): void;
   onOpenKey(key: string): void;
   onChanged(): void;
@@ -578,6 +584,15 @@ function AyqReviewPane({
             >
               {ayqText('today.open.register')}
             </AyqButton>
+            {onManage === undefined ? null : (
+              <AyqButton
+                size="small"
+                mark="review-manage"
+                onClick={() => onManage(counterparty.key)}
+              >
+                {ayqText('review.manage')}
+              </AyqButton>
+            )}
           </div>
         </div>
       </div>
