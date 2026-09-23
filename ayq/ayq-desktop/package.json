@@ -12,11 +12,11 @@
     "smoke": "node start.mjs --smoke --require-host \"electron utilityProcess\"",
     "start:debug-node-engine": "node start.mjs --engine node",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --test-reporter=spec --test-concurrency=1 --test-timeout=2700000 test/ayq-about.test.ts test/ayq-build-005.test.ts test/ayq-bulk.test.ts test/ayq-categories.test.ts test/ayq-build-006.test.ts test/ayq-build-008.test.ts test/ayq-engine.test.ts test/ayq-evidence.test.ts test/ayq-filing.test.ts test/ayq-forecast.test.ts test/ayq-icon.test.ts test/ayq-match.test.ts test/ayq-merge.test.ts test/ayq-plan-series.test.ts test/ayq-recover-names.test.ts test/ayq-reversal.test.ts test/ayq-rules.test.ts test/ayq-series.test.ts test/ayq-smoke-scripts.test.ts test/ayq-store.test.ts",
+    "test": "npm run build && node --test --test-reporter=spec --test-concurrency=1 --test-timeout=2700000 test/ayq-about.test.ts test/ayq-build-005.test.ts test/ayq-bulk.test.ts test/ayq-categories.test.ts test/ayq-build-006.test.ts test/ayq-build-008.test.ts test/ayq-engine.test.ts test/ayq-evidence.test.ts test/ayq-filing.test.ts test/ayq-forecast.test.ts test/ayq-icon.test.ts test/ayq-match.test.ts test/ayq-merge.test.ts test/ayq-plan-series.test.ts test/ayq-recover-names.test.ts test/ayq-reversal.test.ts test/ayq-rules.test.ts test/ayq-series.test.ts test/ayq-smoke-scripts.test.ts test/ayq-store.test.ts test/ayq-window-bounds.test.ts",
     "icon": "node build-icon.mjs",
     "package": "npm run build && npm run icon && electron-builder --win nsis --x64 --publish=never"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -43,7 +43,7 @@
   "build": {
     "appId": "eu.ayq.desktop",
     "productName": "AYQ",
-    "copyright": "\u00a9 2026 Plamen Alexandrov.",
+    "copyright": "\u00a9 2026 Plamen Alexandrov. All rights reserved.",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -53,6 +53,12 @@
       "package.json",
       "!**/*.map",
       "!node_modules/better-sqlite3/{benchmark,src,bin,docs,deps,build/Release/obj}"
+    ],
+    "extraResources": [
+      {
+        "from": "../../LICENSE.txt",
+        "to": "licenses/Actual-Budget-LICENSE.txt"
+      }
     ],
     "asarUnpack": [
       "**/node_modules/@actual-app/api/**",

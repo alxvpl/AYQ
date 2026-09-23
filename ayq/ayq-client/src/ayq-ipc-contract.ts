@@ -1343,10 +1343,12 @@ export type AyqAbout = {
   electronVersion: string | null;
   nodeVersion: string;
   development: boolean;
-  licence: string;
-  localFirst: string;
-  /** Only links that really exist. Never invented. */
-  links: Array<{ label: string; url: string }>;
+  /**
+   * Only links that really exist. Never invented. The kind, not a label: what
+   * a link is called is a word on the screen, and words live in the catalogue
+   * (04 A24), as do the licence and local-first notes About states.
+   */
+  links: Array<{ kind: 'repository'; url: string }>;
   /**
    * Exactly what **Copy technical information** puts on the clipboard.
    *

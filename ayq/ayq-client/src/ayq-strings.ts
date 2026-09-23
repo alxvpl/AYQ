@@ -55,10 +55,6 @@ const EN = {
     'CAMT.053 statement files, as XML or ZIP. A ZIP is read in memory and ' +
     'never unpacked to disk.',
 
-  'status.engine.running': 'Engine running',
-  'status.engine.starting': 'Starting the engine…',
-  'status.engine.failed': 'The engine did not answer',
-  'status.budget': 'Budget: {name}',
   'status.transactions': '{count} transactions',
   'status.accountsCounted': '{counted} of {total} accounts counted',
   'status.lastImport': 'Last import {when}',
@@ -155,10 +151,26 @@ const EN = {
   'about.development':
     'This is a development build. It was not produced by the release ' +
     'workflow and carries no revision.',
+  'about.buildDate.none': 'not a release build',
+  'about.licence.ayq':
+    'AYQ is proprietary software. Its own code is not released under the MIT ' +
+    'licence or any other open-source licence, and having a copy of it grants ' +
+    'no right to copy, modify or redistribute it.',
+  'about.licence.actual':
+    'AYQ is built on Actual Budget (copyright James Long), which it uses under ' +
+    'the MIT licence. That licence notice ships with this application. Other ' +
+    'components keep their own licences.',
+  'about.localFirst':
+    'AYQ keeps everything on this computer. The budget, the statements you ' +
+    'import and every decision you make about them stay in your own data ' +
+    'folder. AYQ has no account, sends nothing anywhere and works with no ' +
+    'network at all.',
+  'about.link.repository': 'Repository',
   'about.pane': 'About AYQ',
   'about.technical': 'Technical information',
   'about.technical.note':
-    'Structured details are available here instead of permanent diagnostic chrome.',
+    'For a fault report: copies the version, build, revision and engine ' +
+    'details. It carries nothing about your money and no file locations.',
   'about.copy': 'Copy technical information',
   'about.copied': 'Copied.',
 

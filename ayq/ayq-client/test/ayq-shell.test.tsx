@@ -15,7 +15,7 @@ import {
   AYQ_RAIL_FOOT,
   AYQ_RAIL_GROUPS,
 } from '../src/ayq-destinations.ts';
-import { ayqText } from '../src/ayq-strings.ts';
+import { ayqCount, ayqMoment, ayqText } from '../src/ayq-strings.ts';
 import { AYQ_METRIC } from '../src/ayq-tokens.ts';
 import { AyqGroundProvider } from '../src/ayq-ui/ayq-ground-provider.tsx';
 import { ayqOpenWindow, ayqPress } from './ayq-react.ts';
@@ -136,8 +136,14 @@ test('the rail carries the destinations of A20, in its order and its groups', as
     'Settings sits inside a group',
   );
 
-  // The wordmark is text (A20), not a tile and not an image.
-  assert.equal(rail.querySelectorAll('img, svg[role="img"]').length >= 0, true);
+  // The wordmark is text (A20), not a tile and not an image: the rail's first
+  // element holds the name and nothing else, and the mark is not in the rail
+  // at all (A40) — it belongs to the title bar and About.
+  const wordmark = rail.firstElementChild;
+  assert.ok(wordmark, 'the rail is empty');
+  assert.equal(wordmark.textContent, ayqText('app.name'), 'the wordmark is not the name');
+  assert.equal(wordmark.children.length, 0, 'the wordmark is drawn, not written');
+  assert.equal(rail.querySelectorAll('img, [data-ayq-mark]').length, 0, 'the rail carries an image');
   assert.ok(
     (rail.textContent ?? '').startsWith(ayqText('app.name')),
     'the wordmark is not the first thing in the rail',
@@ -240,7 +246,7 @@ test('there is one scroller per screen, and no top panel above it', async () => 
   await window.close();
 });
 
-test('the status bar says where the money is, and carries no version number', async () => {
+test('the status bar is operational: no version, no path, no engine state', async () => {
   const window = await ayqOpenWindow(engine);
   await window.render(application);
 
@@ -248,8 +254,31 @@ test('the status bar says where the money is, and carries no version number', as
   assert.ok(bar, 'there is no status bar');
   const said = bar.textContent ?? '';
 
-  assert.ok(said.includes(STATUS.budgetName), 'it does not say which budget');
-  assert.ok(said.includes(STATUS.dataDir), 'it does not say where the budget is');
+  // What it is for: when a statement last arrived and how much AYQ holds.
+  assert.ok(
+    said.includes(ayqText('status.lastImport', { when: ayqMoment(SUMMARY.lastImportAt) })),
+    'it does not say when a statement last arrived',
+  );
+  assert.ok(
+    said.includes(
+      ayqText('status.transactions', { count: ayqCount(SUMMARY.transactionCount) }),
+    ),
+    'it does not say how much AYQ is holding',
+  );
+
+  // A26: nothing technical. Not the directory the budget lives in, in any
+  // form a careless line could put there; not the engine's state or host; not
+  // the engine's internal budget name; and no mark (A40).
+  assert.ok(!said.includes(STATUS.dataDir), 'the status bar shows the data directory');
+  assert.ok(
+    !/[A-Za-z]:\x5c|\x5c\x5c|(^|\s)\/[\w.-]+\//.test(said),
+    `the status bar shows a path: ${said}`,
+  );
+  assert.ok(!/engine/i.test(said), `the status bar reports on the engine: ${said}`);
+  assert.ok(!said.includes(STATUS.engineHost), 'the status bar names the engine host');
+  assert.ok(!said.includes(STATUS.budgetName), 'the status bar names the internal budget');
+  assert.ok(!said.includes(STATUS.budgetId), 'the status bar carries the budget id');
+  assert.equal(bar.querySelectorAll('[data-ayq-mark], [title]').length, 0, 'the status bar hides something in a tooltip or carries the mark');
 
   // A20: no version number. Not the application's, not the engine's, not the
   // store's — and the engine's is in the answer, so a careless line would have

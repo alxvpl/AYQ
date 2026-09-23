@@ -21,12 +21,22 @@ import { fileURLToPath } from 'node:url';
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
+  screen,
   utilityProcess,
 } from 'electron';
 
+import type { AyqRect } from './ayq-window-bounds.ts';
+import {
+  AYQ_WINDOW_MIN_HEIGHT,
+  AYQ_WINDOW_MIN_WIDTH,
+  ayqOpeningBounds,
+  ayqReadWindowBounds,
+  ayqWriteWindowBounds,
+} from './ayq-window-bounds.ts';
 import {
   AYQ_IPC_CHANNEL,
   type AyqImportSummary,
@@ -379,25 +389,35 @@ function createWindow(): BrowserWindow {
   // four words that lead nowhere, and on Windows it sits above the content.
   Menu.setApplicationMenu(null);
 
-  // A desktop window, sized for the shell it holds: a navigation column and a
-  // ledger with six columns beside it. 900x700 was the size of a page, and it
-  // left the transactions table narrower than the window it was drawn in.
+  // Where it opens (04 A25): 1600 px wide the first time, fitted to the work
+  // area; after that, where the person last left it — unless that is no longer
+  // on any screen this machine has.
+  const opening = ayqOpeningBounds(
+    ayqReadWindowBounds(dataDir),
+    screen.getAllDisplays().map(display => display.workArea),
+    screen.getPrimaryDisplay().workArea,
+  );
+  windowOpenedFrom = opening.restored ? 'restored' : 'default';
+  process.stdout.write(
+    `[ayq] window opens at ${opening.bounds.width}x${opening.bounds.height}` +
+      `+${opening.bounds.x}+${opening.bounds.y} (${windowOpenedFrom})\n`,
+  );
+
   const material = windowMaterial();
   process.stdout.write(
     `[ayq] window material: ${material.material} (${material.why})\n`,
   );
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 640,
-    minHeight: 480,
+    ...opening.bounds,
+    minWidth: AYQ_WINDOW_MIN_WIDTH,
+    minHeight: AYQ_WINDOW_MIN_HEIGHT,
     title: 'AYQ',
     // The ground the token module defines, so that the frame a person sees
     // before the first paint is the one the application then paints.
     backgroundColor: AYQ_TOKENS.light.surface.ground,
     // The title bar is drawn by the renderer in the rail's surface, and the
     // window controls stay Windows' own, painted over it in the rail's ink
-    // (04 A26 as the owner decided it). Repainted whenever the ground changes.
+    // (04 A20 as the owner decided it). Repainted whenever the ground changes.
     ...(process.platform === 'win32'
       ? {
           titleBarStyle: 'hidden' as const,
@@ -420,9 +440,54 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  // What Windows reports back is not always what was asked for: with the
+  // title bar hidden and the display scaled, the frame reads a few pixels
+  // larger than the size it was created at (measured: 1600x820 reads back as
+  // 1607x827 at 175 %). Saved as read, the window would grow by that much on
+  // every launch. So the difference is measured once, here, and taken off
+  // again when the size is saved — as long as it is a frame's worth and not a
+  // window the system resized for its own reasons.
+  const created = window.getBounds();
+  const frame = (asked: number, got: number): number =>
+    Math.abs(got - asked) <= FRAME_SLACK ? got - asked : 0;
+  windowFrame = {
+    width: frame(opening.bounds.width, created.width),
+    height: frame(opening.bounds.height, created.height),
+  };
+
   window.once('ready-to-show', () => window.show());
+  // The normal bounds, whatever state it is closed in: a window closed while
+  // maximised or minimised reopens at the size it had before that.
+  window.on('close', () => rememberWindow(window));
   void window.loadFile(join(here, 'client', 'ayq-client.html'));
   return window;
+}
+
+/** Whether the window opened at the default or where it was left (A25). */
+let windowOpenedFrom: 'default' | 'restored' = 'default';
+
+/** How much larger the system reports the window than it was created (A25). */
+let windowFrame = { width: 0, height: 0 };
+
+/** The most a frame is allowed to account for; more is a real resize. */
+const FRAME_SLACK = 16;
+
+/** Writes the window's normal bounds for the next launch (04 A25). */
+function rememberWindow(window: BrowserWindow): void {
+  if (window.isDestroyed()) return;
+  try {
+    const normal: AyqRect = window.getNormalBounds();
+    ayqWriteWindowBounds(dataDir, {
+      ...normal,
+      width: normal.width - windowFrame.width,
+      height: normal.height - windowFrame.height,
+    });
+  } catch (error) {
+    // Losing a window position is not worth failing a close over.
+    process.stdout.write(
+      `[ayq] could not remember the window: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
 }
 
 /**
@@ -1612,8 +1677,10 @@ async function balanceShown(window: BrowserWindow): Promise<string> {
  *
  * The packaged build is the only place the build stamp is real, so this is the
  * only place it can be checked. What is read is the drawn screen: the version,
- * the build number, the author, the copyright, a forty-character revision that
- * is not a placeholder, and a technical-information block that carries the safe
+ * the build number, the author, the copyright, a shortened revision and a
+ * human-readable date on the screen (04 A35), no technical-information dump on
+ * the screen (06 §3.7), and — through the real button and the real clipboard —
+ * copied text that carries the full revision, the ISO timestamp and the safe
  * fields and none of the forbidden ones (§12.4).
  */
 async function aboutShown(window: BrowserWindow): Promise<string> {
@@ -1644,8 +1711,11 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
           for (const one of document.querySelectorAll('[data-ayq-about]')) {
             said[one.dataset.ayqAbout] = one.innerText.trim();
           }
-          const technical = document.querySelector('[data-ayq-technical]');
-          said.technical = technical ? technical.innerText : '';
+          said.dumps = String(
+            document.querySelectorAll(
+              '[data-ayq-about-screen] pre, [data-ayq-technical]',
+            ).length,
+          );
           said.screen = (
             document.querySelector('[data-ayq-about-screen]') || { innerText: '' }
           ).innerText;
@@ -1676,7 +1746,7 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
     return `About says build ${seen.build}, expected ${expectedBuild}`;
   }
   if (seen.author !== 'Plamen Alexandrov') return `About says author ${seen.author}`;
-  if (seen.copyright !== '\u00a9 2026 Plamen Alexandrov.') {
+  if (seen.copyright !== '\u00a9 2026 Plamen Alexandrov. All rights reserved.') {
     return `About says copyright ${seen.copyright}`;
   }
   if (seen.engine !== 'Actual Budget 26.9.0') return `About says engine ${seen.engine}`;
@@ -1684,25 +1754,72 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
   if (!/^Windows x64$/.test(seen.architecture ?? '')) {
     return `About says architecture ${seen.architecture}`;
   }
-  // A real revision, from git, in a packaged build (§12.2).
-  if (!/^[0-9a-f]{40}$/.test(seen.revision ?? '')) {
+  // A real revision, from git, in a packaged build (§12.2), shortened on the
+  // screen (04 A35).
+  if (!/^[0-9a-f]{7,12}$/.test(seen.revision ?? '')) {
     return `About says revision ${seen.revision || '(nothing)'}`;
   }
-  // And a real date, not a placeholder.
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(seen['build-date'] ?? '')) {
+  // And a real date, not a placeholder, in the form a person reads.
+  if (!/\d{4}/.test(seen['build-date'] ?? '') || /T\d{2}:\d{2}/.test(seen['build-date'] ?? '')) {
     return `About says build date ${seen['build-date'] || '(nothing)'}`;
   }
   if (seen.development !== undefined) {
     return 'a packaged build reports itself as a development build';
   }
+  // AYQ proprietary, Actual Budget under MIT, and never AYQ under MIT (06 §9).
+  if (!/proprietary/.test(seen.licence ?? '')) return `About says licence ${seen.licence}`;
+  if (!/Actual Budget.*MIT/.test(seen.upstream ?? '')) {
+    return `About says of Actual Budget ${seen.upstream}`;
+  }
+  if (/AYQ is (released|licensed) under the MIT/i.test(seen.screen ?? '')) {
+    return 'About says AYQ is MIT-licensed';
+  }
+  // 06 §3.7: the copied text is not also a permanent block on the screen.
+  if (seen.dumps !== '0') return 'About prints the technical information on the screen';
 
-  const technical = seen.technical ?? '';
+  // The copy, through the button a person presses and the clipboard they paste
+  // from. What is read back is what they would paste.
+  clipboard.writeText('');
+  const copiedAt = await window.webContents.executeJavaScript(
+    `(() => {
+      const button = document.querySelector('[data-ayq-action="about-copy"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`,
+  );
+  if (copiedAt !== true) return 'About has no Copy technical information';
+  let technical = '';
+  let confirmed = '';
+  const copyDeadline = Date.now() + 10_000;
+  while (Date.now() < copyDeadline) {
+    technical = clipboard.readText();
+    confirmed = String(
+      await window.webContents.executeJavaScript(
+        `(document.querySelector('[data-ayq-about-copied]') || { innerText: '' }).innerText`,
+      ),
+    ).trim();
+    if (technical !== '' && confirmed !== '') break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (technical === '') return 'Copy technical information put nothing on the clipboard';
+  if (confirmed === '') return 'copying said nothing';
+  if ((seen.screen ?? '').includes(technical.split('\n')[0])) {
+    return 'the copied text is also on the screen';
+  }
+  const fullRevision = /^AYQ revision\s*: ([0-9a-f]{40})$/m.exec(technical)?.[1] ?? '';
+  if (!fullRevision.startsWith(seen.revision ?? '-')) {
+    return `the copy carries revision ${fullRevision || '(none)'} for ${seen.revision}`;
+  }
+  if (!/^Build date\s*: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/m.test(technical)) {
+    return 'the copy leaves out the ISO build timestamp';
+  }
   for (const wanted of [
     expectedVersion,
     expectedBuild,
     'db1b0ea9',
     'Actual Budget 26.9.0',
-    seen.revision,
+    fullRevision,
   ]) {
     if (!technical.includes(wanted)) {
       return `the technical information leaves out ${wanted}`;
@@ -1710,6 +1827,7 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
   }
   // §12.4: nothing about the money, and nothing about the machine.
   for (const forbidden of [
+    dataDir,
     'AppData',
     'C:\\\\Users',
     'ayq-budget',
@@ -1725,7 +1843,7 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
 
   process.stdout.write(
     `[ayq-smoke] about: ${seen.version} build ${seen.build}, ${seen.revision}, ` +
-      `${seen['build-date']}, ${seen.architecture}\n`,
+      `${seen['build-date']}, ${seen.architecture}; copied ${fullRevision}\n`,
   );
   return '';
 }
@@ -2848,6 +2966,15 @@ async function shellShown(window: BrowserWindow): Promise<string> {
     `[ayq-smoke] rail ${seen.rail.width}px, ${(seen.items ?? []).length} destinations, ` +
       `${(seen.separators ?? []).length} hairlines, one scroller at ${seen.scrollerRight}px\n`,
   );
+  // A26: ordinary chrome carries nothing technical. The data directory this
+  // very run writes to, or any word about the engine, would be a diagnostic
+  // back in the status bar.
+  if ((seen.status ?? '').includes(dataDir)) {
+    return `the status bar shows the data directory: ${seen.status}`;
+  }
+  if (/engine/i.test(seen.status ?? '')) {
+    return `the status bar reports on the engine: ${seen.status}`;
+  }
   process.stdout.write(`[ayq-smoke] status bar: ${seen.status}\n`);
 
   // And the two things A22 asks for that only a scroll can answer: the table
@@ -3500,7 +3627,15 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
 
   const hostOk = requiredHost === '' || engineHost === requiredHost;
+  const expectedWindow = process.env.AYQ_SMOKE_EXPECT_WINDOW ?? '';
+  const windowOk = expectedWindow === '' || expectedWindow === windowOpenedFrom;
+  process.stdout.write(
+    `[ayq-smoke] window: opened at the ${windowOpenedFrom}${
+      expectedWindow === '' ? '' : `, expected ${expectedWindow}`
+    }\n`,
+  );
   const passed =
+    windowOk &&
     state === 'ready' &&
     hostOk &&
     emptyOk &&
@@ -3533,6 +3668,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       `${JSON.stringify(
         {
           passed,
+          window: windowOpenedFrom,
+          windowOk,
           state,
           engineHost,
           requiredHost,
@@ -3602,7 +3739,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} suggest=${suggest}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is
@@ -3614,6 +3751,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, hold));
   }
 
+  rememberWindow(window);
   engine?.stop();
   app.exit(passed ? 0 : 1);
 }

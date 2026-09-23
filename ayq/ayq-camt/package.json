@@ -7,7 +7,7 @@
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
     "xml2js": "^0.6.2"
   },
