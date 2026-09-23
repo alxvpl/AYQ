@@ -1014,6 +1014,43 @@ export type AyqSpending = {
  */
 export type AyqPickedFile = { paths: string[] };
 
+/* ------------------------------------------------------- analytical snapshot
+
+   The one file AYQ writes for AYQ Analyses (02 §7.8–§7.16, 03 §13): an
+   export the owner asks for, of what the budget already holds, in the
+   executable contract 1.0 shape, to a local file the owner chooses. Nothing
+   is uploaded anywhere, and nothing starts it but the owner.
+
+   The renderer asks for an export and names nothing else: no path, no file.
+   The host asks the owner where (a save dialog) and hands the engine that
+   path; the engine assembles, validates and writes. What comes back is
+   counts and a location — no figure from the owner's money.              */
+
+/** What an export came to: written, or the owner dismissed the dialog. */
+export type AyqSnapshotExported = { outcome: 'cancelled' } | AyqSnapshotWritten;
+
+/** A snapshot written, proven on disk, at the path the owner chose. */
+export type AyqSnapshotWritten = {
+  outcome: 'written';
+  path: string;
+  generatedAt: string;
+  accounts: number;
+  transactions: number;
+  counterparties: number;
+  bytes: number;
+};
+
+/**
+ * The host's instruction to the engine, once the owner has chosen where. Not
+ * a renderer request: it is not in `AyqRequestBody`, and the host refuses it
+ * if a window sends it.
+ */
+export type AyqSnapshotWriteRequest = {
+  kind: 'snapshot.write';
+  path: string;
+  today?: string;
+};
+
 /* ------------------------------------------------------- plan and forecast
 
    What is expected to happen, as against what has happened. A planned or
@@ -1619,6 +1656,8 @@ export type AyqResults = {
   spending: AyqSpending;
   'counterparties.unfiled': AyqUnfiled[];
   'import.pick': AyqPickedFile;
+  'snapshot.export': AyqSnapshotExported;
+  'snapshot.write': AyqSnapshotWritten;
   'window.ground': { applied: boolean };
   'import.camt': AyqImportSummary;
   'plan.list': AyqPlan;
@@ -1886,6 +1925,14 @@ export type AyqRequestBody =
   | { kind: 'import.pick' }
   | {
       /**
+       * Exports one analytical snapshot of the open budget (03 §13): the host
+       * asks the owner where, the engine writes it all or nothing.
+       */
+      kind: 'snapshot.export';
+      today?: string;
+    }
+  | {
+      /**
        * The ground the window resolved to, told to the host so the native
        * title-bar controls are painted to match (04 A26). Answered by the
        * host, not the engine: it is about this window, not the budget.
@@ -2076,13 +2123,22 @@ export type AyqErrorCode =
   | 'month-not-kept'
   | 'plan-amount-invalid'
   | 'anchor-disagrees'
-  | 'import-problem-not-found';
+  | 'import-problem-not-found'
+  | 'snapshot-unidentified-account'
+  | 'snapshot-invalid'
+  | 'snapshot-write-failed'
+  | 'snapshot-not-from-window';
 
 /** Bounded values a code's sentence may name: a file, a month, a version. */
 export type AyqErrorParams = Readonly<Record<string, string | number>>;
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };
+
+/** What the engine accepts: every renderer request, and the host's own. */
+export type AyqEngineRequest = (AyqRequestBody | AyqSnapshotWriteRequest) & {
+  id: string;
+};
 
 export type AyqResponse =
   | {

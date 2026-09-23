@@ -18,11 +18,14 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { release } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -46,6 +49,7 @@ import {
 } from './ayq-window-bounds.ts';
 import {
   AYQ_IPC_CHANNEL,
+  type AyqEngineRequest,
   type AyqImportSummary,
   type AyqPickedFile,
   type AyqRequest,
@@ -137,7 +141,7 @@ function reportSecondInstance(): void {
 /** Requests waiting on the engine, by correlation id. */
 const pending = new Map<string, (response: AyqResponse) => void>();
 
-type EngineHandle = { send(request: AyqRequest): void; stop(): void };
+type EngineHandle = { send(request: AyqEngineRequest): void; stop(): void };
 
 /**
  * Forks the engine.
@@ -272,6 +276,40 @@ async function pickCamtFile(): Promise<AyqPickedFile> {
   return { paths: chosen.canceled ? [] : chosen.filePaths };
 }
 
+/**
+ * Asks the owner where the analytical snapshot goes (03 §13.10). Null when the
+ * dialog is dismissed, and then nothing is written.
+ *
+ * The host's job for the same reason as the picker above: the renderer has no
+ * filesystem and the engine has no window. AYQ_SMOKE_SNAPSHOT answers in smoke
+ * mode, where no dialog can be.
+ */
+async function pickSnapshotTarget(): Promise<string | null> {
+  const smokeTarget = process.env.AYQ_SMOKE_SNAPSHOT ?? '';
+  if (process.env.AYQ_SMOKE === '1' && smokeTarget !== '') return smokeTarget;
+
+  // Offered in AYQ's own local folder, never Documents: where Documents is
+  // synced to a cloud (OneDrive's known-folder move), a file offered there
+  // would be uploaded the moment it was written. The owner may still choose
+  // anywhere; the choice is theirs, not a default's.
+  const offered = join(app.getPath('userData'), 'exports');
+  mkdirSync(offered, { recursive: true });
+  const day = new Date();
+  const stamp = [day.getFullYear(), day.getMonth() + 1, day.getDate()]
+    .map(part => String(part).padStart(2, '0'))
+    .join('-');
+  const chosen = await dialog.showSaveDialog({
+    title: 'Export analytical snapshot',
+    defaultPath: join(offered, `ayq-analytical-snapshot-${stamp}.json`),
+    filters: [
+      { name: 'AYQ analytical snapshot', extensions: ['json'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    properties: ['createDirectory', 'showOverwriteConfirmation'],
+  });
+  return chosen.canceled || !chosen.filePath ? null : chosen.filePath;
+}
+
 /** The native controls' colours for a ground: the rail's surface and ink. */
 function titleBarOverlay(resolved: 'light' | 'dark'): {
   color: string;
@@ -322,6 +360,67 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
     }
   }
 
+  // The analytical snapshot: the owner chooses where, here; the engine writes.
+  // A window may ask for an export, never name a path for one.
+  if (request?.kind === ('snapshot.write' as string)) {
+    return {
+      id: request.id,
+      ok: false,
+      kind: 'error',
+      code: 'snapshot-not-from-window',
+      detail: 'snapshot.write is the host\'s instruction to the engine, not a window request',
+    };
+  }
+  if (request?.kind === 'snapshot.export') {
+    let path: string | null;
+    try {
+      path = await pickSnapshotTarget();
+    } catch (error) {
+      return {
+        id: request.id,
+        ok: false,
+        kind: 'error',
+        code: 'picker-failed',
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+    if (path === null) {
+      return {
+        id: request.id,
+        ok: true,
+        kind: 'snapshot.export',
+        result: { outcome: 'cancelled' },
+      };
+    }
+    const written = await relay({
+      id: request.id,
+      kind: 'snapshot.write',
+      path,
+      ...(request.today === undefined ? {} : { today: request.today }),
+    });
+    if (!written.ok) return written;
+    if (written.kind !== 'snapshot.write') {
+      return {
+        id: request.id,
+        ok: false,
+        kind: 'error',
+        code: 'unexpected',
+        detail: `the engine answered ${written.kind} to snapshot.write`,
+      };
+    }
+    return {
+      id: request.id,
+      ok: true,
+      kind: 'snapshot.export',
+      result: written.result,
+    };
+  }
+
+  return relay(request);
+}
+
+/** Hands a request to the engine and waits for its answer. */
+function relay(request: AyqEngineRequest): Promise<AyqResponse> {
   if (!engine) {
     return Promise.resolve({
       id: request.id,
@@ -1881,6 +1980,144 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
  * hand; the application itself never writes a set anywhere but through the
  * engine.
  */
+/**
+ * The analytical snapshot, exported through the window (02 §7.8–§7.16, 03 §13).
+ *
+ * Settings → Data & Backup, the button, and the screen's own report; then the
+ * file, read back through the contract's validator, with none of its figures
+ * printed. Then two interrupted exports, each of which must leave the snapshot
+ * just written exactly as it was:
+ *
+ *  - one whose write cannot complete: something that is not a file stands at
+ *    the partial name, so the bytes never reach the disk;
+ *  - one after an export that died between writing its partial and moving it
+ *    into place: a partial of garbage is left beside the snapshot, as a process
+ *    ending there would leave it. The snapshot beside it must still be the old
+ *    one, and the next export must write over the leftover and succeed.
+ *
+ * Returns '' when it held, otherwise what went wrong.
+ */
+async function snapshotShown(window: BrowserWindow, target: string): Promise<string> {
+  const { validateAnalyticalSnapshot } = await import(
+    '../../ayq-analytical-contract/src/index.ts'
+  );
+  const partial = `${target}.ayq-partial`;
+  const hashOf = (file: string): string =>
+    createHash('sha256').update(readFileSync(file)).digest('hex');
+  const validates = (file: string): string => {
+    try {
+      validateAnalyticalSnapshot(JSON.parse(readFileSync(file, 'utf8')));
+      return '';
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  };
+
+  if (!(await openDestination(window, 'settings'))) return 'Settings never opened';
+  const deadline = Date.now() + 120_000;
+  let there = false;
+  while (!there && Date.now() < deadline) {
+    there =
+      (await window.webContents.executeJavaScript(`(() => {
+        const tab = document.querySelector('[data-ayq-screen-tab="backup"]');
+        if (tab) tab.click();
+        return !!document.querySelector('[data-ayq-action="snapshot-export"]');
+      })()`)) === true;
+    if (!there) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!there) return 'the export button never appeared';
+
+  // Presses the button and waits for the screen to say how it went.
+  const exported = async (): Promise<{ said: string; path: string; transactions: string }> => {
+    await window.webContents.executeJavaScript(`(() => {
+      const said = document.querySelector('[data-ayq-snapshot-said]');
+      if (said) said.removeAttribute('data-ayq-snapshot-said');
+      document.querySelector('[data-ayq-action="snapshot-export"]')?.click();
+      return true;
+    })()`);
+    while (Date.now() < deadline) {
+      const now = (await window.webContents.executeJavaScript(`(() => {
+        const said = document.querySelector('[data-ayq-snapshot-said]');
+        if (!said) return null;
+        return {
+          said: said.getAttribute('data-ayq-snapshot-said'),
+          path: said.getAttribute('data-ayq-snapshot-path') || '',
+          transactions: said.getAttribute('data-ayq-snapshot-transactions') || '',
+        };
+      })()`)) as { said: string; path: string; transactions: string } | null;
+      if (now !== null && now.said !== '') return now;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return { said: 'nothing', path: '', transactions: '' };
+  };
+  const onlyTheSnapshot = (extra: string[] = []): boolean =>
+    readdirSync(dirname(target)).sort().join('|') ===
+    [basename(target), ...extra].sort().join('|');
+
+  // 1. The export, through the window.
+  const first = await exported();
+  if (first.said !== 'done') return `the screen said ${first.said}`;
+  if (first.path !== target) return 'the screen names a different file';
+  if (!existsSync(target)) return 'no file at the chosen path';
+  const invalid = validates(target);
+  if (invalid !== '') return `the file does not validate: ${invalid}`;
+  const written = JSON.parse(readFileSync(target, 'utf8')) as {
+    meta: { counts: { transactions: number } };
+  };
+  if (String(written.meta.counts.transactions) !== first.transactions) {
+    return 'the screen and the file disagree on how many transactions';
+  }
+  if (!onlyTheSnapshot()) return 'something besides the snapshot was left beside it';
+  const before = hashOf(target);
+
+  // The budget changes, so that anything an interrupted export managed to put
+  // at the destination would differ from what is there — two exports of the
+  // same budget within one second are otherwise byte for byte the same.
+  const categories = await ask({ id: 'smoke-snapshot-categories', kind: 'categories.list' });
+  const category =
+    categories.ok && categories.kind === 'categories.list'
+      ? categories.result.find(one => !one.isIncome)
+      : undefined;
+  if (category === undefined) return 'the budget has no expense category to plan';
+  const month = new Date().toISOString().slice(0, 7);
+  const planned = await ask({
+    id: 'smoke-snapshot-plan',
+    kind: 'budget.setPlan',
+    month,
+    categoryId: category.id,
+    cents: 45_600,
+  });
+  if (!planned.ok) return 'the plan could not be changed';
+  const plannedHere = (): boolean =>
+    (
+      JSON.parse(readFileSync(target, 'utf8')) as {
+        categoryPlans: Array<{ month: string; plannedAmount: { amount: number } }>;
+      }
+    ).categoryPlans.some(one => one.month === month && one.plannedAmount.amount === 45_600);
+  if (plannedHere()) return 'the first snapshot already holds the changed plan';
+
+  // 2. A write that cannot complete.
+  mkdirSync(join(partial, 'in-the-way'), { recursive: true });
+  const blocked = await exported();
+  if (blocked.said !== 'failed') return `an export that could not write said ${blocked.said}`;
+  if (hashOf(target) !== before) return 'a failed export changed the previous snapshot';
+  if (validates(target) !== '') return 'the previous snapshot no longer validates';
+  if (!statSync(partial).isDirectory()) return 'the obstacle was not left as it was';
+  if (!onlyTheSnapshot([basename(partial)])) return 'a failed export left something behind';
+  rmSync(partial, { recursive: true, force: true });
+
+  // 3. An export that died between its partial and the move.
+  writeFileSync(partial, '{"meta": {"contractVersion": "1.0", "snaps');
+  if (hashOf(target) !== before) return 'the leftover partial touched the snapshot';
+  const again = await exported();
+  if (again.said !== 'done') return `the export after an interrupted one said ${again.said}`;
+  if (existsSync(partial)) return 'the leftover partial is still there';
+  if (validates(target) !== '') return 'the new snapshot does not validate';
+  if (!plannedHere()) return 'the export after an interrupted one did not write the budget as it now is';
+  if (!onlyTheSnapshot()) return 'the export after an interrupted one left something behind';
+  return '';
+}
+
 async function backupShown(window: BrowserWindow): Promise<string> {
   let counter = 0;
   const engineAsk = async <K extends keyof AyqResults>(
@@ -3880,6 +4117,22 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // 02 §7.8–§7.16 and 03 §13: the analytical snapshot, and two interruptions
+  // that must leave it as it was.
+  const snapshotTarget = process.env.AYQ_SMOKE_SNAPSHOT ?? '';
+  let snapshot = 'not asked';
+  let snapshotOk = true;
+  if (snapshotTarget !== '') {
+    const wrong = await snapshotShown(window, snapshotTarget).catch((error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    );
+    snapshot = wrong === '' ? 'held' : wrong;
+    snapshotOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] analytical snapshot: ${snapshotOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // 9 §9.1 and 10 §10.3: what history is allowed to suggest, and what it is
   // allowed to do with the suggestion.
   const suggestAsked = process.env.AYQ_SMOKE_SUGGEST === '1';
@@ -3994,6 +4247,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     balanceOk &&
     aboutOk &&
     backupOk &&
+    snapshotOk &&
     attentionOk &&
     suggestOk &&
     pagedOk;
@@ -4047,6 +4301,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           aboutOk,
           backup,
           backupOk,
+          snapshot,
+          snapshotOk,
           attention,
           attentionOk,
           suggest,
@@ -4085,7 +4341,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} attention=${attention} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} snapshot=${snapshot} attention=${attention} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is

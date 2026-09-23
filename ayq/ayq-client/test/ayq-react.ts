@@ -69,6 +69,21 @@ export async function ayqOpenWindow(answer: Answer): Promise<AyqWindow> {
       // budget was empty while it was still reading — and it cannot be tested
       // at all if every answer arrives before the first paint.
       const result = await answer(request);
+      // A stand-in engine refuses with a code of its own by answering
+      // `{ ayqErrorCode }`, as the real one does (04 A24).
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        'ayqErrorCode' in result
+      ) {
+        return {
+          id: request.id,
+          ok: false,
+          kind: 'error',
+          code: (result as { ayqErrorCode: string }).ayqErrorCode,
+          detail: 'refused by the stand-in engine',
+        };
+      }
       return result === undefined
         ? {
             id: request.id,

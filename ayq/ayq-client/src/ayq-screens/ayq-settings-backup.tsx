@@ -3,6 +3,8 @@
 // Four things and no more: **Create backup now**, when the last backup was made
 // and whether the last attempt failed, whether automatic backups are running,
 // and **Restore backup** for any backup in the history.
+// Beside them, and separate from them, the analytical snapshot export
+// (ayq-settings-snapshot.tsx): a file for AYQ Analyses, not a backup.
 //
 // A backup is one thing on this screen, never two. There is no control that
 // restores the budget alone or AYQ's records alone, and nothing here could
@@ -35,6 +37,7 @@ import { AyqTable } from '../ayq-ui/ayq-table.tsx';
 import type { AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
 import { AyqSettingBody, AyqSettingRow } from './ayq-settings.tsx';
+import { AyqSettingsSnapshot } from './ayq-settings-snapshot.tsx';
 
 const useStyles = makeStyles({
   stack: {
@@ -328,6 +331,8 @@ export function AyqSettingsBackup({
           </p>
         )}
       </AyqPane>
+
+      <AyqSettingsSnapshot />
 
       <AyqPane
         mark="backup-history"

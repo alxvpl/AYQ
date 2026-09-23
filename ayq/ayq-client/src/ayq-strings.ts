@@ -218,6 +218,13 @@ const EN = {
   'error.budget-slow':
     'The budget did not confirm the change in time. Try again.',
   'error.import-no-file': 'No file was chosen.',
+  'error.snapshot-unidentified-account':
+    'The snapshot was not written: an account has no masked identifier AYQ can vouch for. The previous snapshot is unchanged.',
+  'error.snapshot-invalid':
+    'The snapshot was not written: what AYQ assembled did not pass the contract check. The previous snapshot is unchanged.',
+  'error.snapshot-write-failed':
+    'The snapshot could not be written there. The previous snapshot is unchanged.',
+  'error.snapshot-not-from-window': 'AYQ could not do that.',
   'error.import-nothing-readable': 'Nothing was imported: {problems}.',
   'error.import-nothing-readable.none':
     'Nothing was imported: none of the chosen files holds a CAMT.053 statement.',
@@ -266,6 +273,14 @@ const EN = {
     'Restoring one puts both back.',
 
   'backup.pane': 'Backups',
+  'snapshot.pane': 'Analytical snapshot',
+  'snapshot.name': 'Export a snapshot for AYQ Analyses',
+  'snapshot.note':
+    "One file, written only when you ask, where you choose. Account numbers, references and bank descriptions are left out. Nothing is sent anywhere, and AYQ works the same without it.",
+  'snapshot.action': 'Export snapshot…',
+  'snapshot.working': 'Exporting…',
+  'snapshot.cancelled': 'No snapshot was written.',
+  'snapshot.done': 'Snapshot written to {file}.',
   'backup.now': 'Create backup now',
   'backup.now.working': 'Backing up…',
   'backup.now.note':

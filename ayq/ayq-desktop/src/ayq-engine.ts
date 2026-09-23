@@ -17,7 +17,7 @@ import type {
   AyqEngineStatus,
   AyqAbout,
   AyqBackupCreated,
-  AyqRequest,
+  AyqEngineRequest,
   AyqResponse,
   AyqRestored,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -128,6 +128,7 @@ import {
   ayqWriteStore,
 } from './ayq-store.ts';
 import { AyqEngineError, ayqErrorCodeOf } from './ayq-error.ts';
+import { ayqExportAnalyticalSnapshot } from './ayq-snapshot.ts';
 
 const BUDGET_NAME = 'AYQ';
 
@@ -591,7 +592,7 @@ void started;
  * The one exception would be a request about the host, and the host answers
  * those itself rather than sending them here.
  */
-async function answer(request: AyqRequest): Promise<AyqResponse> {
+async function answer(request: AyqEngineRequest): Promise<AyqResponse> {
   const id = request.id;
 
   if (request.kind === 'engine.status') {
@@ -644,6 +645,37 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       kind: 'backup.restore',
       result: await restoreBackup(request.backupId),
     };
+  }
+
+  // The analytical snapshot (02 §7.8–§7.16, 03 §13) is read alone, like a
+  // backup: no filing may land between reading the ledger and reading the
+  // store, or the file would describe two moments at once.
+  if (request.kind === 'snapshot.write') {
+    const { path } = request;
+    const today = ayqToday(request.today);
+    return exclusive(async () => {
+      const opened = await openBudget(dataDir);
+      return {
+        id,
+        ok: true,
+        kind: 'snapshot.write',
+        result: await ayqExportAnalyticalSnapshot(
+          dataDir,
+          opened.budgetId,
+          today,
+          aboutThisBuild(),
+          path,
+        ),
+      };
+    });
+  }
+  if (request.kind === 'snapshot.export') {
+    // Only the host may turn this into a write, once the owner has chosen
+    // where; the engine is never asked to choose a place itself.
+    throw new AyqEngineError(
+      'snapshot-not-from-window',
+      'snapshot.export is answered by the host, which asks the owner where',
+    );
   }
 
   const budget = await openBudget(dataDir);
@@ -1344,7 +1376,7 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
 
 channel.onMessage(message => {
   void (async () => {
-    const request = message as AyqRequest;
+    const request = message as AyqEngineRequest;
     let response: AyqResponse;
     try {
       if (dataDir === '') {
@@ -1353,7 +1385,9 @@ channel.onMessage(message => {
       // Backup and restore take the gate alone inside their own handlers;
       // everything else shares it.
       const takesItAlone =
-        request?.kind === 'backup.create' || request?.kind === 'backup.restore';
+        request?.kind === 'backup.create' ||
+        request?.kind === 'backup.restore' ||
+        request?.kind === 'snapshot.write';
       response = takesItAlone
         ? await answer(request)
         : await shared(() => answer(request));

@@ -40,8 +40,9 @@ import { buildZip } from '../../ayq-camt/test/ayq-zip-writer.ts';
 // nobody is reading the result of.
 import { AYQ_STORE_VERSION } from '../src/ayq-store.ts';
 import type {
-  AyqRequest,
+  AyqEngineRequest,
   AyqRequestBody,
+  AyqSnapshotWriteRequest,
   AyqResponse,
   AyqResults,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -170,7 +171,7 @@ export async function restart(dataDir: string): Promise<void> {
 }
 
 export async function send(
-  request: AyqRequest,
+  request: AyqEngineRequest,
   dataDir: string,
 ): Promise<AyqResponse> {
   const running = engineFor(dataDir);
@@ -213,7 +214,7 @@ after(async () => {
  */
 export async function ask<K extends keyof AyqResults>(
   dataDir: string,
-  body: AyqRequestBody & { kind: K },
+  body: (AyqRequestBody | AyqSnapshotWriteRequest) & { kind: K },
 ): Promise<AyqResults[K]> {
   counter += 1;
   const id = `test-${counter}`;

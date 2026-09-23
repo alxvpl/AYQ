@@ -126,6 +126,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'the engine tests did not pass' }
           npm --prefix ../ayq-client test
           if ($LASTEXITCODE -ne 0) { throw 'the renderer tests did not pass' }
+          # The analytical snapshot contract 1.0 the export is validated by:
+          # its own suite, over its own synthetic fixtures (03 §13).
+          npm --prefix ../ayq-analytical-contract ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'the contract package did not install' }
+          npm --prefix ../ayq-analytical-contract test
+          if ($LASTEXITCODE -ne 0) { throw 'the contract tests did not pass' }
 
       # The acceptance test. `--require-host` makes the development Node
       # fallback unable to satisfy it: if anything but the Electron utility
@@ -862,6 +868,28 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Needs attention did not hold' }
           if ($said -notmatch 'Needs attention: held') {
             throw 'the run did not check Needs attention at all'
+          }
+
+      # 02 §7.8–§7.16 and 03 §13: the analytical snapshot, exported through the
+      # window to the file the host's dialog is answered with, read back through
+      # the contract's validator; then an export whose write cannot complete and
+      # one after an export interrupted between its partial and the move, each
+      # of which must leave the previous snapshot byte for byte.
+      - name: The analytical snapshot, written all or nothing
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-snapshot-budget
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'ayq-snapshot-out\snapshot.json'
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --import-once `
+            --snapshot $target 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'the analytical snapshot did not hold' }
+          if ($said -notmatch 'analytical snapshot: held') {
+            throw 'the run did not check the analytical snapshot at all'
           }
 
       # The product, as a person would get it: an installer, installed, and the

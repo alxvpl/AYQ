@@ -175,6 +175,15 @@ if (has('about')) env.AYQ_SMOKE_ABOUT = '1';
 // backup through the window and requires both halves to be back (04 A38, 03 §12).
 if (has('backup')) env.AYQ_SMOKE_BACKUP = '1';
 
+// `--snapshot <file>` opens Settings → Data & Backup and exports the analytical
+// snapshot with the button, the host answering the save dialog with <file>. The
+// file is read back through the contract's validator. Then two exports are
+// interrupted — one whose write cannot complete, one that finds the partial an
+// earlier interrupted export left — and the previous snapshot has to be there,
+// byte for byte, after each (02 §7.8–§7.16, 03 §13.10).
+const snapshot = flag('snapshot');
+if (snapshot) env.AYQ_SMOKE_SNAPSHOT = resolve(snapshot);
+
 // `--attention` reads Needs attention off Today: the groups the engine answers,
 // in its order, the rail's count of them, no engine identifier on the screen,
 // and the review row opening Review (010, 013).
