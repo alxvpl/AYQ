@@ -137,6 +137,8 @@ const TODAY: AyqToday = {
 function engine(today: AyqToday) {
   return (request: Record<string, unknown>): unknown => {
     if (request.kind === 'today') return today;
+    // Needs attention has its own tests; here it holds nothing.
+    if (request.kind === 'attention') return { groups: [] };
     if (request.kind === 'transactions.list') {
       return {
         rows: [ROW],
@@ -233,6 +235,9 @@ test('A21\u2019s order, in A21\u2019s own words', async () => {
     // The table; the pane that holds the chosen row (A4) stands beside it
     // once a row is chosen, as template r003 composes Today.
     'today-movements',
+    // The queues, last (A21): what needs attention (010 §2.1), then what is
+    // waiting on the owner.
+    'today-attention',
     'today-waiting',
   ]);
 

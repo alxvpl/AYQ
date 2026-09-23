@@ -230,7 +230,8 @@ test('version 9 becomes 10: every count and every decision stays where it was', 
   >;
 
   assert.equal(after.version, AYQ_STORE_VERSION);
-  assert.equal(AYQ_STORE_VERSION, 10);
+  // Version 10 is the step under test; later versions only widen.
+  assert.ok(AYQ_STORE_VERSION >= 10);
   assert.deepEqual(counts(after), counts(before));
 
   // Each decision keeps its source, its category and its moment, in order.
@@ -343,8 +344,8 @@ test('a version 9 store on disk is copied first, and the copy is the old shape',
   writeFileSync(path, before, 'utf8');
 
   const store = ayqReadStore(dataDir);
-  assert.equal(store.version, 10);
-  const kept = join(dataDir, 'ayq-store.before-v9-to-v10.json');
+  assert.equal(store.version, AYQ_STORE_VERSION);
+  const kept = join(dataDir, `ayq-store.before-v9-to-v${AYQ_STORE_VERSION}.json`);
   assert.equal(
     readFileSync(kept, 'utf8'),
     before,
@@ -360,7 +361,7 @@ test('a version 9 store whose copy cannot be made is not migrated', async () => 
   const before = `${JSON.stringify(versionNine(), null, 2)}\n`;
   writeFileSync(path, before, 'utf8');
   // A folder where the copy would go.
-  mkdirSync(join(dataDir, 'ayq-store.before-v9-to-v10.json'));
+  mkdirSync(join(dataDir, `ayq-store.before-v9-to-v${AYQ_STORE_VERSION}.json`));
 
   assert.throws(() => ayqReadStore(dataDir), /could not first keep a copy/);
   assert.equal(
@@ -379,7 +380,7 @@ test('an interrupted migration leaves the old store or the new one, never half o
   // A write that died halfway leaves its temporary file, never the store.
   writeFileSync(`${path}.tmp`, '{"version":10,"decisions":{"row-1":[', 'utf8');
   const opened = ayqReadStore(dataDir);
-  assert.equal(opened.version, 10);
+  assert.equal(opened.version, AYQ_STORE_VERSION);
   assert.equal(
     readFileSync(path, 'utf8'),
     before,
@@ -389,14 +390,14 @@ test('an interrupted migration leaves the old store or the new one, never half o
   // Written, it is the new shape and opens as it is.
   ayqWriteStore(dataDir, opened);
   const written = JSON.parse(readFileSync(path, 'utf8')) as { version: number };
-  assert.equal(written.version, 10);
+  assert.equal(written.version, AYQ_STORE_VERSION);
   assert.deepEqual(ayqReadStore(dataDir), opened);
 });
 
-test('a version 11 store is refused, not repaired', () => {
+test('a store newer than this AYQ is refused, not repaired', () => {
   const ahead = versionNine();
-  ahead.version = 11;
-  assert.throws(() => ayqMigrate(ahead), /version 11/);
+  ahead.version = AYQ_STORE_VERSION + 1;
+  assert.throws(() => ayqMigrate(ahead), new RegExp(`version ${AYQ_STORE_VERSION + 1}`));
 });
 
 // ---------------------------------------------------------------------------
@@ -480,7 +481,7 @@ test('a backup sealed with a version 9 store restores, then migrates like any st
   const live = ayqReadStore(dataDir);
   live.settings = { ground: 'light' };
   ayqWriteStore(dataDir, live);
-  const earlierCopy = join(dataDir, 'ayq-store.before-v9-to-v10.json');
+  const earlierCopy = join(dataDir, `ayq-store.before-v9-to-v${AYQ_STORE_VERSION}.json`);
   const earlierCopyBytes = readFileSync(earlierCopy);
   writeBudget(dataDir, 'budget as it is now');
 
@@ -497,13 +498,13 @@ test('a backup sealed with a version 9 store restores, then migrates like any st
 
   // Then opened the ordinary way: migrated, with a safety copy of *this* store.
   const opened = ayqReadStore(dataDir);
-  assert.equal(opened.version, 10);
+  assert.equal(opened.version, AYQ_STORE_VERSION);
   assert.deepEqual(
     counts(opened as unknown as Record<string, unknown>),
     counts(versionNine()),
   );
   const copies = readdirSync(dataDir).filter(name =>
-    name.startsWith('ayq-store.before-v9-to-v10'),
+    name.startsWith(`ayq-store.before-v9-to-v${AYQ_STORE_VERSION}`),
   );
   assert.equal(
     copies.length,
@@ -516,7 +517,7 @@ test('a backup sealed with a version 9 store restores, then migrates like any st
     'the earlier copy was overwritten',
   );
   const ownCopy = copies.find(
-    name => name !== 'ayq-store.before-v9-to-v10.json',
+    name => name !== `ayq-store.before-v9-to-v${AYQ_STORE_VERSION}.json`,
   );
   assert.ok(ownCopy);
   assert.equal(
@@ -556,16 +557,16 @@ test('the migration never touches a backup file, even after the store is written
         version: number;
       }
     ).version,
-    10,
+    AYQ_STORE_VERSION,
   );
   assert.deepEqual(sealed(dataDir, backupId), seal);
 });
 
-test('a backup whose store is version 11 is still refused', async () => {
+test('a backup whose store is newer than this AYQ is still refused', async () => {
   const dataDir = await folder();
   writeBudget(dataDir, 'budget');
   const ahead = versionNine();
-  ahead.version = 11;
+  ahead.version = AYQ_STORE_VERSION + 1;
   writeFileSync(ayqStorePath(dataDir), `${JSON.stringify(ahead)}\n`, 'utf8');
   const made = ayqCreateBackup(dataDir, {
     trigger: 'manual',

@@ -140,6 +140,28 @@ const EN = {
   'settings.tab.about': 'About',
   'settings.tab.backup': 'Data & Backup',
 
+  'attention.title': 'Needs attention',
+  'attention.none': 'Nothing needs attention.',
+  'attention.state': 'Attention',
+  'attention.due-today': 'Expected payments due today',
+  'attention.overdue': 'Expected payments overdue',
+  'attention.reconciliation-difference':
+    "Accounts where the bank's balance and AYQ's differ",
+  'attention.balance-unknown': 'Accounts with no known balance',
+  'attention.import-failed': 'Files an import could not use',
+  'attention.backup-failed': 'The last backup failed',
+  'attention.backup-failed.note': '{when}: {why}',
+  'attention.review': 'Counterparties to review',
+  'attention.open.upcoming': 'Open Upcoming',
+  'attention.open.review': 'Open Review',
+  'attention.open.import': 'Open Import history',
+  'attention.open.backup': 'Open Data & Backup',
+  'attention.setBalance': 'Set balance: {account}',
+  'attention.openAccount': 'Open {account}',
+  'import.problems.title': 'Files that could not be used',
+  'import.problems.handle': 'Mark as handled',
+  'import.problems.handled': 'Handled {when}',
+
   // What the engine reports as codes, worded (04 A24; ayq-reasons.ts).
   'reason.filing.bank-charge': "the bank's own charge",
   'reason.filing.bank-interest': 'interest charged by the bank',
@@ -234,6 +256,8 @@ const EN = {
     'There is no budget month {month} to plan in. Plans can be set from three ' +
     'months before the earliest transaction to twelve after the current one.',
   'error.plan-amount-invalid': 'A plan is an amount of zero or more.',
+  'error.import-problem-not-found':
+    'That file is no longer in the import history.',
   'error.anchor-disagrees':
     'The balance could not be applied: the budget does not agree with it.',
   'settings.backup.blurb':

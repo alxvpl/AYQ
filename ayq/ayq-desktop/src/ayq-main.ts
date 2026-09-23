@@ -2079,6 +2079,77 @@ async function backupShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Needs attention on the drawn window (010 §6; 013 §4, §5).
+ *
+ * After the smoke's import the engine holds counterparties nobody has filed, so
+ * Review's group must hold. The window has to draw exactly the groups the
+ * engine answers, in its order; the rail's Today badge has to be the number of
+ * groups; no row may show an engine identifier; and the review row's action
+ * has to open Review.
+ */
+async function attentionShown(window: BrowserWindow): Promise<string> {
+  const answered = await ask({ id: 'smoke-attention', kind: 'attention' } as AyqRequest);
+  if (!answered.ok || answered.kind !== 'attention') {
+    return `the engine did not answer attention: ${answered.ok ? answered.kind : answered.code}`;
+  }
+  const expected = answered.result.groups.map(one => one.kind);
+  if (!expected.includes('review')) return 'the imported statement left nothing to review';
+
+  if (!(await openDestination(window, 'today'))) return 'Today never opened';
+  const deadline = Date.now() + 60_000;
+  let seen: { kinds: string[]; badge: string | null; text: string } = {
+    kinds: [],
+    badge: null,
+    text: '',
+  };
+  while (Date.now() < deadline) {
+    seen = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => JSON.stringify({
+          kinds: [...document.querySelectorAll('[data-ayq-attention]')]
+            .map(one => one.getAttribute('data-ayq-attention')),
+          badge: (document.querySelector('[data-ayq-tab="today"] [data-ayq-waiting]') || { getAttribute: () => null })
+            .getAttribute('data-ayq-waiting'),
+          text: (document.querySelector('[data-ayq-pane="today-attention"]') || { innerText: '' }).innerText,
+        }))()`),
+      ),
+    ) as typeof seen;
+    if (seen.kinds.length === expected.length && seen.badge !== null) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (JSON.stringify(seen.kinds) !== JSON.stringify(expected)) {
+    return `the window drew ${JSON.stringify(seen.kinds)}, the engine answered ${JSON.stringify(expected)}`;
+  }
+  if (seen.badge !== String(expected.length)) {
+    return `the rail counts ${seen.badge ?? 'nothing'}, there are ${expected.length} groups`;
+  }
+  // Hyphenated identifiers only: 'review' is a kind and also an English word.
+  for (const raw of [...expected, 'no-entries', 'not-camt', 'write-failed'].filter(
+    one => one.includes('-'),
+  )) {
+    if (seen.text.includes(raw)) return `the pane shows the identifier ${raw}`;
+  }
+
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-action="attention-review"]')?.click(); true`,
+  );
+  const opened = Date.now() + 30_000;
+  while (Date.now() < opened) {
+    const there = await window.webContents.executeJavaScript(
+      `!!document.querySelector('[data-ayq-screen="review"]')`,
+    );
+    if (there === true) {
+      process.stdout.write(
+        `[ayq-smoke] attention: ${expected.join(', ')}; badge ${seen.badge}; review opened\n`,
+      );
+      return '';
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  return 'the review row did not open Review';
+}
+
+/**
  * The strict detector and the Plan's historical suggestions, on the window
  * (9 §9.1, 10 §10.3).
  *
@@ -3770,6 +3841,21 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // 010 / 013: Needs attention on Today, and the rail's count.
+  const attentionAsked = process.env.AYQ_SMOKE_ATTENTION === '1';
+  let attention = 'not asked';
+  let attentionOk = true;
+  if (attentionAsked) {
+    const wrong = await attentionShown(window).catch((error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    );
+    attention = wrong === '' ? 'held' : wrong;
+    attentionOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] Needs attention: ${attentionOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // 04 A38 and 03 §12: a backup made, two bad sets refused, the backup restored.
   const backupAsked = process.env.AYQ_SMOKE_BACKUP === '1';
   let backup = 'not asked';
@@ -3899,6 +3985,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     balanceOk &&
     aboutOk &&
     backupOk &&
+    attentionOk &&
     suggestOk &&
     pagedOk;
 
@@ -3951,6 +4038,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           aboutOk,
           backup,
           backupOk,
+          attention,
+          attentionOk,
           suggest,
           suggestOk,
           pagedOk,
@@ -3987,7 +4076,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} attention=${attention} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is

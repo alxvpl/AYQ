@@ -22,7 +22,7 @@ import { makeStyles, mergeClasses } from '@fluentui/react-components';
 
 import { ayqAsk } from '../ayq-bridge.ts';
 import type { AyqDestination } from '../ayq-destinations.ts';
-import type { AyqLedger, AyqToday } from '../ayq-ipc-contract.ts';
+import type { AyqAttention, AyqLedger, AyqToday } from '../ayq-ipc-contract.ts';
 import { ayqCount, ayqDate, ayqMoney, ayqMonthName, ayqText } from '../ayq-strings.ts';
 import type { AyqStringKey } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
@@ -36,6 +36,7 @@ import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 
+import { AyqAttentionPane } from './ayq-attention.tsx';
 import { AyqLedgerPane } from './ayq-ledger-pane.tsx';
 
 const useStyles = makeStyles({
@@ -237,16 +238,38 @@ export function AyqTodayScreen({
   onFailure,
   onOpen,
   onOpenAccount,
+  onOpenBackup,
   round,
 }: {
   onFailure(message: string): void;
   onOpen(destination: AyqDestination): void;
   /** Opens one account's own detail — a secondary surface, not a workspace. */
   onOpenAccount(accountId: string): void;
+  /** Settings → Data & Backup, where a failed backup is dealt with. */
+  onOpenBackup(): void;
   round: number;
 }): ReactNode {
   const styles = useStyles();
   const [today, setToday] = useState<AyqToday | null>(null);
+  const [attention, setAttention] = useState<AyqAttention | null>(null);
+
+  // What needs attention is the engine's answer (010 §8.1), asked beside Today's
+  // own and drawn as it comes.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const answered = await ayqAsk({ kind: 'attention' });
+      if (!answered.ok) throw new Error(answered.message);
+      if (live) setAttention(answered.result as AyqAttention);
+    })().catch((error: unknown) => {
+      if (live) {
+        onFailure(error instanceof Error ? error.message : String(error));
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [round, onFailure]);
 
   useEffect(() => {
     let live = true;
@@ -538,6 +561,13 @@ export function AyqTodayScreen({
         reloadToken={round}
         detailWhenChosen
       />
+
+      {attention === null ? null : (
+        <AyqAttentionPane
+          attention={attention}
+          routes={{ open: onOpen, openAccount: onOpenAccount, openBackup: onOpenBackup }}
+        />
+      )}
 
       <AyqPane
         mark="today-waiting"

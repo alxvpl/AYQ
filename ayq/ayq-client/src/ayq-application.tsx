@@ -111,6 +111,22 @@ export function AyqApplication(): ReactNode {
   // and the attributes below are read off that.
   const say = useCallback((message: string) => setNotice(message), []);
 
+  // How many attention groups hold, for the rail (013 §5). Asked on every
+  // reload, like the status bar's own figures. A failure here says nothing on
+  // its own: Today asks the same question and reports what it could not read.
+  const [attentionGroups, setAttentionGroups] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const answered = await ayqAsk({ kind: 'attention' });
+      if (!live || !answered.ok || answered.kind !== 'attention') return;
+      setAttentionGroups(answered.result.groups.length);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [round]);
+
   // What is true of the window, whichever screen is open.
   useEffect(() => {
     let live = true;
@@ -305,6 +321,10 @@ export function AyqApplication(): ReactNode {
           setAccount(accountId);
           setDestination('accounts');
         }}
+        onOpenBackup={() => {
+          setDestination('settings');
+          setSettingsTab('backup');
+        }}
         round={round}
       />
     );
@@ -327,6 +347,9 @@ export function AyqApplication(): ReactNode {
       <AyqTitleBar />
       <AyqRail
         current={destination}
+        // How many conditions need attention — groups, not records (013 §5) —
+        // on Today, where they are.
+        waiting={{ today: attentionGroups }}
         open={next => {
           setDestination(next);
           reload();
