@@ -3,7 +3,7 @@ import { ACCENT } from './tokens.js';
 import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { formatDate, formatList } from '../format.js';
-import { CATEGORY_AXIS_LABEL, canvasFitsRaster, categoryLabelGutter, chartGeometry } from '../geometry.js';
+import { CATEGORY_AXIS_LABEL, canvasFitsRaster, canvasWithinSafeBudget, categoryLabelGutter, chartGeometry } from '../geometry.js';
 import { formatCount, formatMoney, formatSignedMoney } from '../money.js';
 import { nextSortState, sortRows, type SortColumn, type SortState } from '../sort.js';
 import { useLocale, useText } from './text.js';
@@ -39,17 +39,19 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
   const frame = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const height = chartHeight(rows.length);
-  // The guard of r004 §8.2: before anything is drawn, the canvas the chart
+  // The guard of r005 §8.2: before anything is drawn, the canvas the chart
   // would allocate — the frame's width by the rows' height, at the device
-  // pixel ratio — is checked against what the platform will rasterise. A
-  // result the chart cannot show is stated, never left blank. Re-checked on
-  // resize, because the width and the pixel ratio can change with the window
-  // and the display it is on.
+  // pixel ratio — is checked against what the platform will rasterise and
+  // against the lower safe-render budget (T3). A result the chart cannot show,
+  // or cannot show safely, is stated, never left blank. Re-checked on resize,
+  // because the width and the pixel ratio can change with the window and the
+  // display it is on.
   const [tooLarge, setTooLarge] = useState(false);
   useEffect(() => {
     const decide = (): void => {
       const width = frame.current?.clientWidth ?? 0;
-      setTooLarge(!canvasFitsRaster(width, height, window.devicePixelRatio));
+      const dpr = window.devicePixelRatio;
+      setTooLarge(!canvasFitsRaster(width, height, dpr) || !canvasWithinSafeBudget(width, height, dpr));
     };
     decide();
     window.addEventListener('resize', decide);

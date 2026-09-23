@@ -9,8 +9,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_CANVAS_AREA, MAX_CANVAS_SIDE, canvasFitsRaster } from '../src/geometry.js';
+import { MAX_CANVAS_AREA, MAX_CANVAS_SIDE, SAFE_CANVAS_AREA, canvasFitsRaster, canvasWithinSafeBudget } from '../src/geometry.js';
 import { translate } from '../src/strings.js';
+import { analyse } from '../src/engine.js';
+import { defaultContext } from '../src/context.js';
+import { loadFixture } from './helpers.js';
 
 const chartHeight = (rows: number): number => Math.max(140, rows * 44 + 48);
 
@@ -60,10 +63,63 @@ test('the sentence is r004 §8.2, word for word, and the chart component says it
     'This result is too large to show as a chart. The table still shows the complete result.',
   );
   const result = readFileSync(join(process.cwd(), 'src', 'ui', 'result.tsx'), 'utf8');
-  // Decided before drawing, from the frame's width, the rows' height and the pixel ratio; re-decided on resize.
-  assert.match(result, /setTooLarge\(!canvasFitsRaster\(width, height, window\.devicePixelRatio\)\)/);
+  // Decided before drawing, from the frame's width, the rows' height and the pixel ratio — against the
+  // raster limit and the safe-render budget (T3) — and re-decided on resize.
+  assert.match(result, /const dpr = window\.devicePixelRatio;\s*setTooLarge\(!canvasFitsRaster\(width, height, dpr\) \|\| !canvasWithinSafeBudget\(width, height, dpr\)\);/);
   assert.match(result, /window\.addEventListener\('resize', decide\)/);
   // Nothing is drawn when it would not rasterise; the sentence takes the chart's place.
   assert.match(result, /if \(tooLarge \|\| host\.current === null\) return undefined;/);
   assert.match(result, /tooLarge \? \(\s*<p className="chart-too-large">\{t\('chart\.tooLarge'\)\}<\/p>/);
+});
+
+// T3 (directive 004 + 005): a second, lower budget in device-pixel canvas
+// area. Above it the chart is not drawn and the same sentence stands in its
+// place; the hard raster limits above are unchanged.
+const DEFAULT_FRAME = 1220;
+const lastDrawn = (dpr: number, width = DEFAULT_FRAME): number => {
+  let rows = 0;
+  while (canvasFitsRaster(width, chartHeight(rows + 1), dpr) && canvasWithinSafeBudget(width, chartHeight(rows + 1), dpr)) rows += 1;
+  return rows;
+};
+
+test('the safe-render budget is 4 096² device pixels, a sixteenth of the raster area', () => {
+  assert.equal(SAFE_CANVAS_AREA, 4_096 * 4_096);
+  assert.equal(SAFE_CANVAS_AREA * 16, MAX_CANVAS_AREA);
+  assert.equal(canvasWithinSafeBudget(4_096, 4_096, 1), true);
+  assert.equal(canvasWithinSafeBudget(4_096, 4_097, 1), false);
+  assert.equal(canvasWithinSafeBudget(0, chartHeight(2000), 1.75), true);
+});
+
+test('with the budget the chart draws to 311 rows at 100 %, 100 at 175 %, 77 at 200 % and 33 at 300 %', () => {
+  assert.equal(lastDrawn(1), 311);
+  assert.equal(lastDrawn(1.75), 100);
+  assert.equal(lastDrawn(2), 77);
+  assert.equal(lastDrawn(3), 33);
+  // The budget, not the raster limit, is what stops it now.
+  assert.equal(canvasFitsRaster(DEFAULT_FRAME, chartHeight(101), 1.75), true);
+  assert.equal(canvasWithinSafeBudget(DEFAULT_FRAME, chartHeight(101), 1.75), false);
+});
+
+test('at the default window no canvas the budget admits is taller than 16 384 device pixels, where memory jumped', () => {
+  // Measured: 211 rows at 175 % (16 331 px tall) cost 1.1 GB, 212 rows (16 408 px) 2.4 GB.
+  for (const dpr of [1, 1.25, 1.5, 1.75, 2, 2.5, 3]) {
+    const tallest = Math.ceil(chartHeight(lastDrawn(dpr, 1209)) * dpr);
+    assert.ok(tallest <= 16_384, `${dpr}: ${tallest}`);
+  }
+});
+
+test('the frozen synthetic-input baseline still draws: Period A and Period B, all accounts, at 100 % and 175 % (005)', () => {
+  const snapshot = loadFixture('a1-result.json');
+  const all = defaultContext(snapshot);
+  const periodA = analyse(snapshot, { ...all, fromDate: '2026-02-01', toDate: '2026-02-28' });
+  const periodB = analyse(snapshot, { ...all, fromDate: '2025-01-01', toDate: '2025-12-31' });
+  assert.equal(periodA.rows.length, 3);
+  assert.equal(periodB.rows.length, 1);
+  const counts: number[] = [periodA.rows.length, periodB.rows.length];
+  for (const dpr of [1, 1.75]) {
+    for (const count of counts) {
+      assert.equal(canvasFitsRaster(DEFAULT_FRAME, chartHeight(count), dpr), true);
+      assert.equal(canvasWithinSafeBudget(DEFAULT_FRAME, chartHeight(count), dpr), true);
+    }
+  }
 });

@@ -76,3 +76,24 @@ export function canvasFitsRaster(cssWidth: number, cssHeight: number, devicePixe
   if (width <= 0 || height <= 0) return true;
   return width <= MAX_CANVAS_SIDE && height <= MAX_CANVAS_SIDE && width * height <= MAX_CANVAS_AREA;
 }
+
+/**
+ * The safe-render budget, in device pixels of canvas area (directive 004 T3):
+ * 4 096², a sixteenth of the raster limit. Well below that limit a chart still
+ * draws, but measured in this Electron on 2026-09-24 (evidence/overnight-t1-t3)
+ * a canvas taller than 16 384 device pixels leaves the GPU and the process
+ * tree grows by gigabytes: 211 rows at 175 % cost 1.1 GB, 212 rows 2.4 GB. At
+ * the default window the first such canvas is 1 209 × 16 384 device pixels, at
+ * 100 %; this budget sits below it at every scale. Above it the chart is not
+ * drawn and says so, as at the raster limit (r005 §8.2). An implementation
+ * safety limit, not Canon, revisable on evidence.
+ */
+export const SAFE_CANVAS_AREA = 16_777_216;
+
+/** Whether a chart of this CSS size, at this device pixel ratio, stays within the safe-render budget. */
+export function canvasWithinSafeBudget(cssWidth: number, cssHeight: number, devicePixelRatio: number): boolean {
+  const width = Math.ceil(cssWidth * devicePixelRatio);
+  const height = Math.ceil(cssHeight * devicePixelRatio);
+  if (width <= 0 || height <= 0) return true;
+  return width * height <= SAFE_CANVAS_AREA;
+}

@@ -190,3 +190,205 @@ including one at a row `containLabel` would not have sampled; ECharts' own
 long name its beginning plus one ellipsis, and marks both shared-prefix names;
 only the category axis uses it, and the table cell and detail heading still
 print `row.displayName`. `npm test`: 171 tests, 171 pass; typecheck pass.
+
+## T3 — a safe-render budget below the raster limit
+
+User question (004 §1): can the chart avoid unsafe resource use while the
+complete analytical answer remains available in the table?
+
+### What was measured before the budget
+
+The real built application at `4b8faa44e` (T2, no budget) over a scratch
+`--user-data-dir`, on synthetic snapshots with an exact number of counterparty
+rows in the default period (the A1 fixture's accounts and coverage, n
+counterparties with one February 2026 card payment each, validated by the
+contract before use); 1 360 × 860 window, device scale forced with
+`--force-device-scale-factor`. Memory is only this instance's own process tree,
+walked from its PID (working set and private bytes per process, and Windows'
+`GPU Process Memory` dedicated and shared counters for those PIDs); "after
+driving" is after comparison on and off and the detail pane opened and closed
+twice. Other `electron.exe` processes on the machine were neither counted nor
+touched. The application renders on the GPU (ANGLE Direct3D 11, AMD Radeon RX
+7600 XT; accelerated 2D canvas, from the DevTools `SystemInfo` domain).
+
+| scale | rows | canvas, device px | area, Mpx | first result: tree working set / private | after driving: tree working set / private | GPU process after driving: working set / private | dedicated VRAM after driving |
+|---|---|---|---|---|---|---|---|
+| 100 % | 80 | 1 209 × 3 568 | 4.3 | 385 / 350 MB | 421 / 400 MB | 127 / 221 MB | 92 MB |
+| 100 % | 160 | 1 209 × 7 088 | 8.6 | 393 / 464 MB | 440 / 555 MB | 113 / 342 MB | 144 MB |
+| 100 % | 240 | 1 209 × 10 608 | 12.8 | 404 / 507 MB | 469 / 824 MB | 114 / 581 MB | 290 MB |
+| 100 % | 320 | 1 209 × 14 128 | 17.1 | 425 / 669 MB | 482 / 924 MB | 113 / 670 MB | 419 MB |
+| 100 % | 400 | 1 209 × 17 648 | 21.3 | 779 / 694 MB | 1 627 / 1 568 MB | 1 123 / 1 176 MB | 40 MB |
+| 100 % | 540 | 1 209 × 23 808 | 28.8 | 909 / 823 MB | 2 046 / 1 984 MB | 1 470 / 1 519 MB | 40 MB |
+| 100 % | 700 | 1 209 × 30 848 | 37.3 | 905 / 819 MB | 2 512 / 2 447 MB | 1 864 / 1 910 MB | 40 MB |
+| 100 % | 900 | 1 209 × 39 648 | 47.9 | 1 035 / 945 MB | 3 088 / 3 029 MB | 2 359 / 2 413 MB | 40 MB |
+| 175 % | 40 | 2 136 × 3 164 | 6.8 | 500 / 458 MB | 516 / 479 MB | 117 / 263 MB | 210 MB |
+| 175 % | 80 | 2 136 × 6 244 | 13.3 | 386 / 516 MB | 422 / 735 MB | 116 / 543 MB | 333 MB |
+| 175 % | 120 | 2 136 × 9 324 | 19.9 | 393 / 624 MB | 419 / 929 MB | 116 / 741 MB | 455 MB |
+| 175 % | 160 | 2 136 × 12 404 | 26.5 | 399 / 734 MB | 430 / 1 037 MB | 118 / 839 MB | 579 MB |
+| 175 % | 200 | 2 136 × 15 484 | 33.1 | 404 / 840 MB | 456 / 1 108 MB | 117 / 883 MB | 701 MB |
+| 175 % | 211 | 2 136 × 16 331 | 34.9 | 404 / 874 MB | 444 / 1 084 MB | 118 / 871 MB | 737 MB |
+| 175 % | 212 | 2 136 × 16 408 | 35 | 886 / 921 MB | 2 367 / 2 449 MB | 1 836 / 2 031 MB | 122 MB |
+| 175 % | 240 | 2 136 × 18 564 | 39.7 | 941 / 976 MB | 3 519 / 2 726 MB | 2 503 / 2 275 MB | 122 MB |
+| 175 % | 280 | 2 136 × 21 644 | 46.2 | 1 025 / 1 046 MB | 2 983 / 3 072 MB | 2 357 / 2 559 MB | 111 MB |
+| 175 % | 320 | 2 136 × 24 724 | 52.8 | 1 437 / 1 393 MB | 3 454 / 3 471 MB | 2 664 / 2 862 MB | 121 MB |
+| 175 % | 400 | 2 136 × 30 884 | 66 | 1 525 / 1 550 MB | 4 049 / 4 133 MB | 3 276 / 3 471 MB | 111 MB |
+| 175 % | 540 | 2 136 × 41 664 | 89 | 1 896 / 1 915 MB | 5 280 / 5 373 MB | 4 351 / 4 558 MB | 112 MB |
+| 175 % | 700 | 2 136 × 53 984 | 115.3 | 1 858 / 1 872 MB | 9 299 / 6 764 MB | 6 897 / 5 791 MB | 112 MB |
+| 300 % | 40 | 3 435 × 5 424 | 18.6 | 381 / 698 MB | 410 / 940 MB | 132 / 775 MB | 529 MB |
+| 300 % | 80 | 3 435 × 10 704 | 36.8 | 386 / 864 MB | 420 / 1 208 MB | 118 / 1 018 MB | 851 MB |
+| 300 % | 120 | 3 435 × 15 984 | 54.9 | 393 / 1 271 MB | 414 / 1 592 MB | 117 / 1 408 MB | 1 179 MB |
+| 300 % | 160 | 3 435 × 21 264 | 73 | 1 679 / 1 868 MB | 6 073 / 4 705 MB | 4 497 / 4 076 MB | 259 MB |
+| 300 % | 200 | 3 435 × 26 544 | 91.2 | 1 959 / 2 150 MB | 7 436 / 5 645 MB | 5 541 / 4 904 MB | 231 MB |
+| 300 % | 240 | 3 435 × 31 824 | 109.3 | 2 244 / 2 436 MB | 8 799 / 6 594 MB | 6 586 / 5 742 MB | 231 MB |
+| 300 % | 300 | 3 435 × 39 744 | 136.5 | 2 671 / 2 864 MB | 10 853 / 8 027 MB | 8 155 / 7 000 MB | 222 MB |
+
+What the numbers say. Below a canvas height of 16 384 device pixels — the
+GPU's largest texture — the chart lives in video memory, which grows with its
+area (up to 1.2 GB at 300 %), and the process tree stays near 0.4–0.5 GB of
+working set. One device pixel taller and the canvas leaves the GPU: dedicated
+video memory falls (701 → 122 MB at 175 %) while the process tree grows by
+gigabytes and keeps growing with each redraw. Bracketed at 175 %: **211 rows
+(16 331 px tall) 444 MB working set after driving; 212 rows (16 408 px)
+2 367 MB.** The same jump appears at 100 % between 320 and 400 rows and at
+300 % between 120 and 160 rows — at the same height, not at the same area.
+This is the multi-gigabyte growth 040 measured.
+
+### The budget
+
+`src/geometry.ts` `SAFE_CANVAS_AREA` = 16 777 216 device pixels (4 096², a
+sixteenth of the 268 435 456 raster area) with `canvasWithinSafeBudget`; the
+chart decides before drawing, and on every resize, that it is too large when
+it exceeds either the unchanged raster limit or this budget, and then states
+`chart.tooLarge` in its place. No new sentence; the table is untouched.
+
+How it was chosen: the budget is an area (004 §6), and the jump is a height.
+At the default window the smallest canvas that crosses 16 384 device pixels is
+the 100 % one, 1 209 × 16 384 ≈ 19.8 Mpx; the budget sits below it with a
+margin, at the round 4 096², so that at the default window no canvas it
+admits, at any scale, is taller than 13 876 device pixels. Every chart drawn
+under it, in both sweeps, measured at most 516 MB of working set and 872 MB of
+private bytes after driving.
+
+Where the sentence begins, frame 1 220 CSS px wide (the default window; the
+same figures the suite asserts):
+
+| device scale | chart draws to | `chart.tooLarge` from | before T3 (raster limit only) |
+|---|---|---|---|
+| 100 % | 311 rows | 312 rows | 1 489 rows |
+| 175 % | 100 rows | 101 rows | 851 rows |
+| 200 % | 77 rows | 78 rows | 744 rows |
+| 300 % | 33 rows | 34 rows | 496 rows |
+
+Because the budget is an area, the row threshold falls as the chart gets wider:
+at the owner's own viewport (2 194 × 1 234 CSS px at 175 %, a chart frame of
+about 2 055 CSS px) it is 59 rows (the sentence from 60); at 100 % 184 rows.
+On the real window the frame measured 1 209 CSS px at 100 % (the sentence from
+315 rows) and, at 300 %, where a 1 360 × 860 window does not fit a 3 840 × 2 160
+screen, 1 145 CSS px (the sentence from 36) — which is why 312 rows at 100 % and
+34 rows at 300 % still draw in the sweep below.
+
+**Finding for the joint leads, not acted on.** The growth follows the canvas's
+height, and an area budget can only approximate a height. It over-restricts
+wide charts (above: 59 rows at the owner's viewport, where anything up to 211
+rows would stay on the GPU) and cannot protect a canvas narrower than
+16 777 216 / 16 384 = 1 024 device pixels — at 100 % a window narrower than
+about 1 160 CSS px, which the 1 100 px minimum allows: there (a frame of about
+961 CSS px, computed from the default window, not measured) a chart of 372–395
+rows would still cross 16 384 px. A
+limit on the canvas's height at 16 384 device pixels would match the mechanism
+exactly; it is a different guard from the accepted one, so it is returned to
+the leads rather than decided here.
+
+### Baseline preservation gate (005)
+
+The frozen synthetic-input baseline, `test/fixtures/a1/a1-result.json` (both
+accounts covered 2025-01-01 – 2026-03-04), all accounts, the dates typed into
+the two date fields of the real built application:
+
+| device scale | Period A, 2026-02-01 – 2026-02-28 (last full month) | Period B, 2025-01-01 – 2025-12-31 (last full calendar year) |
+|---|---|---|
+| 100 % | 3 rows, chart drawn (canvas 1 224 × 180) | 1 row, chart drawn (1 224 × 140) |
+| 175 % | 3 rows, chart drawn (2 161 × 315) | 1 row, chart drawn (2 161 × 245) |
+
+**PASS.** The same gate runs in `npm test` on the real engine and fixture
+(`chart-guard.test.ts`). The application's presets resolve against the
+snapshot's own `generatedAt` (2026-03-05), so Last month is Period A; This year
+(2026-01-01 – 2026-03-05, 3 rows) is not Period B.
+
+### Repeated-redraw memory gate (C5)
+
+A synthetic population at the largest chart the budget admits: at 175 %,
+This year 100 rows (canvas 2 136 × 7 784 = 16.6 Mpx) and Last month 60 rows; at
+100 %, This year 311 rows (1 209 × 13 732 = 16.6 Mpx) and Last month 200 rows.
+One cycle: comparison Previous period, comparison None, preset This year,
+preset Last month, open the detail pane, Escape; the tree sampled after each
+cycle. The plateau criterion was fixed before the first run: over the last
+five cycles, working set and private bytes each within ±5 % of their mean and
+a least-squares slope under 1 % of that mean per cycle.
+
+| run | working set, MB, cycles 1 → last | private bytes, MB | whole-run slope, working set / private | pre-set criterion |
+|---|---|---|---|---|
+| 175 %, 12 cycles | 416, 424, 442, 440, 441, 441, 438, 432, 432, 434, 433, 434 | 696, 627, 643, 576, 577, 576, 639, 634, 569, 635, 635, 636 | +0.12 % / −0.25 % per cycle | working set met; private bytes not met (one swing to 569: 8.5 % from the mean) |
+| 175 %, 24 cycles | 412 … 438 (the last ten 435–438) | 694 … 635 (the last ten 632–635, one 657) | +0.06 % / −0.11 % | **both met** |
+| 100 %, 12 cycles | 481, 483, 483, 480, 481, 483, 480, 475, 476, 476, 476, 474 | 781, 685, 682, 680, 724, 724, 677, 602, 717, 716, 671, 601 | −0.17 % / −1.06 % | working set met; private bytes not met (swings of ±9 %, falling) |
+
+Dedicated video memory is flat in every run (205 MB at 175 %, 175 MB at 100 %),
+and one canvas exists throughout. **No run shows memory continuing to rise**:
+the working set levels off by the third cycle, and private bytes, where they
+move, move around a level and downwards (first third 707 → last third 676 MB
+at 100 %). The two shorter runs miss the pre-set ±5 % band on private bytes
+only because of garbage-collection swings; the 24-cycle run meets it on both.
+Read against 004 §6 — a plateau rather than continuing cycle-by-cycle growth —
+the gate passes; all three runs are reported as they came out.
+
+### The large-population run again, with the budget
+
+The same sweep over the built application with T3 (`chart.tooLarge` wherever
+the budget or the raster limit refuses the canvas), beside the same population
+before the budget. In every case the table holds every row (the "table rows"
+column is counted on screen).
+
+| scale | rows | table rows | chart | after driving, with the budget: tree working set / private | GPU process working set | dedicated VRAM | the same population before the budget: tree working set / private |
+|---|---|---|---|---|---|---|---|
+| 100 % | 311 | 311 | drawn, 1 209 × 13 732 | 480 / 689 MB | 113 MB | 367 MB | — |
+| 100 % | 312 | 312 | drawn, 1 209 × 13 776 | 481 / 758 MB | 114 MB | 246 MB | — |
+| 100 % | 400 | 400 | `chart.tooLarge` | 628 / 524 MB | 199 MB | 46 MB | 1 627 / 1 568 MB |
+| 100 % | 540 | 540 | `chart.tooLarge` | 736 / 632 MB | 227 MB | 46 MB | 2 046 / 1 984 MB |
+| 100 % | 900 | 900 | `chart.tooLarge` | 920 / 811 MB | 301 MB | 46 MB | 3 088 / 3 029 MB |
+| 175 % | 100 | 100 | drawn, 2 136 × 7 784 | 421 / 872 MB | 119 MB | 393 MB | — |
+| 175 % | 101 | 101 | `chart.tooLarge` | 400 / 466 MB | 114 MB | 246 MB | — |
+| 175 % | 211 | 211 | `chart.tooLarge` | 427 / 635 MB | 114 MB | 387 MB | 444 / 1 084 MB |
+| 175 % | 212 | 212 | `chart.tooLarge` | 707 / 666 MB | 264 MB | 114 MB | 2 367 / 2 449 MB |
+| 175 % | 240 | 240 | `chart.tooLarge` | 764 / 721 MB | 281 MB | 114 MB | 3 519 / 2 726 MB |
+| 175 % | 320 | 320 | `chart.tooLarge` | 886 / 845 MB | 330 MB | 114 MB | 3 454 / 3 471 MB |
+| 175 % | 540 | 540 | `chart.tooLarge` | 1 212 / 1 160 MB | 477 MB | 114 MB | 5 280 / 5 373 MB |
+| 175 % | 700 | 700 | `chart.tooLarge` | 1 438 / 1 392 MB | 578 MB | 115 MB | 9 299 / 6 764 MB |
+| 300 % | 33 | 33 | drawn, 3 435 × 4 500 | 396 / 838 MB | 117 MB | 473 MB | — |
+| 300 % | 34 | 34 | drawn, 3 435 × 4 632 | 401 / 855 MB | 119 MB | 481 MB | — |
+| 300 % | 80 | 80 | `chart.tooLarge` | 404 / 723 MB | 116 MB | 534 MB | 420 / 1 208 MB |
+| 300 % | 160 | 160 | `chart.tooLarge` | 1 011 / 1 093 MB | 427 MB | 248 MB | 6 073 / 4 705 MB |
+| 300 % | 300 | 300 | `chart.tooLarge` | 2 066 / 2 151 MB | 669 MB | 248 MB | 10 853 / 8 027 MB |
+
+Every population the budget now refuses costs materially less: at 175 %
+2 367 → 707 MB (212 rows), 5 280 → 1 212 MB (540), 9 299 → 1 438 MB (700);
+at 100 % 3 088 → 920 MB (900); at 300 % 6 073 → 1 011 MB (160) and
+10 853 → 2 066 MB (300), working set after driving.
+
+**Second finding, outside T3, not acted on.** What remains at the largest
+populations is not the chart: there is no chart canvas. It is the page itself —
+the long table in its scrolling body — which crosses the same 16 384-device-
+pixel height (dedicated video memory falls to 114–248 MB and the GPU process
+grows, as it did for the chart): 1.4 GB at 700 rows at 175 %, 2.1 GB at 300
+rows at 300 %. The table is the complete answer and is not the chart; how a
+very long table is presented is a Design System and shell question (r005 §8),
+not this bundle's.
+
+### Suite
+
+`test/chart-guard.test.ts` (part of `npm test`): the raster-limit tests are
+unchanged; the wiring assertion now requires both checks before drawing; the
+budget is 4 096² and a sixteenth of the raster area; the chart draws to 311 /
+100 / 77 / 33 rows at 100 / 175 / 200 / 300 %; at the default window no canvas
+the budget admits is taller than 16 384 device pixels at any scale from 100 to
+300 %; the frozen synthetic-input baseline, run through the real engine,
+gives Period A 3 rows and Period B 1 row, and both fit at 100 % and 175 %.
