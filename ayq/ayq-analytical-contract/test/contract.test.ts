@@ -3,6 +3,8 @@
 // and package-surface checks 016 §10 requires. All values are invented.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import test from 'node:test';
 import {
   CONTRACT_MAJOR,
@@ -449,4 +451,43 @@ test('the package surface is what 016 §8 names, and nothing from the fixtures i
   assert.equal(api.CONTRACT_MAJOR, 1);
   assert.equal(api.CONTRACT_MINOR, 0);
   assert.equal('baseline' in api, false);
+});
+
+// T1 (overnight directive 004 §4): an issue names a transaction by its position
+// in the transaction order, and that position is carried, never searched for.
+// A search inside the per-transaction loop made validation quadratic (040:
+// 6.8 s at 250 000 transactions). Neither guard below is a wall-clock limit.
+
+/** The baseline plus n ordinary transactions, still a valid snapshot. */
+function scaled(n: number): unknown {
+  const snapshot = baselineJson() as { transactions: Record<string, unknown>[]; meta: { counts: Record<string, number> } };
+  const template = snapshot.transactions[0];
+  for (let i = 0; i < n; i += 1) snapshot.transactions.push({ ...clone(template), transactionKey: `tx-scale-${i}` });
+  snapshot.meta.counts.transactions += n;
+  return snapshot;
+}
+
+test('the validator never searches the transaction arrays for a position (T1)', () => {
+  const source = readFileSync(new URL('../src/validate.ts', import.meta.url), 'utf8');
+  const search = /\b(?:transactionOrder|transactionList)\s*\.\s*(?:indexOf|lastIndexOf|findIndex|findLastIndex|includes|find|findLast)\s*\(/g;
+  assert.deepEqual(source.match(search) ?? [], []);
+});
+
+test('validation time grows linearly: four times the transactions takes well under eight times as long (T1)', () => {
+  const small = scaled(40_000);
+  const large = scaled(160_000);
+  assert.equal(validateAnalyticalSnapshot(small).transactions.length, 40_008);
+  assert.equal(validateAnalyticalSnapshot(large).transactions.length, 160_008);
+  let smallMs = Infinity;
+  let largeMs = Infinity;
+  for (let run = 0; run < 3; run += 1) {
+    let t0 = performance.now();
+    validateAnalyticalSnapshot(small);
+    smallMs = Math.min(smallMs, performance.now() - t0);
+    t0 = performance.now();
+    validateAnalyticalSnapshot(large);
+    largeMs = Math.min(largeMs, performance.now() - t0);
+  }
+  const ratio = largeMs / smallMs;
+  assert.ok(ratio < 8, `4× the transactions took ${ratio.toFixed(1)}× as long; linear is ≈ 4×, the quadratic scan measured ≈ 11× at this size`);
 });

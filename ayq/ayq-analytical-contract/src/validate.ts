@@ -716,10 +716,11 @@ export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1
       transactionOrder.push(transaction);
     }
   });
-  // Cross-transaction rules: reversal originals and transfer pairs.
-  const pairs = new Map<string, Transaction[]>();
-  for (const transaction of transactionOrder) {
-    const index = transactionOrder.indexOf(transaction);
+  // Cross-transaction rules: reversal originals and transfer pairs. An issue
+  // names a transaction by its position in transactionOrder; that position is
+  // carried from the loop, never searched for, so this stays linear (T1).
+  const pairs = new Map<string, number[]>();
+  for (const [index, transaction] of transactionOrder.entries()) {
     if (transaction.reversal !== undefined) {
       const original = transactions.get(transaction.reversal.originalTransactionKey);
       if (original === undefined) c.fail(`transactions[${index}].reversal.originalTransactionKey`, 'unresolved_reference', 'originalTransactionKey does not resolve');
@@ -727,23 +728,24 @@ export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1
     }
     if (transaction.internalTransfer !== undefined) {
       const members = pairs.get(transaction.internalTransfer.pairKey) ?? [];
-      members.push(transaction);
+      members.push(index);
       pairs.set(transaction.internalTransfer.pairKey, members);
     }
   }
   for (const [pairKey, members] of pairs) {
     if (members.length > 2) {
-      c.fail(`transactions[${transactionOrder.indexOf(members[2])}].internalTransfer.pairKey`, 'pair_too_many', `pairKey ${pairKey} is shared by more than two transactions`);
+      c.fail(`transactions[${members[2]}].internalTransfer.pairKey`, 'pair_too_many', `pairKey ${pairKey} is shared by more than two transactions`);
       continue;
     }
     if (members.length === 2) {
-      const [a, b] = members;
+      const a = transactionOrder[members[0]];
+      const b = transactionOrder[members[1]];
       const consistent =
         a.accountKey !== b.accountKey &&
         a.internalTransfer!.counterAccountKey === b.accountKey &&
         b.internalTransfer!.counterAccountKey === a.accountKey &&
         Math.sign(a.amount.amount) !== Math.sign(b.amount.amount);
-      if (!consistent) c.fail(`transactions[${transactionOrder.indexOf(b)}].internalTransfer`, 'pair_inconsistent', 'the two sides of a transfer must reference each other with opposite signs');
+      if (!consistent) c.fail(`transactions[${members[1]}].internalTransfer`, 'pair_inconsistent', 'the two sides of a transfer must reference each other with opposite signs');
     }
   }
 
