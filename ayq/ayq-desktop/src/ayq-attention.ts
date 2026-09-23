@@ -24,7 +24,8 @@ import { ayqBackupOverview } from './ayq-backup.ts';
 import { ayqAccountsView } from './ayq-coverage.ts';
 import { AyqEngineError } from './ayq-error.ts';
 import { ayqUnfiled } from './ayq-ledger.ts';
-import { ayqForecast, ayqPlan } from './ayq-plan.ts';
+import { ayqCountsAsExpected } from './ayq-forecast.ts';
+import { ayqPlan } from './ayq-plan.ts';
 import { ayqReadStore, ayqWriteStore } from './ayq-store.ts';
 import type { AyqStore } from './ayq-store.ts';
 
@@ -76,8 +77,12 @@ export async function ayqAttention(
   const groups: AyqAttentionGroup[] = [];
 
   // Upcoming (010 §3A). Due today is an expected occurrence dated today and
-  // not matched (03 §7.26); overdue is the forecast's own flag (§7.13), the
-  // same one Today's waiting list counts, so the two can never disagree.
+  // not matched (03 §7.26). Overdue is the forecast's own flag (§7.13): an
+  // occurrence that still counts as expected and whose date has passed —
+  // decided by the forecast's own predicate over the same occurrences, so the
+  // two cannot disagree, without building the whole forecast. On fifty
+  // thousand transactions the forecast is most of a second's work per month of
+  // plan, and this is asked every time Today is drawn.
   const plan = ayqPlan(dataDir, today);
   const dueToday = plan.occurrences.filter(
     one =>
@@ -88,10 +93,17 @@ export async function ayqAttention(
   if (dueToday > 0) {
     groups.push({ key: 'due-today', kind: 'due-today', count: dueToday });
   }
-  const forecast = await ayqForecast(dataDir, today);
-  const overdue = forecast.events.filter(event => event.flagged).length;
-  if (overdue > 0) {
-    groups.push({ key: 'overdue', kind: 'overdue', count: overdue });
+  const late = plan.occurrences.filter(
+    one => one.state === 'overdue' && ayqCountsAsExpected(one),
+  );
+  if (late.length > 0) {
+    groups.push({
+      key: 'overdue',
+      kind: 'overdue',
+      count: late.length,
+      // The same sum Today's waiting count used to show, now shown here only.
+      amountCents: late.reduce((sum, one) => sum + one.amountCents, 0),
+    });
   }
 
   // Accounts (010 §3C). A difference is only ever stated where the bank stated

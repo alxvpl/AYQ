@@ -158,6 +158,22 @@ test('a payment due today, then overdue, then dismissed', async () => {
     late.groups.filter(one => one.kind === 'overdue').map(one => one.count),
     [1],
   );
+  // What the late payment comes to, now shown only here on Today (038 §3).
+  assert.equal(
+    late.groups.find(one => one.kind === 'overdue')?.amountCents,
+    90_000,
+  );
+  // Read from the occurrences through the forecast's own predicate, not from a
+  // rebuilt forecast — and it must say exactly what the forecast says.
+  const forecast = await ask(dataDir, { kind: 'forecast', today: '2026-06-22' });
+  const flagged = forecast.events.filter(one => one.flagged);
+  const today = await ask(dataDir, { kind: 'today', today: '2026-06-22' });
+  assert.equal(flagged.length, 1);
+  assert.equal(today.waiting.overdue, 1);
+  assert.equal(
+    late.groups.find(one => one.kind === 'overdue')?.amountCents,
+    flagged.reduce((sum, one) => sum + one.amountCents, 0),
+  );
 
   // Dismissed under Upcoming's own semantics, and the condition is gone.
   const plan = await ask(dataDir, { kind: 'plan.list', today: '2026-06-22' });

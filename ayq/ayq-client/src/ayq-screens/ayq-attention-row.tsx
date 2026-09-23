@@ -8,7 +8,13 @@ import { makeStyles } from '@fluentui/react-components';
 
 import type { AyqDestination } from '../ayq-destinations.ts';
 import type { AyqAttentionGroup } from '../ayq-ipc-contract.ts';
-import { ayqCount, ayqList, ayqMoment, ayqText } from '../ayq-strings.ts';
+import {
+  ayqCount,
+  ayqList,
+  ayqMoment,
+  ayqMoney,
+  ayqText,
+} from '../ayq-strings.ts';
 import type { AyqStringKey } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
@@ -69,6 +75,10 @@ export function AyqAttentionRow({
   switch (group.kind) {
     case 'due-today':
     case 'overdue':
+      note =
+        group.amountCents === undefined
+          ? null
+          : ayqText('attention.overdue.note', { amount: ayqMoney(group.amountCents) });
       actions = (
         <AyqButton
           mark={`attention-${group.kind}`}

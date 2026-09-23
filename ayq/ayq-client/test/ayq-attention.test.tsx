@@ -261,3 +261,36 @@ test('Import history marks a failed file as handled, and says so (013 §1b)', as
   assert.equal(changed, 1);
   await window.close();
 });
+
+test('moving along the rail does not ask for attention again; Today\'s answer sets the badge', async () => {
+  const window = await ayqOpenWindow(request => {
+    if (request.kind === 'settings.get') return { ground: 'light' };
+    if (request.kind === 'attention') return ALL;
+    return undefined;
+  });
+  const app = (
+    <AyqGroundProvider>
+      <AyqApplication />
+    </AyqGroundProvider>
+  );
+  await window.render(app);
+  for (let i = 0; i < 5; i += 1) await window.render(app);
+  const asked = () => window.asked.filter(one => one.kind === 'attention').length;
+  // On opening, Today asks once and the rail takes its answer.
+  const atOpen = asked();
+  assert.equal(atOpen, 1, 'Today and the shell both asked on opening');
+  assert.equal(
+    window.container
+      .querySelector('[data-ayq-tab="today"] [data-ayq-waiting]')
+      ?.getAttribute('data-ayq-waiting'),
+    String(ALL.groups.length),
+  );
+
+  // Moving to Register and to Upcoming asks nothing more of attention: on a
+  // large budget every such question queued the screen just opened behind it.
+  await ayqPress(window.container.querySelector('[data-ayq-tab="register"]'));
+  await ayqPress(window.container.querySelector('[data-ayq-tab="upcoming"]'));
+  for (let i = 0; i < 3; i += 1) await window.render(app);
+  assert.equal(asked(), atOpen, 'a move along the rail asked for attention');
+  await window.close();
+});

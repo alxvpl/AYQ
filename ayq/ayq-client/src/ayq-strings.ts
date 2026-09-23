@@ -145,6 +145,7 @@ const EN = {
   'attention.state': 'Attention',
   'attention.due-today': 'Expected payments due today',
   'attention.overdue': 'Expected payments overdue',
+  'attention.overdue.note': '{amount} still counted',
   'attention.reconciliation-difference':
     "Accounts where the bank's balance and AYQ's differ",
   'attention.balance-unknown': 'Accounts with no known balance',
@@ -489,11 +490,9 @@ const EN = {
   'today.noForecast':
     'Nothing is planned or expected yet, so there is no position to project.',
   'today.waiting': 'Waiting on you',
-  'today.waiting.overdue': 'overdue, {amount}',
   'today.waiting.matches': 'matches to confirm',
   'today.waiting.uncategorised': 'transactions with no category',
   'today.waiting.suggestions': 'suggested records to confirm',
-  'today.waiting.counterparties': 'counterparties with nothing filed',
   'today.waiting.none': 'Nothing is waiting on you.',
   'today.movements': 'Latest movements',
   'today.movements.all': 'all accounts',

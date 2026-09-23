@@ -2947,16 +2947,25 @@ async function todayShown(window: BrowserWindow): Promise<string> {
   // follows", "queues come last". Prototype r009 put the queues above the list;
   // Canon governs, so the order is measured on the window rather than trusted
   // to the file that draws it.
-  const wanted = [
-    'today-funds',
-    'today-lasts',
-    'today-movements',
-    'today-waiting',
-  ];
-  if (seen.order.join(',') !== wanted.join(',')) {
-    return `Today is in the order ${seen.order.join(', ')}, and A21 asks for ${
-      wanted.join(', ')
-    }`;
+  // The rules, each on its own: what you have, how long it lasts, the list,
+  // and the queues after it — Needs attention before what is waiting.
+  const at = (pane: string) => seen.order.indexOf(pane);
+  const orderWrong =
+    seen.order[0] !== 'today-funds'
+      ? 'available funds are not first'
+      : seen.order[1] !== 'today-lasts'
+        ? 'how long it lasts does not follow'
+        : !(at('today-movements') > at('today-lasts'))
+          ? 'the list is not after the figures'
+          : !(at('today-attention') > at('today-movements'))
+            ? 'Needs attention is not after the list'
+            : !(at('today-waiting') > at('today-attention'))
+              ? 'what is waiting is not after Needs attention'
+              : seen.order.length !== 5
+                ? 'Today carries a pane A21 does not place'
+                : '';
+  if (orderWrong !== '') {
+    return `Today is in the order ${seen.order.join(', ')}: ${orderWrong}`;
   }
 
   // A5: a queue with nothing in it is not drawn as a line saying zero.

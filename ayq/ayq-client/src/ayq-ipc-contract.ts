@@ -876,6 +876,8 @@ export type AyqAttentionGroup = {
   accounts?: Array<{ accountId: string; accountName: string }>;
   /** For `import-failed`: which files, from which import, and why. */
   files?: Array<{ importId: string; at: string; name: string; code: AyqImportProblemCode }>;
+  /** For `overdue`: what the late payments come to, positive cents. */
+  amountCents?: number;
   /** For `backup-failed`: when, and why. */
   backup?: { at: string; failure: AyqBackupFailure | null };
 };

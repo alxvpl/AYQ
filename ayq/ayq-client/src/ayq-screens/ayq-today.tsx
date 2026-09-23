@@ -239,6 +239,7 @@ export function AyqTodayScreen({
   onOpen,
   onOpenAccount,
   onOpenBackup,
+  onAttention,
   round,
 }: {
   onFailure(message: string): void;
@@ -247,6 +248,8 @@ export function AyqTodayScreen({
   onOpenAccount(accountId: string): void;
   /** Settings → Data & Backup, where a failed backup is dealt with. */
   onOpenBackup(): void;
+  /** How many groups Today's answer held, so the rail need not ask again. */
+  onAttention?(groups: number): void;
   round: number;
 }): ReactNode {
   const styles = useStyles();
@@ -260,7 +263,10 @@ export function AyqTodayScreen({
     void (async () => {
       const answered = await ayqAsk({ kind: 'attention' });
       if (!answered.ok) throw new Error(answered.message);
-      if (live) setAttention(answered.result as AyqAttention);
+      if (!live) return;
+      const held = answered.result as AyqAttention;
+      setAttention(held);
+      onAttention?.(held.groups.length);
     })().catch((error: unknown) => {
       if (live) {
         onFailure(error instanceof Error ? error.message : String(error));
@@ -315,12 +321,11 @@ export function AyqTodayScreen({
         key: 'today.waiting.suggestions',
         to: 'upcoming',
       },
-      {
-        count: waiting.counterparties,
-        key: 'today.waiting.counterparties',
-        to: 'review',
-      },
     ];
+  // One signal, one place (038 §3): overdue payments and counterparties to
+  // review are Needs attention groups, so they are not repeated here. What is
+  // left is waiting on the owner without being a condition that needs them.
+  const waitingShown = lines.reduce((sum, line) => sum + line.count, 0);
 
   return (
     <>
@@ -572,22 +577,14 @@ export function AyqTodayScreen({
       <AyqPane
         mark="today-waiting"
         title={ayqText('today.waiting')}
-        note={ayqCount(waiting.total)}
+        note={ayqCount(waitingShown)}
       >
-        <ul className={styles.waiting} data-ayq-waiting={String(waiting.total)}>
-          {waiting.total === 0 ? (
+        <ul className={styles.waiting} data-ayq-waiting={String(waitingShown)}>
+          {waitingShown === 0 ? (
             <li className={mergeClasses(styles.waitItem, styles.waitNone)}>
               {ayqText('today.waiting.none')}
             </li>
           ) : null}
-          <Waiting
-            count={waiting.overdue}
-            label={ayqText('today.waiting.overdue', {
-              amount: ayqMoney(waiting.overdueCents),
-            })}
-            destination="upcoming"
-            onOpen={onOpen}
-          />
           {lines.map(line => (
             <Waiting
               key={line.key}

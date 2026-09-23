@@ -104,18 +104,31 @@ export function AyqApplication(): ReactNode {
   /** What the Register's own answer said the budget holds; null until it has. */
   const [ledgerTotal, setLedgerTotal] = useState<number | null>(null);
 
-  const reload = useCallback(() => setRound(one => one + 1), []);
+  /** Something changed data: the status bar and what needs attention read again. */
+  const reload = useCallback(() => {
+    setRound(one => one + 1);
+    setAttentionRound(one => one + 1);
+  }, []);
   /** The last thing the shell's own read failed with, so it can be taken down. */
   const lastFailure = useRef<string | null>(null);
   // A screen that has finished drawing has changed what the window is holding,
   // and the attributes below are read off that.
   const say = useCallback((message: string) => setNotice(message), []);
 
-  // How many attention groups hold, for the rail (013 §5). Asked on every
-  // reload, like the status bar's own figures. A failure here says nothing on
-  // its own: Today asks the same question and reports what it could not read.
+  // How many attention groups hold, for the rail (013 §5).
+  //
+  // Asked again only when something may have changed them — a screen saying
+  // it changed data — and taken from Today's own answer whenever Today draws.
+  // Not on every move along the rail: attention reads the whole plan and every
+  // account, and on a large budget asking it on each click queued the screen
+  // the person had just opened behind it (the Register took 16 s instead of 1).
+  // A failure here says nothing on its own: Today asks the same question and
+  // reports what it could not read.
   const [attentionGroups, setAttentionGroups] = useState(0);
+  const [attentionRound, setAttentionRound] = useState(0);
   useEffect(() => {
+    // The first answer is Today's: the window opens on Today, which asks.
+    if (attentionRound === 0) return;
     let live = true;
     void (async () => {
       const answered = await ayqAsk({ kind: 'attention' });
@@ -125,7 +138,7 @@ export function AyqApplication(): ReactNode {
     return () => {
       live = false;
     };
-  }, [round]);
+  }, [attentionRound]);
 
   // What is true of the window, whichever screen is open.
   useEffect(() => {
@@ -325,6 +338,7 @@ export function AyqApplication(): ReactNode {
           setDestination('settings');
           setSettingsTab('backup');
         }}
+        onAttention={groups => setAttentionGroups(groups)}
         round={round}
       />
     );
@@ -352,7 +366,9 @@ export function AyqApplication(): ReactNode {
         waiting={{ today: attentionGroups }}
         open={next => {
           setDestination(next);
-          reload();
+          // A move, not a change: the status bar reads again, attention does
+          // not (see attentionRound above).
+          setRound(one => one + 1);
         }}
       />
       <div className={styles.middle}>
