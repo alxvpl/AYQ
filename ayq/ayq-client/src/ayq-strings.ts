@@ -138,6 +138,71 @@ const EN = {
   'settings.tab.rules': 'Rules',
   'settings.tab.appearance': 'Appearance',
   'settings.tab.about': 'About',
+  'settings.tab.backup': 'Data & Backup',
+  'settings.backup.blurb':
+    "A backup is the budget and AYQ's own records together, from one moment. " +
+    'Restoring one puts both back.',
+
+  'backup.pane': 'Backups',
+  'backup.now': 'Create backup now',
+  'backup.now.working': 'Backing up…',
+  'backup.now.note':
+    'Kept on this computer, beside the budget. Nothing is sent anywhere.',
+  'backup.latest': 'Last backup {when}',
+  'backup.latest.none': 'No backup yet',
+  'backup.automatic': 'Automatic backups',
+  'backup.automatic.note':
+    'Made when AYQ opens and the newest backup is more than {hours} hours old. ' +
+    'The newest {kept} automatic backups are kept; backups you make are never ' +
+    'removed.',
+  'backup.automatic.ok': 'Last automatic backup {when}',
+  'backup.automatic.never': 'No automatic backup has been made yet',
+  'backup.automatic.failed': 'The last automatic backup failed, {when}: {why}',
+  'backup.lastFailed': 'The last backup failed, {when}: {why}',
+  'backup.created': 'Backup made.',
+  'backup.failed': 'No backup was made: {why}',
+  'backup.failure.no-budget': 'there is no budget yet.',
+  'backup.failure.store-unreadable': "AYQ's own records could not be read.",
+  'backup.failure.write-failed': 'the backup could not be written to disk.',
+  'backup.history': 'History',
+  'backup.history.note': 'Newest first',
+  'backup.column.created': 'Created',
+  'backup.column.kind': 'Kind',
+  'backup.column.size': 'Size',
+  'backup.column.build': 'Made by',
+  'backup.build': 'AYQ {version}, build {build}',
+  'backup.kind.manual': 'Made by you',
+  'backup.kind.automatic': 'Automatic',
+  'backup.kind.before-restore': 'Before a restore',
+  'backup.latestMark': 'Latest',
+  'backup.notRestorable': 'Needs a newer AYQ',
+  'backup.empty':
+    'No backups yet. Create one now, or AYQ makes one the next time it opens.',
+  'backup.size': '{size} MB',
+  'backup.restore': 'Restore backup',
+  'backup.restore.confirm':
+    "Restore the backup from {when}? The budget and AYQ's own records are " +
+    'replaced together. What you have now is kept as a backup first.',
+  'backup.restore.go': 'Restore',
+  'backup.restore.cancel': 'Cancel',
+  'backup.restore.working': 'Restoring…',
+  'backup.restored':
+    'Restored the backup from {when}. What you had before is kept as a backup.',
+  'backup.refused': 'Not restored: {why} Nothing was changed.',
+  'backup.refusal.unknown-backup': 'that backup is no longer there.',
+  'backup.refusal.incomplete': 'part of that backup is missing.',
+  'backup.refusal.mismatch':
+    'that backup has been altered, or mixes parts of different backups.',
+  'backup.refusal.newer-format': 'a newer AYQ made it.',
+  'backup.refusal.newer-store': 'a newer AYQ wrote its records.',
+  'backup.refusal.unreadable': 'that backup cannot be read.',
+  'backup.refusal.conflict': 'it would overwrite a different budget.',
+  'backup.restoreFailed':
+    'The restore did not finish: {why} What you had before is still in place.',
+  'backup.failure.safety-backup-failed':
+    'AYQ could not first back up what you have now.',
+  'backup.failure.replace-failed': 'the files could not be replaced.',
+  'backup.failure.open-failed': 'the restored budget would not open.',
 
   'about.author': 'Author',
   'about.version': 'Product version',
@@ -936,6 +1001,11 @@ const AMOUNT = new Intl.NumberFormat(AYQ_LOCALE, {
 
 const WHOLE = new Intl.NumberFormat(AYQ_LOCALE);
 
+const MEGABYTES = new Intl.NumberFormat(AYQ_LOCALE, {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
 const DAY = new Intl.DateTimeFormat(AYQ_LOCALE, {
   day: 'numeric',
   month: 'short',
@@ -1016,6 +1086,13 @@ export function ayqMonthName(month: string): string {
 export function ayqMoment(iso: string): string {
   const when = new Date(iso);
   return Number.isNaN(when.getTime()) ? iso : MOMENT.format(when);
+}
+
+/** A size on disk, in megabytes to one place, as the locale writes it. */
+export function ayqMegabytes(bytes: number): string {
+  // Never "0.0 MB" for something that is there.
+  const shown = Math.max(bytes / 1_048_576, bytes > 0 ? 0.1 : 0);
+  return ayqText('backup.size', { size: MEGABYTES.format(shown) });
 }
 
 /** "a, b and c", as the locale joins them. */

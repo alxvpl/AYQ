@@ -1361,6 +1361,122 @@ export type AyqAbout = {
   technicalInformation: string;
 };
 
+/**
+ * Why a backup exists (03 §12.2).
+ *
+ * `before-restore` is the state a restore replaced, kept so that choosing the
+ * wrong backup is itself something a person can undo.
+ */
+export type AyqBackupTrigger = 'manual' | 'automatic' | 'before-restore';
+
+/**
+ * One backup: the Actual budget and AYQ's own records, captured together at one
+ * moment (02 §5.9, 03 §12.1).
+ *
+ * There is deliberately no field naming either half on its own. The interface
+ * restores a backup, never a budget from one and a store from another (04 A38),
+ * and a type that carried the halves separately would be an invitation to.
+ */
+export type AyqBackupEntry = {
+  /**
+   * Opaque. The renderer hands it back to restore and never reads meaning into
+   * it: it is not a path, and the engine refuses anything that is not one of
+   * its own identifiers.
+   */
+  backupId: string;
+  /** ISO 8601 UTC. */
+  createdAt: string;
+  trigger: AyqBackupTrigger;
+  /** The AYQ that wrote it. */
+  productVersion: string;
+  buildNumber: string;
+  /** The whole set, in bytes. */
+  bytes: number;
+  /**
+   * False when reading the set's description already shows this AYQ cannot
+   * restore it — written by a newer AYQ, say. True is not a promise: the
+   * whole set is checked again, byte for byte, when a restore is asked for.
+   */
+  restorable: boolean;
+};
+
+/** Why a backup could not be made. Words for each live in the catalogue (04 A24). */
+export type AyqBackupFailure = 'no-budget' | 'store-unreadable' | 'write-failed';
+
+/**
+ * The outcome of one attempt to make a backup, kept as state (030 §2).
+ *
+ * Operational evidence and not financial truth (03 §12.3): it says when AYQ
+ * tried and whether it managed, and nothing about the money.
+ */
+export type AyqBackupAttempt = {
+  /** ISO 8601 UTC. */
+  at: string;
+  trigger: AyqBackupTrigger;
+  outcome: 'succeeded' | 'failed';
+  /** The backup made, when one was. */
+  backupId: string | null;
+  failure: AyqBackupFailure | null;
+};
+
+/** Settings → Data & Backup (04 A38): what exists, and how the last tries went. */
+export type AyqBackupOverview = {
+  /** Newest first. */
+  backups: AyqBackupEntry[];
+  latestBackupId: string | null;
+  /** The last attempt of any kind. */
+  lastAttempt: AyqBackupAttempt | null;
+  /** The last automatic attempt, which nobody was watching. */
+  lastAutomaticAttempt: AyqBackupAttempt | null;
+  /** How automatic backups behave, as this build does it. */
+  automatic: { everyHours: number; kept: number };
+};
+
+export type AyqBackupCreated =
+  | { outcome: 'created'; backupId: string; overview: AyqBackupOverview }
+  | { outcome: 'failed'; failure: AyqBackupFailure; overview: AyqBackupOverview };
+
+/**
+ * Why a backup was not restored, decided before anything was replaced.
+ *
+ *   unknown-backup  no backup by that identifier
+ *   incomplete      a part is missing, or something is there that is not part
+ *   mismatch        a part is not the part that was captured — altered, or
+ *                   taken from another backup
+ *   newer-format    a newer AYQ packed it in a way this one cannot read
+ *   newer-store     a newer AYQ wrote its records (06 §6.2: refused, not repaired)
+ *   unreadable      the description or a part cannot be read at all
+ *   conflict        restoring it would overwrite a budget that is not the current one
+ */
+export type AyqRestoreRefusal =
+  | 'unknown-backup'
+  | 'incomplete'
+  | 'mismatch'
+  | 'newer-format'
+  | 'newer-store'
+  | 'unreadable'
+  | 'conflict';
+
+/**
+ * Why a restore that had begun did not finish. In every case the state from
+ * before the restore is what AYQ holds afterwards (03 §12.4).
+ */
+export type AyqRestoreFailure =
+  | 'safety-backup-failed'
+  | 'replace-failed'
+  | 'open-failed';
+
+export type AyqRestored =
+  | {
+      outcome: 'restored';
+      backupId: string;
+      /** The backup of what the restore replaced. */
+      keptBackupId: string;
+      overview: AyqBackupOverview;
+    }
+  | { outcome: 'refused'; refusal: AyqRestoreRefusal; overview: AyqBackupOverview }
+  | { outcome: 'failed'; failure: AyqRestoreFailure; overview: AyqBackupOverview };
+
 /** What the engine answers to each request kind. */
 export type AyqResults = {
   'engine.status': AyqEngineStatus;
@@ -1423,6 +1539,9 @@ export type AyqResults = {
   'match.apply': AyqMatches;
   'match.reject': AyqMatches;
   'match.unmatch': AyqMatches;
+  'backup.overview': AyqBackupOverview;
+  'backup.create': AyqBackupCreated;
+  'backup.restore': AyqRestored;
 };
 
 /**
@@ -1775,7 +1894,20 @@ export type AyqRequestBody =
       recordId: string;
       dueDate: string;
       today?: string;
-    };
+    }
+  | AyqBackupRequest;
+
+/**
+ * Backup and restore (02 §5.8): three requests and no more.
+ *
+ * The renderer names a backup by its opaque id and nothing else. No member
+ * here carries a path, a file or a directory, and `ayq-boundary.test.ts`
+ * holds that: the capture, the check and the replacement are all the engine's.
+ */
+export type AyqBackupRequest =
+  | { kind: 'backup.overview' }
+  | { kind: 'backup.create' }
+  | { kind: 'backup.restore'; backupId: string };
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };

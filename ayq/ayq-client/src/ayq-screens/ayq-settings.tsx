@@ -1,10 +1,10 @@
 // Settings.
 //
-// Five surfaces, and each owns its question outright: which accounts count
+// Six surfaces, and each owns its question outright: which accounts count
 // toward available funds (03 §7.6), the categories (the only place they are
 // created, renamed, grouped or archived), the rules that will act from now on
-// (04 A7), the ground the window is drawn in (A23), and which build this is
-// (12 §12).
+// (04 A7), the ground the window is drawn in (A23), backing up and restoring
+// the whole of it (A38), and which build this is (12 §12).
 //
 // About is a tab here and nowhere else. It is not a rail destination, and the
 // version and build number it carries appear on no other screen — a product
@@ -28,6 +28,7 @@ import { AyqScreenActionsContext } from '../ayq-ui/ayq-screen.tsx';
 import { AyqAboutScreen } from './ayq-about.tsx';
 import { AyqAppearanceScreen } from './ayq-appearance.tsx';
 import { AyqSettingsAccounts } from './ayq-settings-accounts.tsx';
+import { AyqSettingsBackup } from './ayq-settings-backup.tsx';
 import { AyqSettingsCategories } from './ayq-settings-categories.tsx';
 import { AyqSettingsRules } from './ayq-settings-rules.tsx';
 
@@ -36,6 +37,7 @@ export type AyqSettingsTab =
   | 'categories'
   | 'rules'
   | 'appearance'
+  | 'backup'
   | 'about';
 
 export const AYQ_SETTINGS_TABS: readonly {
@@ -46,6 +48,7 @@ export const AYQ_SETTINGS_TABS: readonly {
   { id: 'accounts', key: 'settings.tab.accounts' },
   { id: 'categories', key: 'settings.tab.categories' },
   { id: 'rules', key: 'settings.tab.rules' },
+  { id: 'backup', key: 'settings.tab.backup' },
   { id: 'about', key: 'settings.tab.about' },
 ];
 
@@ -54,6 +57,7 @@ const BLURB: Record<AyqSettingsTab, AyqStringKey> = {
   accounts: 'settings.accounts.blurb',
   categories: 'settings.categories.blurb',
   rules: 'rules.blurb',
+  backup: 'settings.backup.blurb',
   about: 'settings.about.blurb',
 };
 
@@ -173,6 +177,8 @@ export function AyqSettingsScreen({
   let section: ReactNode;
   if (tab === 'appearance') {
     section = <AyqAppearanceScreen />;
+  } else if (tab === 'backup') {
+    section = <AyqSettingsBackup onFailure={onFailure} onChanged={onChanged} />;
   } else if (tab === 'about') {
     section = <AyqAboutScreen onFailure={onFailure} />;
   } else if (tab === 'accounts') {

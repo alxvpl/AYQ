@@ -820,6 +820,31 @@ jobs:
           }
           Write-Host "Plan suggestions averaged over $($Matches[1]) complete months"
 
+      # 04 A38 and 03 §12 on the window: Create backup now, pressed; the budget
+      # and the AYQ store both changed; a set mixing another backup's store and
+      # a set sealed by a newer AYQ both refused with the state untouched; and
+      # the backup restored through Settings → Data & Backup, confirmation and
+      # all, with both halves back. Synthetic statement only (06 §5.4).
+      - name: Data & Backup, made, refused and restored
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-backup-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --import-once `
+            --backup `
+            --screenshot "${{ runner.temp }}\ayq-desktop-backup.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'backup and restore did not hold' }
+          if ($said -notmatch 'Data & Backup: held') {
+            throw 'the run did not check Data & Backup at all'
+          }
+          if ($said -notmatch 'refused mixed and newer with the state intact') {
+            throw 'the run did not offer the sets that must be refused'
+          }
+
       # The product, as a person would get it: an installer, installed, and the
       # installed application driving itself through the same acceptance.
       - name: Package the Windows installer
@@ -1052,6 +1077,21 @@ jobs:
             throw "the installer reported success and installed nothing at $exe"
           }
           Write-Host "installed : $exe"
+
+          # 06 §9.3: Actual Budget's MIT notice travels with the product. About
+          # states that it does, so the installed tree has to hold it (029 §5).
+          $notice = Join-Path $target 'resources\licenses\Actual-Budget-LICENSE.txt'
+          if (-not (Test-Path $notice)) {
+            throw "the installer carries no Actual Budget licence notice at $notice"
+          }
+          # The file carries the MIT grant and Actual's copyright line; it has no
+          # 'MIT License' heading, so the grant itself is what is looked for.
+          $noticeText = Get-Content $notice -Raw
+          if ($noticeText -notmatch 'Permission is hereby granted, free of charge' -or
+              $noticeText -notmatch 'Copyright James Long') {
+            throw 'the Actual Budget licence notice is not the MIT notice'
+          }
+          Write-Host "notice    : $notice"
 
           # A GUI subsystem binary writes nothing to this console, so each run
           # is judged by its exit code and the report it leaves behind.

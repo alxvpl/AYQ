@@ -16,8 +16,10 @@ import api from '@actual-app/api';
 import type {
   AyqEngineStatus,
   AyqAbout,
+  AyqBackupCreated,
   AyqRequest,
   AyqResponse,
+  AyqRestored,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import {
@@ -51,7 +53,23 @@ import {
 } from './ayq-categories.ts';
 import { ayqRecoverCounterpartyNames } from './ayq-recover-names.ts';
 import { ayqProvisionTaxonomy } from './ayq-taxonomy.ts';
-import { ayqAbout, ayqRepositoryUrl } from './ayq-about.ts';
+import {
+  ayqAbout,
+  ayqCompiledIdentity,
+  ayqRepositoryUrl,
+} from './ayq-about.ts';
+import {
+  ayqAutomaticBackupDue,
+  ayqBackupOverview,
+  ayqCheckBackup,
+  ayqClearPartialBackups,
+  ayqCreateBackup,
+  ayqFinishRestore,
+  ayqRecoverInterruptedRestore,
+  ayqReplaceWithBackup,
+  AyqRestoreRefused,
+} from './ayq-backup.ts';
+import { ayqGate } from './ayq-gate.ts';
 import { ayqApplyAnchor, ayqRecordAnchor } from './ayq-anchors.ts';
 import { ayqSetDisplayName } from './ayq-names.ts';
 import {
@@ -223,7 +241,9 @@ async function openBudgetOnce(dataDir: string): Promise<AyqOpenBudget> {
   // On a first launch the directory does not exist yet, and the API expects to
   // be handed one that does.
   mkdirSync(dataDir, { recursive: true });
-  lib = await api.init({ dataDir });
+  // Once per process. A backup or a restore closes the budget and opens it
+  // again, and the library that did the opening is the one to do it again.
+  lib ??= await api.init({ dataDir });
   // Lent to the batch helper, so a rule can file a decade of one shop's
   // receipts in a handful of calls rather than one call per receipt.
   ayqUseSend((name, args) => lib!.send(name as never, args as never));
@@ -403,6 +423,165 @@ function said(error: unknown): string {
 
 const dataDir = process.env.AYQ_DATA_DIR ?? '';
 
+/** Backup and restore take the budget alone; see `ayq-gate.ts`. */
+const { shared, exclusive } = ayqGate();
+
+/**
+ * Closes the budget, so that nothing writes it while its files are copied or
+ * replaced. Only ever called from inside `exclusive`.
+ */
+async function closeBudget(): Promise<void> {
+  if (opened === null || lib === null) return;
+  await lib.send('close-budget' as never, undefined as never);
+  opened = null;
+}
+
+function identity(): { productVersion: string; buildNumber: string } {
+  return ayqCompiledIdentity();
+}
+
+/**
+ * **Create backup now** (04 A38): the budget is paused, captured with the store,
+ * and opened again.
+ */
+async function createBackup(): Promise<AyqBackupCreated> {
+  return exclusive(async () => {
+    await openBudget(dataDir);
+    await closeBudget();
+    try {
+      const made = ayqCreateBackup(dataDir, {
+        trigger: 'manual',
+        identity: identity(),
+      });
+      return made.outcome === 'created'
+        ? {
+            outcome: 'created',
+            backupId: made.backupId,
+            overview: ayqBackupOverview(dataDir),
+          }
+        : {
+            outcome: 'failed',
+            failure: made.failure,
+            overview: ayqBackupOverview(dataDir),
+          };
+    } finally {
+      await openBudget(dataDir);
+    }
+  });
+}
+
+/**
+ * **Restore backup** (03 §12.4): all of it, or none of it.
+ *
+ * The set is checked completely before the budget is even closed. Then what is
+ * there now is backed up, the set replaces it, and the restored budget is
+ * opened. If any step after the check fails — the copy, a rename, or Actual
+ * refusing to open what was restored — the previous state is put back and
+ * opened instead, and the answer says which step it was.
+ */
+async function restoreBackup(backupId: string): Promise<AyqRestored> {
+  return exclusive(async () => {
+    const checked = ayqCheckBackup(dataDir, backupId);
+    if (!checked.ok) {
+      return {
+        outcome: 'refused',
+        refusal: checked.refusal,
+        overview: ayqBackupOverview(dataDir),
+      };
+    }
+
+    await openBudget(dataDir);
+    await closeBudget();
+    const failed = (
+      failure: 'safety-backup-failed' | 'replace-failed' | 'open-failed',
+    ) =>
+      ({
+        outcome: 'failed',
+        failure,
+        overview: ayqBackupOverview(dataDir),
+      }) as const;
+
+    try {
+      const kept = ayqCreateBackup(dataDir, {
+        trigger: 'before-restore',
+        identity: identity(),
+      });
+      if (kept.outcome === 'failed') return failed('safety-backup-failed');
+
+      try {
+        ayqReplaceWithBackup(dataDir, checked.manifest);
+      } catch (error) {
+        ayqRecoverInterruptedRestore(dataDir);
+        if (error instanceof AyqRestoreRefused) {
+          return {
+            outcome: 'refused',
+            refusal: error.refusal,
+            overview: ayqBackupOverview(dataDir),
+          } as const;
+        }
+        return failed('replace-failed');
+      }
+
+      try {
+        await openBudget(dataDir);
+      } catch {
+        // Actual would not open what was restored. It is closed again, whatever
+        // it managed to load, and the previous state goes back.
+        try {
+          await lib?.send('close-budget' as never, undefined as never);
+        } catch {
+          // Nothing was loaded, which is fine.
+        }
+        opened = null;
+        ayqRecoverInterruptedRestore(dataDir);
+        return failed('open-failed');
+      }
+      ayqFinishRestore(dataDir);
+      return {
+        outcome: 'restored',
+        backupId,
+        keptBackupId: kept.backupId,
+        overview: ayqBackupOverview(dataDir),
+      } as const;
+    } finally {
+      if (opened === null) await openBudget(dataDir);
+    }
+  });
+}
+
+/**
+ * What happens once, when the engine starts and before it answers anything.
+ *
+ * First, a restore a previous process did not finish is put back (03 §12.4).
+ * Then a backup that never finished is cleared away. Then, if one is due, the
+ * automatic backup is made — now, because nothing has opened the budget yet,
+ * so the files on disk are exactly the state the last session left.
+ *
+ * None of it may stop AYQ from opening. A failed automatic backup is recorded
+ * as the last automatic attempt (030 §2), where Settings shows it.
+ */
+const started = exclusive(async () => {
+  if (dataDir === '') return;
+  try {
+    ayqRecoverInterruptedRestore(dataDir);
+  } catch (error) {
+    process.stderr.write(`[ayq-backup] could not put back an unfinished restore: ${said(error)}\n`);
+  }
+  try {
+    ayqClearPartialBackups(dataDir);
+  } catch {
+    // A leftover folder is untidy, not harmful: it is never listed.
+  }
+  try {
+    if (ayqAutomaticBackupDue(dataDir, new Date())) {
+      ayqCreateBackup(dataDir, { trigger: 'automatic', identity: identity() });
+    }
+  } catch (error) {
+    process.stderr.write(`[ayq-backup] automatic backup: ${said(error)}\n`);
+  }
+});
+void started;
+
 /**
  * Answers one request.
  *
@@ -443,6 +622,26 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
   // it can carry any (12 §12.4).
   if (request.kind === 'about') {
     return { id, ok: true, kind: 'about', result: aboutThisBuild() };
+  }
+
+  if (request.kind === 'backup.overview') {
+    return {
+      id,
+      ok: true,
+      kind: 'backup.overview',
+      result: ayqBackupOverview(dataDir),
+    };
+  }
+  if (request.kind === 'backup.create') {
+    return { id, ok: true, kind: 'backup.create', result: await createBackup() };
+  }
+  if (request.kind === 'backup.restore') {
+    return {
+      id,
+      ok: true,
+      kind: 'backup.restore',
+      result: await restoreBackup(request.backupId),
+    };
   }
 
   const budget = await openBudget(dataDir);
@@ -1127,7 +1326,13 @@ channel.onMessage(message => {
       if (dataDir === '') {
         throw new Error('AYQ_DATA_DIR was not set by the host');
       }
-      response = await answer(request);
+      // Backup and restore take the gate alone inside their own handlers;
+      // everything else shares it.
+      const takesItAlone =
+        request?.kind === 'backup.create' || request?.kind === 'backup.restore';
+      response = takesItAlone
+        ? await answer(request)
+        : await shared(() => answer(request));
     } catch (error) {
       response = {
         id: request?.id ?? 'unknown',

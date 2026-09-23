@@ -169,6 +169,12 @@ if (has('balance')) env.AYQ_SMOKE_BALANCE = '1';
 // forbidden ones (12 §12.1, §12.4).
 if (has('about')) env.AYQ_SMOKE_ABOUT = '1';
 
+// `--backup` opens Settings → Data & Backup, makes a backup with the button,
+// changes both the budget and the AYQ store, requires a mixed set and a set a
+// newer AYQ wrote to be refused with the state untouched, and then restores the
+// backup through the window and requires both halves to be back (04 A38, 03 §12).
+if (has('backup')) env.AYQ_SMOKE_BACKUP = '1';
+
 // `--suggest` asks Upcoming to suggest and requires only the exact, regular
 // series to appear (9 §9.1), then reads the Plan's historical suggestions and
 // requires the basis to be stated rather than implied (10 §10.3).
