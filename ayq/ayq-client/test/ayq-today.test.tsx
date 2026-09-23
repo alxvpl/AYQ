@@ -137,6 +137,8 @@ const TODAY: AyqToday = {
 function engine(today: AyqToday) {
   return (request: Record<string, unknown>): unknown => {
     if (request.kind === 'today') return today;
+    // Needs attention has its own tests; here it holds nothing.
+    if (request.kind === 'attention') return { groups: [] };
     if (request.kind === 'transactions.list') {
       return {
         rows: [ROW],
@@ -227,14 +229,26 @@ test('A21\u2019s order, in A21\u2019s own words', async () => {
     .map(one => one.getAttribute('data-ayq-pane'))
     .filter(one => one !== null && one.startsWith('today-'));
 
-  assert.deepEqual(order, [
-    'today-funds',
-    'today-lasts',
-    // The table; the pane that holds the chosen row (A4) stands beside it
-    // once a row is chosen, as template r003 composes Today.
-    'today-movements',
-    'today-waiting',
-  ]);
+  // A21 as rules rather than a copy of today's layout: what you have first,
+  // then how long it lasts, then the transaction list, and every queue after
+  // the list. Among the queues, what needs attention comes before what is
+  // merely waiting (010 §2.1). Each rule is checked on its own, so a pane in
+  // the wrong place names the rule it breaks.
+  const QUEUES = ['today-attention', 'today-waiting'];
+  const at = (pane: string) => order.indexOf(pane);
+  assert.equal(order[0], 'today-funds', 'available funds are not first');
+  assert.equal(order[1], 'today-lasts', 'how long it lasts does not follow');
+  assert.ok(at('today-movements') > at('today-lasts'), 'the list is not after the figures');
+  for (const queue of QUEUES) {
+    assert.ok(at(queue) >= 0, `${queue} is missing`);
+    assert.ok(at(queue) > at('today-movements'), `${queue} comes before the transaction list`);
+  }
+  assert.ok(at('today-attention') < at('today-waiting'), 'what needs attention is not first among the queues');
+  // And nothing else is on Today: a new pane has to be placed by these rules.
+  assert.deepEqual(
+    [...order].sort(),
+    ['today-funds', 'today-lasts', 'today-movements', ...QUEUES].sort(),
+  );
 
   await window.close();
 });
@@ -287,19 +301,47 @@ test('what is waiting is the engine’s counts, every kind of them', async () =>
 
   const list = window.container.querySelector('[data-ayq-waiting]');
   assert.ok(list);
-  assert.equal(list.getAttribute('data-ayq-waiting'), '18');
+  // Matches, the unfiled and suggestions: 3 + 12 + 1. Overdue payments and
+  // counterparties to review are Needs attention's, not repeated here (038 §3).
+  assert.equal(list.getAttribute('data-ayq-waiting'), '16');
   const said = list.textContent ?? '';
 
-  const overdue = ayqText('today.waiting.overdue', { amount: ayqMoney(12390) });
-  assert.ok(said.includes(overdue), `the overdue line does not read "${overdue}"`);
-  assert.match(said, /2\s*overdue/);
+  assert.doesNotMatch(said, /overdue/);
   assert.match(said, /3\s*matches to confirm/);
   assert.match(said, /12\s*transactions with no category/);
   assert.match(said, /1\s*suggested records to confirm/);
-  // Nothing is waiting under that heading, so it is not a line saying zero.
-  assert.ok(
-    !said.includes(ayqText('today.waiting.counterparties')),
-    'a queue with nothing in it was drawn anyway',
+  await window.close();
+});
+
+test('overdue payments and counterparties to review are shown once on Today (038 §3)', async () => {
+  const window = await ayqOpenWindow(request =>
+    request.kind === 'attention'
+      ? {
+          groups: [
+            { key: 'overdue', kind: 'overdue', count: 2, amountCents: 12390 },
+            { key: 'review', kind: 'review', count: 5 },
+          ],
+        }
+      : engine({ ...TODAY, waiting: { ...TODAY.waiting, counterparties: 5 } })(request),
+  );
+  await window.render(screen());
+
+  const screenText = window.container.textContent ?? '';
+  const once = (text: string) => screenText.split(text).length - 1;
+  // Each is in Needs attention, with the overdue amount beside it…
+  const attention = window.container.querySelector('[data-ayq-pane="today-attention"]')?.textContent ?? '';
+  assert.ok(attention.includes(ayqText('attention.overdue')));
+  assert.ok(attention.includes(ayqText('attention.overdue.note', { amount: ayqMoney(12390) })));
+  assert.ok(attention.includes(ayqText('attention.review')));
+  // …and nowhere else on the screen.
+  assert.equal(once(ayqText('attention.overdue')), 1);
+  assert.equal(once(ayqText('attention.review')), 1);
+  const waiting = window.container.querySelector('[data-ayq-waiting]')?.textContent ?? '';
+  assert.doesNotMatch(waiting, /overdue|counterpart/i);
+  assert.equal(
+    window.container.querySelectorAll('[data-ayq-waiting-line="review"]').length,
+    0,
+    'the waiting list still leads to Review',
   );
 
   await window.close();

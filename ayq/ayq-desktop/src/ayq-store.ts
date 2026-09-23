@@ -264,8 +264,11 @@ const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
  *      and becomes its code; anything else is kept word for word as
  *      `legacy` evidence and is never shown as it stands. No decision, no
  *      count and no category changes — representation only (§5.7).
+ *  11  a file an import could not use may carry `handledAt`: the owner has
+ *      dealt with it in Import history (013 §1b). The shape widens; nothing
+ *      already written is marked, because nobody has marked it.
  */
-export const AYQ_STORE_VERSION = 10;
+export const AYQ_STORE_VERSION = 11;
 
 export type AyqStore = {
   version: number;
@@ -583,6 +586,13 @@ const AYQ_MIGRATIONS: readonly AyqMigration[] = [
           : held;
       }),
     }),
+  },
+  {
+    to: 11,
+    what: 'import problems the owner has marked as handled (013 §1b)',
+    // A widening and nothing else: no problem in an older store has been
+    // marked, so none is (§5.7).
+    change: store => store,
   },
 ];
 

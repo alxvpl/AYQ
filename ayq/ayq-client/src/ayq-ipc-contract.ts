@@ -839,6 +839,54 @@ export type AyqImportRecord = {
   anchorEstablished: boolean;
 };
 
+/* ------------------------------------------------------------ needs attention
+
+   010 with the five corrections of 013: what needs the owner now, derived by
+   the engine from state AYQ already holds, and shown on Today. Nothing here is
+   stored: a group exists while its condition holds and is gone when it does
+   not. The renderer displays groups; it never decides whether one applies.  */
+
+/**
+ *   due-today                  expected payments dated today, unmatched (03 §7.26)
+ *   overdue                    expected payments past their date, unmatched (§7.13)
+ *   reconciliation-difference  the bank's balance and AYQ's differ (03 §8.2)
+ *   balance-unknown            no balance anchor, so the balance is unknown (§10.5)
+ *   import-failed              a chosen file an import could not use, not yet
+ *                              imported since and not marked handled (013 §1)
+ *   backup-failed              the last backup attempt failed (A38)
+ *   review                     counterparties to review (A29)
+ */
+export type AyqAttentionKind =
+  | 'due-today'
+  | 'overdue'
+  | 'reconciliation-difference'
+  | 'balance-unknown'
+  | 'import-failed'
+  | 'backup-failed'
+  | 'review';
+
+/** One condition that holds, and what it is about. Counted as one group (013 §5). */
+export type AyqAttentionGroup = {
+  /** Stable while the condition holds: the kind, and what it is about. */
+  key: string;
+  kind: AyqAttentionKind;
+  /** How many records share the condition — payments, accounts, files, counterparties. */
+  count: number;
+  /** For the account kinds: which accounts, so each can be opened. */
+  accounts?: Array<{ accountId: string; accountName: string }>;
+  /** For `import-failed`: which files, from which import, and why. */
+  files?: Array<{ importId: string; at: string; name: string; code: AyqImportProblemCode }>;
+  /** For `overdue`: what the late payments come to, positive cents. */
+  amountCents?: number;
+  /** For `backup-failed`: when, and why. */
+  backup?: { at: string; failure: AyqBackupFailure | null };
+};
+
+export type AyqAttention = {
+  /** In the order Today shows them. */
+  groups: AyqAttentionGroup[];
+};
+
 /** One chosen thing AYQ could not use, and why. */
 export type AyqImportProblem = {
   /** The base name of what was chosen; the path stays on the machine. */
@@ -850,6 +898,11 @@ export type AyqImportProblem = {
    * not recognise. Kept as evidence, never shown.
    */
   legacyText?: string;
+  /**
+   * When the owner marked this file as dealt with in Import history (013
+   * §1b), since store version 11. Absent means not marked.
+   */
+  handledAt?: string;
 };
 
 /**
@@ -1586,6 +1639,8 @@ export type AyqResults = {
   'backup.overview': AyqBackupOverview;
   'backup.create': AyqBackupCreated;
   'backup.restore': AyqRestored;
+  attention: AyqAttention;
+  'imports.markHandled': AyqImportRecord[];
 };
 
 /**
@@ -1939,7 +1994,8 @@ export type AyqRequestBody =
       dueDate: string;
       today?: string;
     }
-  | AyqBackupRequest;
+  | AyqBackupRequest
+  | AyqAttentionRequest;
 
 /**
  * Backup and restore (02 §5.8): three requests and no more.
@@ -1952,6 +2008,20 @@ export type AyqBackupRequest =
   | { kind: 'backup.overview' }
   | { kind: 'backup.create' }
   | { kind: 'backup.restore'; backupId: string };
+
+/** Needs attention (010, 013): the groups that hold, and the one owner action. */
+export type AyqAttentionRequest =
+  | { kind: 'attention'; today?: string }
+  | {
+      /**
+       * The owner has dealt with a file an import could not use (013 §1b).
+       * It changes the import history, not the attention item: the item
+       * clears because its condition no longer holds.
+       */
+      kind: 'imports.markHandled';
+      importId: string;
+      name: string;
+    };
 
 /** One thing an actual transaction and an expected payment agree on (03 §7.16). */
 export type AyqMatchEvidence =
@@ -2005,7 +2075,8 @@ export type AyqErrorCode =
   | 'month-invalid'
   | 'month-not-kept'
   | 'plan-amount-invalid'
-  | 'anchor-disagrees';
+  | 'anchor-disagrees'
+  | 'import-problem-not-found';
 
 /** Bounded values a code's sentence may name: a file, a month, a version. */
 export type AyqErrorParams = Readonly<Record<string, string | number>>;

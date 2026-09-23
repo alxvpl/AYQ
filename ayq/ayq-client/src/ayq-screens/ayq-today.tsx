@@ -22,7 +22,7 @@ import { makeStyles, mergeClasses } from '@fluentui/react-components';
 
 import { ayqAsk } from '../ayq-bridge.ts';
 import type { AyqDestination } from '../ayq-destinations.ts';
-import type { AyqLedger, AyqToday } from '../ayq-ipc-contract.ts';
+import type { AyqAttention, AyqLedger, AyqToday } from '../ayq-ipc-contract.ts';
 import { ayqCount, ayqDate, ayqMoney, ayqMonthName, ayqText } from '../ayq-strings.ts';
 import type { AyqStringKey } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
@@ -36,6 +36,7 @@ import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 
+import { AyqAttentionPane } from './ayq-attention.tsx';
 import { AyqLedgerPane } from './ayq-ledger-pane.tsx';
 
 const useStyles = makeStyles({
@@ -237,16 +238,44 @@ export function AyqTodayScreen({
   onFailure,
   onOpen,
   onOpenAccount,
+  onOpenBackup,
+  onAttention,
   round,
 }: {
   onFailure(message: string): void;
   onOpen(destination: AyqDestination): void;
   /** Opens one account's own detail — a secondary surface, not a workspace. */
   onOpenAccount(accountId: string): void;
+  /** Settings → Data & Backup, where a failed backup is dealt with. */
+  onOpenBackup(): void;
+  /** How many groups Today's answer held, so the rail need not ask again. */
+  onAttention?(groups: number): void;
   round: number;
 }): ReactNode {
   const styles = useStyles();
   const [today, setToday] = useState<AyqToday | null>(null);
+  const [attention, setAttention] = useState<AyqAttention | null>(null);
+
+  // What needs attention is the engine's answer (010 §8.1), asked beside Today's
+  // own and drawn as it comes.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const answered = await ayqAsk({ kind: 'attention' });
+      if (!answered.ok) throw new Error(answered.message);
+      if (!live) return;
+      const held = answered.result as AyqAttention;
+      setAttention(held);
+      onAttention?.(held.groups.length);
+    })().catch((error: unknown) => {
+      if (live) {
+        onFailure(error instanceof Error ? error.message : String(error));
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [round, onFailure]);
 
   useEffect(() => {
     let live = true;
@@ -292,12 +321,11 @@ export function AyqTodayScreen({
         key: 'today.waiting.suggestions',
         to: 'upcoming',
       },
-      {
-        count: waiting.counterparties,
-        key: 'today.waiting.counterparties',
-        to: 'review',
-      },
     ];
+  // One signal, one place (038 §3): overdue payments and counterparties to
+  // review are Needs attention groups, so they are not repeated here. What is
+  // left is waiting on the owner without being a condition that needs them.
+  const waitingShown = lines.reduce((sum, line) => sum + line.count, 0);
 
   return (
     <>
@@ -539,25 +567,24 @@ export function AyqTodayScreen({
         detailWhenChosen
       />
 
+      {attention === null ? null : (
+        <AyqAttentionPane
+          attention={attention}
+          routes={{ open: onOpen, openAccount: onOpenAccount, openBackup: onOpenBackup }}
+        />
+      )}
+
       <AyqPane
         mark="today-waiting"
         title={ayqText('today.waiting')}
-        note={ayqCount(waiting.total)}
+        note={ayqCount(waitingShown)}
       >
-        <ul className={styles.waiting} data-ayq-waiting={String(waiting.total)}>
-          {waiting.total === 0 ? (
+        <ul className={styles.waiting} data-ayq-waiting={String(waitingShown)}>
+          {waitingShown === 0 ? (
             <li className={mergeClasses(styles.waitItem, styles.waitNone)}>
               {ayqText('today.waiting.none')}
             </li>
           ) : null}
-          <Waiting
-            count={waiting.overdue}
-            label={ayqText('today.waiting.overdue', {
-              amount: ayqMoney(waiting.overdueCents),
-            })}
-            destination="upcoming"
-            onOpen={onOpen}
-          />
           {lines.map(line => (
             <Waiting
               key={line.key}

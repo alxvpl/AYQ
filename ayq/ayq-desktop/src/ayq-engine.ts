@@ -70,6 +70,7 @@ import {
   AyqRestoreRefused,
 } from './ayq-backup.ts';
 import { ayqGate } from './ayq-gate.ts';
+import { ayqAttention, ayqMarkImportProblemHandled } from './ayq-attention.ts';
 import { ayqApplyAnchor, ayqRecordAnchor } from './ayq-anchors.ts';
 import { ayqSetDisplayName } from './ayq-names.ts';
 import {
@@ -1082,6 +1083,27 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         },
       };
     }
+
+    case 'attention':
+      return {
+        id,
+        ok: true,
+        kind: 'attention',
+        result: await ayqAttention(dataDir, ayqToday(request.today)),
+      };
+
+    case 'imports.markHandled':
+      return {
+        id,
+        ok: true,
+        kind: 'imports.markHandled',
+        result: ayqMarkImportProblemHandled(
+          dataDir,
+          request.importId,
+          request.name,
+          new Date().toISOString(),
+        ),
+      };
 
     case 'imports.list':
       return {

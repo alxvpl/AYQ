@@ -329,7 +329,11 @@ export function AyqImportScreen({
         actions={<span className={styles.quiet}>{ayqText('import.history.note')}</span>}
       >
         <div className={styles.history}>
-          <AyqImportHistory round={round} onFailure={onFailure} />
+          <AyqImportHistory
+            round={round}
+            onFailure={onFailure}
+            onChanged={onImported}
+          />
         </div>
       </AyqPane>
     </>

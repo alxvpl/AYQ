@@ -175,6 +175,11 @@ if (has('about')) env.AYQ_SMOKE_ABOUT = '1';
 // backup through the window and requires both halves to be back (04 A38, 03 §12).
 if (has('backup')) env.AYQ_SMOKE_BACKUP = '1';
 
+// `--attention` reads Needs attention off Today: the groups the engine answers,
+// in its order, the rail's count of them, no engine identifier on the screen,
+// and the review row opening Review (010, 013).
+if (has('attention')) env.AYQ_SMOKE_ATTENTION = '1';
+
 // `--suggest` asks Upcoming to suggest and requires only the exact, regular
 // series to appear (9 §9.1), then reads the Plan's historical suggestions and
 // requires the basis to be stated rather than implied (10 §10.3).
