@@ -97,8 +97,25 @@ export async function ayqReadCamtZip(path: string): Promise<AyqLoadedFile[]> {
 export type AyqUnreadable = {
   /** The base name of what was chosen. A full path is nobody else's business. */
   name: string;
+  /**
+   * Why, as a code an interface words for itself (AYQ 04 A24). `unreadable`
+   * is every failure without a more particular one.
+   */
+  code: AyqUnreadableCode;
+  /** The same, in English, for the command line and for a log. */
   reason: string;
 };
+
+export type AyqUnreadableCode = 'gone' | 'not-allowed' | 'folder' | 'unreadable';
+
+/** The code for what was thrown. */
+function codeOf(error: unknown): AyqUnreadableCode {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === 'ENOENT') return 'gone';
+  if (code === 'EACCES' || code === 'EPERM') return 'not-allowed';
+  if (code === 'EISDIR') return 'folder';
+  return 'unreadable';
+}
 
 /** What a plain Error, or anything else thrown, has to say for itself. */
 function reasonOf(error: unknown): string {
@@ -148,7 +165,11 @@ export async function ayqCollectTargets(
     try {
       await walk(target);
     } catch (error) {
-      unreadable.push({ name: basename(target), reason: reasonOf(error) });
+      unreadable.push({
+        name: basename(target),
+        code: codeOf(error),
+        reason: reasonOf(error),
+      });
     }
   };
 

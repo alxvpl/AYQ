@@ -40,6 +40,7 @@ import {
   ayqWriteStore,
   type AyqStore,
 } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 export function ayqRules(dataDir: string): AyqCategoryRule[] {
   return ayqReadStore(dataDir).rules;
@@ -93,7 +94,7 @@ export async function ayqRuleImpact(
 ): Promise<AyqRuleImpact> {
   const store = ayqReadStore(dataDir);
   const rule = store.rules.find(one => one.id === ruleId);
-  if (!rule) throw new Error('no such rule');
+  if (!rule) throw new AyqEngineError('rule-not-found', 'no such rule');
   const category =
     (await ayqCategories()).find(
       one => one.name.toLowerCase() === rule.categoryName.toLowerCase(),
@@ -136,10 +137,10 @@ export async function ayqCorrectRule(
   categoryId: string,
 ): Promise<AyqRuleCorrected> {
   const category = (await ayqCategories()).find(one => one.id === categoryId);
-  if (!category) throw new Error('no such category');
+  if (!category) throw new AyqEngineError('category-not-found', 'no such category');
   const store = ayqReadStore(dataDir);
   const rule = store.rules.find(one => one.id === ruleId);
-  if (!rule) throw new Error('no such rule');
+  if (!rule) throw new AyqEngineError('rule-not-found', 'no such rule');
   rule.categoryName = category.name;
   ayqWriteStore(dataDir, store);
 
@@ -503,7 +504,7 @@ export async function ayqApplyFiling(
       source: 'auto',
       categoryName: target.name,
       at,
-      because: filing.because,
+      reason: filing.reason,
     });
     if (row.categoryId) revised += 1;
     else filed += 1;

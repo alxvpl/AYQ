@@ -126,6 +126,7 @@ import {
   ayqReadStore,
   ayqWriteStore,
 } from './ayq-store.ts';
+import { AyqEngineError, ayqErrorCodeOf } from './ayq-error.ts';
 
 const BUDGET_NAME = 'AYQ';
 
@@ -818,7 +819,7 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       const chosen = (await ayqCategories()).find(
         candidate => candidate.id === request.categoryId,
       );
-      if (!chosen) throw new Error('no such category');
+      if (!chosen) throw new AyqEngineError('category-not-found', 'no such category');
 
       // 03 §4.1's two decisions, and the caller had to say which. Learning a
       // rule files what is there as a consequence of the rule; filing by hand
@@ -1029,7 +1030,8 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         request.counterpartyKey,
       );
       if (target.counterparty.transactions === 0) {
-        throw new Error(
+        throw new AyqEngineError(
+          'counterparty-not-found',
           'no counterparty in this budget has that key; an alias points at one ' +
             'that exists',
         );
@@ -1334,11 +1336,19 @@ channel.onMessage(message => {
         ? await answer(request)
         : await shared(() => answer(request));
     } catch (error) {
+      const detail = explain(said(error));
+      // The native-binding failure has a cure a person can be told about, so
+      // it has a code of its own; everything else keeps the one it was thrown
+      // with, or is `unexpected`.
+      const coded = ayqErrorCodeOf(error);
       response = {
         id: request?.id ?? 'unknown',
         ok: false,
         kind: 'error',
-        message: explain(said(error)),
+        ...(coded.code === 'unexpected' && detail !== said(error)
+          ? { code: 'engine-native-binding' as const }
+          : coded),
+        detail,
       };
     }
     channel.send(response);

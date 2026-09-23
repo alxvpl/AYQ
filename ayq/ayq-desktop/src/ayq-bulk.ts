@@ -43,6 +43,7 @@ import {
   ayqWriteStore,
   type AyqStore,
 } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 /** The bank name a row was imported under, when it was imported at all. */
 function variantOf(
@@ -127,7 +128,7 @@ export async function ayqCategoriseScope(
       ? null
       : ((await ayqCategories()).find(one => one.id === categoryId) ?? null);
   if (categoryId !== null && chosen === null)
-    throw new Error('no such category');
+    throw new AyqEngineError('category-not-found', 'no such category');
 
   const rows = await ayqRowsInScope(dataDir, scope);
   const store = ayqReadStore(dataDir);
@@ -192,7 +193,8 @@ export async function ayqCorrectScopeCounterparty(
 ): Promise<AyqBulkCounterparty> {
   const target = await ayqCounterpartyDetail(dataDir, counterpartyKey);
   if (target.counterparty.transactions === 0) {
-    throw new Error(
+    throw new AyqEngineError(
+      'counterparty-not-found',
       'no counterparty in this budget has that key; an alias points at one ' +
         'that exists',
     );

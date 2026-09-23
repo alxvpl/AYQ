@@ -16,6 +16,7 @@ import type {
   AyqCounterparty,
   AyqTransactionDetail,
 } from '../ayq-ipc-contract.ts';
+import { ayqFilingReasonText } from '../ayq-reasons.ts';
 import { ayqDate, ayqMoment, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
@@ -287,18 +288,33 @@ export function AyqTransactionDetailPane({
       ) : (
         <ul className={styles.history} data-ayq-history={String(decisions.length)}>
           {[...decisions].reverse().map((one, index) => (
-            <li key={`${one.at}-${index}`} className={styles.line}>
-              {ayqText('detail.history.line', {
-                category:
-                  one.categoryName === ''
-                    ? ayqText('detail.history.cleared')
-                    : one.categoryName,
-                by:
-                  one.source === 'rule'
-                    ? ayqText('detail.by.rule')
-                    : ayqText('detail.by.you'),
-                when: ayqMoment(one.at),
-              })}
+            <li
+              key={`${one.at}-${index}`}
+              className={styles.line}
+              data-ayq-decision={one.source}
+            >
+              {ayqText(
+                one.reason === undefined
+                  ? 'detail.history.line'
+                  : 'detail.history.lineBecause',
+                {
+                  category:
+                    one.categoryName === ''
+                      ? ayqText('detail.history.cleared')
+                      : one.categoryName,
+                  // AYQ's own filing is AYQ's, not the owner's (03 §11.11).
+                  by:
+                    one.source === 'rule'
+                      ? ayqText('detail.by.rule')
+                      : one.source === 'auto'
+                        ? ayqText('detail.by.ayq')
+                        : ayqText('detail.by.you'),
+                  when: ayqMoment(one.at),
+                  ...(one.reason === undefined
+                    ? {}
+                    : { because: ayqFilingReasonText(one.reason) }),
+                },
+              )}
             </li>
           ))}
         </ul>

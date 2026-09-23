@@ -259,3 +259,54 @@ test('no renderer source knows where a backup, the budget or the store lives', a
     }
   }
 });
+
+test('reasons cross the boundary as codes, never as display English (04 A24)', async () => {
+  const source = await readFile(join(src, 'ayq-ipc-contract.ts'), 'utf8');
+
+  // The four classes 028 §10.1 named, each typed as a code.
+  const decision = contractType(source, 'AyqDecision');
+  assert.doesNotMatch(decision, /because/, 'a filing reason is a sentence again');
+  assert.match(decision, /reason\?: AyqFilingReason;/);
+
+  const problem = contractType(source, 'AyqImportProblem');
+  assert.doesNotMatch(problem, /reason:\s*string/, 'an import problem is a sentence again');
+  assert.match(problem, /code: AyqImportProblemCode;/);
+
+  assert.match(source, /evidence: AyqMatchEvidence\[\];/, 'match evidence is a sentence again');
+  assert.doesNotMatch(source, /evidence: string\[\]/);
+
+  const response = contractType(source, 'AyqResponse');
+  assert.match(response, /code: AyqErrorCode;/);
+  assert.doesNotMatch(response, /message:\s*string/, 'an error carries display English again');
+
+  // Each code union is literals only: a `string` member would let prose back in.
+  for (const name of [
+    'AyqErrorCode',
+    'AyqImportProblemCode',
+    'AyqMatchEvidence',
+  ]) {
+    const union = contractType(source, name);
+    assert.doesNotMatch(union, /\bstring\b/, `${name} admits free text`);
+  }
+});
+
+test('no screen shows what the engine wrote in English', async () => {
+  for (const file of await sourceFiles()) {
+    if (file.endsWith('ayq-ipc-contract.ts')) continue;
+    const source = await readFile(file, 'utf8');
+    // The engine's English travels as `detail` and legacy text as
+    // `legacyText`; neither is read anywhere in the renderer.
+    // A property read on a value, not a request kind such as 'counterparty.detail'.
+    assert.doesNotMatch(source, /(?<!['.\w-])[A-Za-z_$][\w$]*\.detail\b(?![.'\w-])/, `${file} reads the engine's English`);
+    assert.doesNotMatch(source, /\.legacyText\b/, `${file} shows legacy text`);
+    // And no screen words a reason by itself: only ayq-reasons.ts does.
+    // The catalogue defines the keys; ayq-reasons.ts is the one place that uses them.
+    if (!file.endsWith('ayq-reasons.ts') && !file.endsWith('ayq-strings.ts')) {
+      assert.doesNotMatch(
+        source,
+        /'(reason|error)\.[a-z-]+'/,
+        `${file} words a reason itself instead of through ayq-reasons.ts`,
+      );
+    }
+  }
+});

@@ -245,7 +245,7 @@ test('the amount alone is not a scope, and neither is no filter at all', async (
     );
     assert.equal(refused.ok, false, `refused: ${JSON.stringify(filter)}`);
     assert.match(
-      refused.ok ? '' : refused.message,
+      refused.ok ? '' : refused.detail,
       /03 §4\.8/,
       'and says which rule refused it',
     );

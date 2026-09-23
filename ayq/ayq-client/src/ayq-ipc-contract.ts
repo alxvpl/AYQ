@@ -555,12 +555,29 @@ export type AyqDecision = {
   categoryName: string;
   at: string;
   /**
-   * For `auto`, the evidence the classification matched on, in words (§11.11).
-   * Absent on a decision of any other kind, and on `auto` decisions written
-   * before the reason was recorded.
+   * For `auto`, the evidence the classification matched on (§11.11), as a
+   * code the renderer words (04 A24). Absent on a decision of any other kind,
+   * and on `auto` decisions written before the reason was recorded.
    */
-  because?: string;
+  reason?: AyqFilingReason;
 };
+
+/**
+ * Why AYQ's own classification filed a transaction where it did (03 §11.11).
+ *
+ * A code and its parameters, never a sentence: the words are the catalogue's
+ * (04 A24). `counterparty` is the line of AYQ's merchant table that matched —
+ * data, not prose.
+ *
+ * `legacy` is a reason a version-9 store held in words this AYQ does not
+ * recognise. It is kept as the evidence it is and never shown as it stands;
+ * the renderer says, in its own words, that an earlier AYQ recorded it.
+ */
+export type AyqFilingReason =
+  | { code: 'bank-charge' }
+  | { code: 'bank-interest' }
+  | { code: 'counterparty'; counterparty: string }
+  | { code: 'legacy'; legacyText: string };
 
 /** What an expected payment this transaction was matched to is (03 §7.16). */
 export type AyqTransactionMatch = {
@@ -826,8 +843,32 @@ export type AyqImportRecord = {
 export type AyqImportProblem = {
   /** The base name of what was chosen; the path stays on the machine. */
   name: string;
-  reason: string;
+  /** Why, as a code the renderer words (04 A24). */
+  code: AyqImportProblemCode;
+  /**
+   * Only on `legacy`: what a version-9 store recorded in words this AYQ does
+   * not recognise. Kept as evidence, never shown.
+   */
+  legacyText?: string;
 };
+
+/**
+ *   gone         it is no longer where it was chosen
+ *   not-allowed  AYQ may not read it
+ *   folder       a folder was chosen where a file was expected
+ *   unreadable   it could not be read, for any other reason
+ *   no-entries   it is XML, and holds no CAMT.053 entries
+ *   not-camt     it is not a CAMT.053 document
+ *   legacy       recorded by an earlier AYQ in words not recognised
+ */
+export type AyqImportProblemCode =
+  | 'gone'
+  | 'not-allowed'
+  | 'folder'
+  | 'unreadable'
+  | 'no-entries'
+  | 'not-camt'
+  | 'legacy';
 
 /**
  * What a CAMT import did.
@@ -1104,8 +1145,11 @@ export type AyqMatchProposal = {
   /** Signed cents, as the ledger holds it. */
   transactionAmountCents: number;
   daysApart: number;
-  /** What they have in common, in words, so agreeing to it is informed. */
-  evidence: string[];
+  /**
+   * What they have in common, so agreeing to it is informed — as codes the
+   * renderer words (04 A24). How many days apart they are is `daysApart`.
+   */
+  evidence: AyqMatchEvidence[];
   /**
    * Clear enough to apply without asking: the counterparty or the mandate
    * agrees, the amount is exact, and the date is within a week. Anything less
@@ -1909,6 +1953,63 @@ export type AyqBackupRequest =
   | { kind: 'backup.create' }
   | { kind: 'backup.restore'; backupId: string };
 
+/** One thing an actual transaction and an expected payment agree on (03 §7.16). */
+export type AyqMatchEvidence =
+  | 'same-counterparty'
+  | 'same-mandate'
+  | 'same-amount'
+  | 'amount-within-tenth';
+
+/**
+ * Why a request failed, as a code the renderer words (04 A24).
+ *
+ * `unexpected` is everything without a code of its own — a fault inside
+ * Actual, or a request that should never have been sent. The renderer says so
+ * in its own words; the engine's English stays in `detail`, for a developer.
+ */
+export type AyqErrorCode =
+  | 'unexpected'
+  | 'engine-stopped'
+  | 'engine-timeout'
+  | 'engine-not-running'
+  | 'engine-native-binding'
+  | 'picker-failed'
+  | 'store-newer'
+  | 'store-copy-failed'
+  | 'budget-slow'
+  | 'import-no-file'
+  | 'import-nothing-readable'
+  | 'category-needs-name'
+  | 'category-exists'
+  | 'category-not-found'
+  | 'category-group-not-found'
+  | 'category-wrong-kind'
+  | 'category-in-use'
+  | 'category-own-destination'
+  | 'counterparty-not-found'
+  | 'counterparty-self'
+  | 'merge-nothing'
+  | 'transaction-not-found'
+  | 'bulk-needs-scope'
+  | 'rule-not-found'
+  | 'plan-needs-name'
+  | 'plan-needs-amount'
+  | 'plan-needs-start'
+  | 'plan-bad-end'
+  | 'plan-end-before-start'
+  | 'plan-bad-interval'
+  | 'plan-not-found'
+  | 'plan-not-on-date'
+  | 'plan-bad-date'
+  | 'plan-already-matched'
+  | 'month-invalid'
+  | 'month-not-kept'
+  | 'plan-amount-invalid'
+  | 'anchor-disagrees';
+
+/** Bounded values a code's sentence may name: a file, a month, a version. */
+export type AyqErrorParams = Readonly<Record<string, string | number>>;
+
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };
 
@@ -1921,7 +2022,20 @@ export type AyqResponse =
         result: AyqResults[K];
       };
     }[keyof AyqResults]
-  | { id: string; ok: false; kind: 'error'; message: string };
+  | {
+      id: string;
+      ok: false;
+      kind: 'error';
+      code: AyqErrorCode;
+      params?: AyqErrorParams;
+      /** For `import-nothing-readable`: each file, and why. */
+      problems?: AyqImportProblem[];
+      /**
+       * The engine's own account of it, in English, for a developer reading a
+       * log. Never shown: the renderer words the code (04 A24).
+       */
+      detail: string;
+    };
 
 /**
  * What the preload exposes on `window.ayq`.

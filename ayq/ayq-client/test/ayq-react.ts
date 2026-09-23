@@ -70,7 +70,13 @@ export async function ayqOpenWindow(answer: Answer): Promise<AyqWindow> {
       // at all if every answer arrives before the first paint.
       const result = await answer(request);
       return result === undefined
-        ? { id: request.id, ok: false, kind: 'error', message: 'no answer' }
+        ? {
+            id: request.id,
+            ok: false,
+            kind: 'error',
+            code: 'unexpected',
+            detail: 'no answer',
+          }
         : { id: request.id, ok: true, kind: request.kind, result };
     },
   };

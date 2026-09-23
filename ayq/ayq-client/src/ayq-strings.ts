@@ -139,6 +139,87 @@ const EN = {
   'settings.tab.appearance': 'Appearance',
   'settings.tab.about': 'About',
   'settings.tab.backup': 'Data & Backup',
+
+  // What the engine reports as codes, worded (04 A24; ayq-reasons.ts).
+  'reason.filing.bank-charge': "the bank's own charge",
+  'reason.filing.bank-interest': 'interest charged by the bank',
+  'reason.filing.counterparty': 'the counterparty is {counterparty}',
+  'reason.filing.legacy': 'a reason recorded by an earlier version of AYQ',
+  'reason.import.line': '{file} — {why}',
+  'reason.import.gone': 'it is no longer there',
+  'reason.import.not-allowed': 'AYQ is not allowed to read it',
+  'reason.import.folder': 'it is a folder, not a file',
+  'reason.import.unreadable': 'it could not be read',
+  'reason.import.no-entries': 'it holds no CAMT.053 entries',
+  'reason.import.not-camt': 'it is not a CAMT.053 document',
+  'reason.import.legacy': 'an earlier version of AYQ could not use it',
+  'reason.match.same-counterparty': 'the same counterparty',
+  'reason.match.same-mandate': 'the same SEPA mandate',
+  'reason.match.same-amount': 'the same amount',
+  'reason.match.amount-within-tenth': 'an amount within a tenth of it',
+
+  'error.unexpected': 'AYQ could not do that.',
+  'error.engine-stopped':
+    "AYQ's engine stopped. Close the window and open AYQ again.",
+  'error.engine-timeout': "AYQ's engine did not answer within {minutes} minutes.",
+  'error.engine-not-running':
+    "AYQ's engine is not running. Close the window and open AYQ again.",
+  'error.engine-native-binding':
+    'AYQ could not load the part that reads the budget. This installation is ' +
+    'incomplete; install AYQ again.',
+  'error.picker-failed': 'The file picker could not be opened.',
+  'error.store-newer':
+    "This budget's AYQ records were written by a newer AYQ (version {found}; " +
+    'this AYQ reads up to version {known}). Open it with that AYQ rather than ' +
+    'overwrite them.',
+  'error.store-copy-failed':
+    "AYQ has to bring its records from version {found} to {known} and could " +
+    'not first keep a copy of them. Nothing has been changed. Make sure the ' +
+    'budget folder can be written to, and open AYQ again.',
+  'error.budget-slow':
+    'The budget did not confirm the change in time. Try again.',
+  'error.import-no-file': 'No file was chosen.',
+  'error.import-nothing-readable': 'Nothing was imported: {problems}.',
+  'error.import-nothing-readable.none':
+    'Nothing was imported: none of the chosen files holds a CAMT.053 statement.',
+  'error.category-needs-name': 'A category needs a name.',
+  'error.category-exists': 'That group already has a category called {name}.',
+  'error.category-not-found': 'That category is no longer there.',
+  'error.category-group-not-found': 'That category group is no longer there.',
+  'error.category-wrong-kind':
+    'A category stays with its own kind: money in with money in, money out ' +
+    'with money out.',
+  'error.category-in-use':
+    '{name} is still in use. Say where what uses it should go before removing it.',
+  'error.category-own-destination': 'A category cannot be its own destination.',
+  'error.counterparty-not-found': 'That counterparty is not in this budget.',
+  'error.counterparty-self': 'A counterparty cannot be combined with itself.',
+  'error.merge-nothing':
+    'Nothing to combine: no statement name leads to that counterparty.',
+  'error.transaction-not-found': 'That transaction is not in this budget.',
+  'error.bulk-needs-scope':
+    'A bulk correction needs a stated scope: an account, a period, a ' +
+    'category, a counterparty, a word or the unfiled. The amount alone is not one.',
+  'error.rule-not-found': 'That rule is no longer there.',
+  'error.plan-needs-name': 'A planned payment needs a name.',
+  'error.plan-needs-amount': 'A planned payment needs an amount above zero.',
+  'error.plan-needs-start': 'A planned payment needs a start date.',
+  'error.plan-bad-end': 'That end date is not a date.',
+  'error.plan-end-before-start': 'An end date cannot be before the start date.',
+  'error.plan-bad-interval':
+    'An interval is a whole number of periods, at least one.',
+  'error.plan-not-found': 'That planned payment is no longer there.',
+  'error.plan-not-on-date': 'That payment does not fall on that date.',
+  'error.plan-bad-date': 'That is not a date.',
+  'error.plan-already-matched':
+    'That transaction is already matched to another expected payment.',
+  'error.month-invalid': 'That is not a month.',
+  'error.month-not-kept':
+    'There is no budget month {month} to plan in. Plans can be set from three ' +
+    'months before the earliest transaction to twelve after the current one.',
+  'error.plan-amount-invalid': 'A plan is an amount of zero or more.',
+  'error.anchor-disagrees':
+    'The balance could not be applied: the budget does not agree with it.',
   'settings.backup.blurb':
     "A backup is the budget and AYQ's own records together, from one moment. " +
     'Restoring one puts both back.',
@@ -889,6 +970,7 @@ const EN = {
   'detail.history': 'Decisions',
   'detail.history.none': 'Nothing has been decided about this one yet.',
   'detail.history.line': '{category} — {by}, {when}',
+  'detail.history.lineBecause': '{category} — {by}, {when}: {because}',
   'detail.history.cleared': 'the category was cleared',
   'detail.action.changeCategory': 'Change category…',
   'detail.action.correctCounterparty': 'Correct counterparty…',

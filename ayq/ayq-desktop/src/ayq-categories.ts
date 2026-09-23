@@ -19,6 +19,7 @@ import type {
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqReadStore, ayqWriteStore } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 export async function ayqCategories(): Promise<AyqCategory[]> {
   const groups = await api.getCategoryGroups();
@@ -39,11 +40,11 @@ export async function ayqCreateCategory(
   groupId: string,
 ): Promise<AyqCategory[]> {
   const trimmed = name.trim();
-  if (trimmed === '') throw new Error('a category needs a name');
+  if (trimmed === '') throw new AyqEngineError('category-needs-name', 'a category needs a name');
 
   const groups = await api.getCategoryGroups();
   if (!groups.some(group => group.id === groupId)) {
-    throw new Error('no such category group');
+    throw new AyqEngineError('category-group-not-found', 'no such category group');
   }
 
   const existing = await ayqCategories();
@@ -54,7 +55,7 @@ export async function ayqCreateCategory(
         category.name.toLowerCase() === trimmed.toLowerCase(),
     )
   ) {
-    throw new Error(`that group already has a category called ${trimmed}`);
+    throw new AyqEngineError('category-exists', `that group already has a category called ${trimmed}`, { name: trimmed });
   }
 
   await api.createCategory({ name: trimmed, group_id: groupId });
@@ -73,12 +74,12 @@ export async function ayqRenameCategory(
   name: string,
 ): Promise<{ categories: AyqCategory[]; was: string }> {
   const trimmed = name.trim();
-  if (trimmed === '') throw new Error('a category needs a name');
+  if (trimmed === '') throw new AyqEngineError('category-needs-name', 'a category needs a name');
 
   const before = (await ayqCategories()).find(
     category => category.id === categoryId,
   );
-  if (!before) throw new Error('no such category');
+  if (!before) throw new AyqEngineError('category-not-found', 'no such category');
 
   await api.updateCategory(categoryId, { name: trimmed });
   return { categories: await ayqCategories(), was: before.name };
@@ -97,11 +98,12 @@ export async function ayqMoveCategory(
   groupId: string,
 ): Promise<AyqCategory[]> {
   const category = (await ayqCategories()).find(one => one.id === categoryId);
-  if (!category) throw new Error('no such category');
+  if (!category) throw new AyqEngineError('category-not-found', 'no such category');
   const group = (await api.getCategoryGroups()).find(one => one.id === groupId);
-  if (!group) throw new Error('no such category group');
+  if (!group) throw new AyqEngineError('category-group-not-found', 'no such category group');
   if ((group.is_income === true) !== category.isIncome) {
-    throw new Error(
+    throw new AyqEngineError(
+      'category-wrong-kind',
       'a category moves only within its own kind: money in stays with money ' +
         'in, money out with money out',
     );
@@ -130,7 +132,7 @@ export async function ayqCategoryImpact(
   categoryId: string,
 ): Promise<AyqCategoryImpact> {
   const category = (await ayqCategories()).find(one => one.id === categoryId);
-  if (!category) throw new Error('no such category');
+  if (!category) throw new AyqEngineError('category-not-found', 'no such category');
 
   const counted = (await api.aqlQuery(
     api
@@ -195,8 +197,10 @@ export async function ayqRemoveCategory(
 ): Promise<AyqCategoryRemoved> {
   const impact = await ayqCategoryImpact(dataDir, categoryId);
   if (!impact.unused && destination === undefined) {
-    throw new Error(
+    throw new AyqEngineError(
+      'category-in-use',
       `${impact.name} is still in use; say where what used it should go before it is removed`,
+      { name: impact.name },
     );
   }
 
@@ -205,12 +209,13 @@ export async function ayqRemoveCategory(
     target =
       (await ayqCategories()).find(one => one.id === destination.categoryId) ??
       null;
-    if (!target) throw new Error('no such destination category');
+    if (!target) throw new AyqEngineError('category-not-found', 'no such destination category');
     if (target.id === categoryId) {
-      throw new Error('a category cannot be its own destination');
+      throw new AyqEngineError('category-own-destination', 'a category cannot be its own destination');
     }
     if (target.isIncome !== impact.isIncome) {
-      throw new Error(
+      throw new AyqEngineError(
+        'category-wrong-kind',
         'what used a category moves only within its own kind: money in to ' +
           'money in, money out to money out',
       );

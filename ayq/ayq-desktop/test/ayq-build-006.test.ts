@@ -38,7 +38,7 @@ async function storeOf(dataDir: string): Promise<{
   version: number;
   decisions: Record<
     string,
-    Array<{ source: string; categoryName: string; because?: string }>
+    Array<{ source: string; categoryName: string; reason?: { code: string } }>
   >;
 }> {
   return JSON.parse(
@@ -104,15 +104,17 @@ test('an import files what the evidence carries (03 §11.10, §11.12)', async ()
     assert.equal(row.categorySource, 'auto', `${row.payee} claims another source`);
   }
   const store = await storeOf(dataDir);
-  assert.equal(store.version, 9);
+  assert.equal(store.version, 10);
   const reasons = Object.values(store.decisions)
     .map(history => history.at(-1))
     .filter(one => one?.source === 'auto');
   assert.ok(reasons.length > 0);
   for (const decision of reasons) {
     assert.ok(
-      (decision?.because ?? '').length > 0,
-      'an automatic filing recorded no reason',
+      ['bank-charge', 'bank-interest', 'counterparty'].includes(
+        decision?.reason?.code ?? '',
+      ),
+      'an automatic filing recorded no reason code',
     );
   }
 });

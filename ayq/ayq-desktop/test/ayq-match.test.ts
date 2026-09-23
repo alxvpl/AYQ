@@ -70,11 +70,8 @@ test('the counterparty, an exact amount and a near date is applied without askin
   );
   assert.equal(found.length, 1);
   assert.equal(found[0].confident, true);
-  assert.deepEqual(found[0].evidence, [
-    'the same counterparty',
-    'the same amount',
-    'the same day',
-  ]);
+  assert.deepEqual(found[0].evidence, ['same-counterparty', 'same-amount']);
+  assert.equal(found[0].daysApart, 0);
 });
 
 test('a SEPA mandate identifies it just as well as the counterparty', () => {
@@ -84,7 +81,7 @@ test('a SEPA mandate identifies it just as well as the counterparty', () => {
     { recordKeys: new Map([['plan-1', { key: null, mandateId: 'MANDAAT-1' }]]) },
   );
   assert.equal(found[0].confident, true);
-  assert.ok(found[0].evidence.includes('the same SEPA mandate'));
+  assert.ok(found[0].evidence.includes('same-mandate'));
 });
 
 test('an exact amount on the right day is offered, and not applied', () => {
@@ -94,7 +91,8 @@ test('an exact amount on the right day is offered, and not applied', () => {
   const found = propose([expected()], [actual()]);
   assert.equal(found.length, 1);
   assert.equal(found[0].confident, false);
-  assert.deepEqual(found[0].evidence, ['the same amount', 'the same day']);
+  assert.deepEqual(found[0].evidence, ['same-amount']);
+  assert.equal(found[0].daysApart, 0);
 });
 
 test('a week is close enough to apply; two weeks is only close enough to offer', () => {
@@ -130,7 +128,7 @@ test('an amount within a tenth is offered; further off is not a match', () => {
   );
   assert.equal(near.length, 1);
   assert.equal(near[0].confident, false, 'identified, but the amount is not exact');
-  assert.ok(near[0].evidence.includes('an amount within a tenth of it'));
+  assert.ok(near[0].evidence.includes('amount-within-tenth'));
 
   const wrong = propose(
     [expected()],

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { ayqAsk } from '../ayq-bridge.ts';
 import type { AyqAccountSummary, AyqImportSummary } from '../ayq-ipc-contract.ts';
+import { ayqImportProblemText } from '../ayq-reasons.ts';
 import { ayqCount, ayqDate, ayqMoment, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
@@ -213,7 +214,7 @@ export function AyqImportScreen({
         parts.push(ayqText('import.skipped', { count: ayqCount(summary.skipped) }));
       }
       for (const problem of summary.problems) {
-        parts.push(`${problem.name} — ${problem.reason}`);
+        parts.push(ayqImportProblemText(problem));
       }
       setSaid(parts.join(' · '));
       setRound(one => one + 1);

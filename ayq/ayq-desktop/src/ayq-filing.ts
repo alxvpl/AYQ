@@ -46,16 +46,18 @@
 import {
   ayqNormaliseKey,
 } from '../../ayq-camt/src/counterparty/ayq-description.ts';
+import type { AyqFilingReason } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 /** What AYQ concluded, and the evidence it concluded it from. */
 export type AyqFiling = {
   categoryName: string;
   /**
-   * Why, in words a person can check. §11.11 requires the assignment to be
+   * Why, so a person can check it. §11.11 requires the assignment to be
    * verifiable, and "because a table said so" is not verifiable unless the
-   * table says which line matched.
+   * table says which line matched. A code and the matched line; the words are
+   * the catalogue's (04 A24).
    */
-  because: string;
+  reason: AyqFilingReason;
 };
 
 /** Everything this decision is allowed to see. */
@@ -254,10 +256,10 @@ export function ayqProposedCategory(
   // settles on its own: 03 §3.2 makes the bank itself the counterparty, so
   // there is nothing to look up.
   if (evidence.kind === 'bank-fee') {
-    return { categoryName: 'Bank fees', because: 'the bank’s own charge' };
+    return { categoryName: 'Bank fees', reason: { code: 'bank-charge' } };
   }
   if (evidence.kind === 'interest') {
-    return { categoryName: 'Bank fees', because: 'interest charged by the bank' };
+    return { categoryName: 'Bank fees', reason: { code: 'bank-interest' } };
   }
 
   // Cash out of a machine says nothing about what the cash was then spent on,
@@ -270,7 +272,10 @@ export function ayqProposedCategory(
   for (const [categoryName, patterns] of MERCHANTS) {
     for (const pattern of patterns) {
       if (carries(key, pattern)) {
-        return { categoryName, because: `the counterparty is ${pattern.trim()}` };
+        return {
+          categoryName,
+          reason: { code: 'counterparty', counterparty: pattern.trim() },
+        };
       }
     }
   }

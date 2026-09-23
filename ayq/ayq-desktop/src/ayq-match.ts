@@ -22,6 +22,7 @@
 
 import type {
   AyqMatchCandidate,
+  AyqMatchEvidence,
   AyqMatchProposal,
   AyqPlanOccurrence,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
@@ -47,8 +48,10 @@ function signed(occurrence: AyqPlanOccurrence): number {
 /**
  * What one candidate has in common with one expected payment.
  *
- * The strings are the evidence a person reads before agreeing. "It looked
- * right" is not a reason anybody can check afterwards.
+ * The codes are the evidence a person reads before agreeing — worded by the
+ * catalogue (04 A24). "It looked right" is not a reason anybody can check
+ * afterwards. How far apart the dates are travels as `daysApart`, a number,
+ * and the renderer says it once.
  */
 function evidenceFor(
   occurrence: AyqPlanOccurrence,
@@ -56,7 +59,7 @@ function evidenceFor(
   recordKey: string | null,
   recordMandate: string | null,
 ): {
-  evidence: string[];
+  evidence: AyqMatchEvidence[];
   identified: boolean;
   exact: boolean;
   daysApart: number;
@@ -70,29 +73,21 @@ function evidenceFor(
   );
   if (daysApart > AYQ_MATCH_OFFER_DAYS) return null;
 
-  const evidence: string[] = [];
+  const evidence: AyqMatchEvidence[] = [];
   const keyAgrees =
     recordKey !== null && candidate.counterpartyKey === recordKey;
   const mandateAgrees =
     recordMandate !== null && candidate.mandateId === recordMandate;
-  if (keyAgrees) evidence.push('the same counterparty');
-  if (mandateAgrees) evidence.push('the same SEPA mandate');
+  if (keyAgrees) evidence.push('same-counterparty');
+  if (mandateAgrees) evidence.push('same-mandate');
 
   const exact = candidate.amountCents === expected;
-  if (exact) evidence.push('the same amount');
+  if (exact) evidence.push('same-amount');
   else {
     const off = Math.abs(candidate.amountCents - expected);
     if (off > Math.abs(expected) * AYQ_MATCH_AMOUNT_TOLERANCE) return null;
-    evidence.push('an amount within a tenth of it');
+    evidence.push('amount-within-tenth');
   }
-
-  evidence.push(
-    daysApart === 0
-      ? 'the same day'
-      : daysApart === 1
-        ? 'one day apart'
-        : `${daysApart} days apart`,
-  );
 
   // Something has to identify it. Amount and date alone match any two payments
   // of the same size in the same week, which is most of a supermarket month.

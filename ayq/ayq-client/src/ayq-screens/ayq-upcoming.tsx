@@ -39,6 +39,7 @@ import type {
   AyqPlannedRecord,
   AyqRequestBody,
 } from '../ayq-ipc-contract.ts';
+import { ayqMatchEvidenceText } from '../ayq-reasons.ts';
 import {
   ayqCount,
   ayqDate,
@@ -508,7 +509,7 @@ export function AyqUpcomingScreen({
                 </span>
                 <span className={styles.evidence} data-ayq-evidence="">
                   {ayqList([
-                    ...one.evidence,
+                    ...one.evidence.map(ayqMatchEvidenceText),
                     ayqText('upcoming.matches.apart', {
                       days: ayqCount(one.daysApart),
                     }),

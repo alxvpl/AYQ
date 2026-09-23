@@ -161,7 +161,7 @@ test('an unknown request kind is refused, not guessed at', async () => {
   assert.equal(answer.ok, false);
   if (answer.ok) return;
   assert.equal(answer.id, 'c');
-  assert.match(answer.message, /unknown request kind/);
+  assert.match(answer.detail, /unknown request kind/);
 });
 
 test('a CAMT.053 file is imported through the real API', async () => {
@@ -1166,8 +1166,8 @@ test('a store from a newer AYQ is refused, not overwritten', async () => {
   );
   assert.equal(answer.ok, false, 'the engine refuses rather than guessing');
   if (answer.ok) return;
-  assert.match(answer.message, /version 99/);
-  assert.match(answer.message, /upgrade rather than overwrite/);
+  assert.match(answer.detail, /version 99/);
+  assert.match(answer.detail, /upgrade rather than overwrite/);
 
   // And it really did not touch the file.
   const after = JSON.parse(await readFile(path, 'utf8')) as { version: number };
@@ -1209,7 +1209,7 @@ test('an empty choice is refused rather than counted as an import', async () => 
 
   assert.equal(answer.ok, false);
   if (answer.ok) return;
-  assert.match(answer.message, /no file was chosen/);
+  assert.match(answer.detail, /no file was chosen/);
   assert.deepEqual(await ask(dataDir, { kind: 'imports.list' }), []);
 });
 
@@ -1224,11 +1224,12 @@ test('a file that cannot be read is named, and the budget is left alone', async 
 
   assert.equal(answer.ok, false);
   if (answer.ok) return;
-  assert.match(answer.message, /never-existed\.xml/, 'says which file');
-  assert.match(
-    answer.message,
-    /no longer there/,
-    'says what was wrong with it',
+  // Which file, and why, as a code the window words (04 A24).
+  assert.equal(answer.code, 'import-nothing-readable');
+  assert.deepEqual(
+    answer.problems,
+    [{ name: 'never-existed.xml', code: 'gone' }],
+    'says which file and what was wrong with it',
   );
 
   // Nothing was written: no import in the history, and no transactions.
@@ -1248,8 +1249,10 @@ test('a file that is not CAMT is refused without touching the budget', async () 
 
   assert.equal(answer.ok, false);
   if (answer.ok) return;
-  assert.match(answer.message, /shopping-list\.xml/);
-  assert.match(answer.message, /no CAMT\.053 entries/);
+  assert.equal(answer.code, 'import-nothing-readable');
+  assert.deepEqual(answer.problems, [
+    { name: 'shopping-list.xml', code: 'no-entries' },
+  ]);
   assert.equal((await ask(dataDir, { kind: 'transactions.list' })).total, 0);
 });
 
@@ -2229,7 +2232,7 @@ test('an alias must point at a counterparty that exists', async () => {
   );
   assert.equal(refused.ok, false);
   if (refused.ok) return;
-  assert.match(refused.message, /no counterparty in this budget has that key/);
+  assert.match(refused.detail, /no counterparty in this budget has that key/);
 
   const itself = await send(
     {
@@ -2243,7 +2246,7 @@ test('an alias must point at a counterparty that exists', async () => {
   );
   assert.equal(itself.ok, false);
   if (itself.ok) return;
-  assert.match(itself.message, /cannot be an alias of itself/);
+  assert.match(itself.detail, /cannot be an alias of itself/);
 
   // Neither refusal changed anything.
   const list = await ask(dataDir, { kind: 'counterparties.list' });
@@ -2298,7 +2301,7 @@ test('a damaged store loses the aliases and nothing else', async () => {
   const refused = await send({ id: 'newer-2', kind: 'aliases.list' }, dataDir);
   assert.equal(refused.ok, false);
   if (refused.ok) return;
-  assert.match(refused.message, /version 99/);
+  assert.match(refused.detail, /version 99/);
 });
 
 /* ------------------------------------------------------------------ the plan
@@ -2468,7 +2471,7 @@ test('one occurrence moves without moving the series, and survives a restart', a
   );
   assert.equal(wrong.ok, false);
   if (wrong.ok) return;
-  assert.match(wrong.message, /does not fall on that date/);
+  assert.match(wrong.detail, /does not fall on that date/);
 });
 
 test('a single occurrence can be struck out, and the rest stand', async () => {
@@ -2536,7 +2539,7 @@ test('a record is refused rather than stored wrong', async () => {
     );
     assert.equal(answer.ok, false, JSON.stringify(broken));
     if (answer.ok) continue;
-    assert.match(answer.message, says);
+    assert.match(answer.detail, says);
   }
 
   const plan = await ask(dataDir, { kind: 'plan.list', today: '2026-06-15' });
@@ -2803,7 +2806,7 @@ test('a month or a plan that makes no sense is refused', async () => {
     dataDir,
   );
   assert.equal(wrongMonth.ok, false);
-  if (!wrongMonth.ok) assert.match(wrongMonth.message, /YYYY-MM/);
+  if (!wrongMonth.ok) assert.match(wrongMonth.detail, /YYYY-MM/);
 
   const negative = await send(
     {
@@ -2816,7 +2819,7 @@ test('a month or a plan that makes no sense is refused', async () => {
     dataDir,
   );
   assert.equal(negative.ok, false);
-  if (!negative.ok) assert.match(negative.message, /not negative/);
+  if (!negative.ok) assert.match(negative.detail, /not negative/);
 });
 
 /* --------------------------------------------------------------- the forecast
@@ -2929,7 +2932,7 @@ test('a month Actual keeps no budget for holds no plan, and says it cannot take 
   );
   assert.equal(refused.ok, false);
   if (refused.ok) return;
-  assert.match(refused.message, /no month 2099-01 to plan in/);
+  assert.match(refused.detail, /no month 2099-01 to plan in/);
 });
 
 /* ------------------------------------------------------ matching, end to end
@@ -2982,7 +2985,7 @@ test('a payment typed by hand is offered a match, not given one', async () => {
   assert.equal(proposal.transactionAmountCents, -ENERGY_CENTS);
   assert.equal(proposal.daysApart, 0);
   assert.equal(proposal.confident, false);
-  assert.deepEqual(proposal.evidence, ['the same amount', 'the same day']);
+  assert.deepEqual(proposal.evidence, ['same-amount']);
 });
 
 test('matching by hand takes it out of the forecast, and teaches AYQ the counterparty', async () => {
@@ -3194,7 +3197,7 @@ test('one transaction cannot be two expected payments', async () => {
   );
   assert.equal(refused.ok, false);
   if (refused.ok) return;
-  assert.match(refused.message, /already matched to another expected payment/);
+  assert.match(refused.detail, /already matched to another expected payment/);
 });
 
 /* ------------------------------------------------------------- the worksheet

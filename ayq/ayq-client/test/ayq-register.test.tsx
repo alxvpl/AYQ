@@ -545,3 +545,52 @@ test('a page is not the whole ledger, and says so', async () => {
 
   await window.close();
 });
+
+test('AYQ\'s own filing is shown as AYQ\'s, with its reason in the catalogue\'s words (04 A24)', async () => {
+  const base = engineOver(ROWS);
+  const window = await ayqOpenWindow((request: Asked) =>
+    request.kind === 'transaction.detail'
+      ? {
+          ...DETAIL,
+          decisions: [
+            {
+              source: 'auto',
+              categoryName: 'Groceries',
+              at: '2026-09-09T09:00:00.000Z',
+              reason: { code: 'counterparty', counterparty: 'TESTFUEL' },
+            },
+            {
+              source: 'auto',
+              categoryName: 'Bank fees',
+              at: '2026-09-10T09:00:00.000Z',
+              // What a version 9 store held in words this AYQ does not know.
+              reason: { code: 'legacy', legacyText: 'SOMETHING ONLY THE ENGINE WROTE' },
+            },
+          ],
+        }
+      : base(request),
+  );
+  await window.render(screen());
+  await ayqPress(
+    window.container.querySelector('[data-ayq-table="register"] tbody tr[data-ayq-row="t-2"]'),
+  );
+  const pane = window.container.querySelector('[data-ayq-detail="t-2"]');
+  assert.ok(pane);
+  const lines = [...pane.querySelectorAll('[data-ayq-decision="auto"]')].map(
+    one => one.textContent ?? '',
+  );
+  assert.equal(lines.length, 2);
+  // Oldest last: the history reads newest first.
+  assert.match(lines[1], new RegExp(ayqText('detail.by.ayq')));
+  assert.doesNotMatch(lines[1], new RegExp(ayqText('detail.by.you')));
+  assert.ok(
+    lines[1].includes(
+      ayqText('reason.filing.counterparty', { counterparty: 'TESTFUEL' }),
+    ),
+  );
+  // Stored English is evidence, never the screen's words.
+  assert.ok(lines[0].includes(ayqText('reason.filing.legacy')));
+  assert.doesNotMatch(pane.textContent ?? '', /SOMETHING ONLY THE ENGINE WROTE/);
+
+  await window.close();
+});

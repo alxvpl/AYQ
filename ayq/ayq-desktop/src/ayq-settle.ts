@@ -12,6 +12,7 @@
 // answer against what was written, and reads again until it agrees. The
 // predicate is what makes it a fix rather than a race: nothing proceeds on an
 // answer that does not yet reflect the change.
+import { AyqEngineError } from './ayq-error.ts';
 
 /** How long to keep asking before admitting the write did not take. */
 const ATTEMPTS = 60;
@@ -31,7 +32,8 @@ export async function ayqSettle<T>(
   }
 
   if (!settled(value)) {
-    throw new Error(
+    throw new AyqEngineError(
+      'budget-slow',
       `${what} did not reach the budget within ` +
         `${(ATTEMPTS * PAUSE_MS) / 1000}s`,
     );
