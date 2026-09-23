@@ -26,6 +26,39 @@ export function chartGeometry(values: readonly bigint[]): number[] {
 }
 
 /**
+ * A counterparty label on the chart's category axis: at most 240 CSS pixels,
+ * about forty characters of the chart's 12 px type. A longer name is shortened
+ * at its end with exactly one "…" (U+2026) and never wraps, so a shortened
+ * name cannot read as a whole one (037 Observation A; directive 004 T2). The
+ * table and the detail pane keep the full name. The width is chart-only
+ * geometry, revisable on evidence; amount labels and tooltips are untouched.
+ *
+ * Size, family and margin are the ones ECharts already draws with on Windows,
+ * named here so that the gutter below is measured in the font that is drawn.
+ */
+export const CATEGORY_AXIS_LABEL = {
+  width: 240,
+  overflow: 'truncate',
+  ellipsis: '…',
+  fontSize: 12,
+  fontFamily: 'Microsoft YaHei',
+  margin: 8,
+} as const;
+
+/**
+ * The room left of the axis for its labels: the widest label as it will be
+ * drawn, over every row. ECharts' own containLabel measures one label in
+ * ⌈n/40⌉ above forty rows, and in sans-serif rather than the family it draws
+ * with, so a longer label could start beyond the canvas's left edge and lose
+ * its first letters without any mark. `measure` returns a name's full width.
+ */
+export function categoryLabelGutter(names: readonly string[], measure: (text: string) => number): number {
+  let widest = 0;
+  for (const name of names) widest = Math.max(widest, Math.min(CATEGORY_AXIS_LABEL.width, measure(name)));
+  return Math.ceil(widest) + CATEGORY_AXIS_LABEL.margin;
+}
+
+/**
  * What the platform will rasterise as one canvas, measured in this Electron
  * on 2026-09-21 (evidence/hardening-039): a side of at most 65 535 device
  * pixels and an area of at most 268 435 456 (16 384²). Above either the

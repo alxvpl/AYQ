@@ -116,3 +116,77 @@ compile in the passing build). Its engine ran with the CI-built Electron-ABI
 `better-sqlite3` 12.11.1 binding of the installed AYQ Personal Finances,
 verified by `verify-native.mjs` (ABI 148), because the binding cannot be
 rebuilt on this machine.
+
+## T2 — a shortened chart label never looks like the whole name
+
+User question (004 §1): when a counterparty name is shortened in the chart,
+can I tell that it has been shortened rather than mistake the visible text for
+the full name?
+
+### What the owner saw (037 Observation A), reproduced
+
+On the application before this change, the chart never shortened a name: it
+drew every name whole, right-aligned against the axis, in a gutter that
+ECharts' `containLabel` had sized too small, so a long name ran off the
+canvas's **left** edge and lost its beginning — the part the owner recognises —
+with no mark at all. Measured on the real built application (every string the
+chart draws recorded at `fillText`, with its measured width), 175 %:
+
+| synthetic case | rows | labels whose start is cut off at the canvas edge | ellipses |
+|---|---|---|---|
+| shared prefix (A1 fixture, two names sharing a 51-character prefix, beside "Superstore") | 3 | 2 (by 25 px and 8 px: they begin "rthwind" and "orthwind") | 0 |
+| S2, ordinary names (8–28 characters) | 161 | 2 | 0 |
+| LONG, names of 60–120 characters | 392 | 45 | 0 |
+
+Two causes, both in ECharts 5.5.1: its `containLabel` measures a label in
+plain sans-serif (Arial: 213.4 px for the text that is drawn at 228.2 px in the
+font it actually draws with, `12px "Microsoft YaHei"`, its Windows default),
+and above forty rows it measures only one label in ⌈n/40⌉. See
+`t2_01_before_shared_prefix_start_cut.png`, `t2_03_before_long_names_start_cut.png`.
+
+### The change
+
+`src/geometry.ts` `CATEGORY_AXIS_LABEL`: the category-axis label is at most
+240 CSS px (about forty characters of 12 px type), shortened at its end with
+`overflow: 'truncate'` and exactly one U+2026, never wrapped; its size, family
+and margin are ECharts' own defaults, named so they can be measured.
+`categoryLabelGutter` sizes the room left of the axis as the widest label as
+drawn over every row (capped at the label width), measured in the renderer
+with a canvas in that same font; `grid.left` takes it instead of
+`containLabel`. The width is chart-only geometry. Nothing else moves: amount
+labels, tooltip, headline, table, detail pane, catalogue and colours are
+unchanged, and the x axis draws no labels, so no other side of the grid
+depended on `containLabel`.
+
+### After, on the real built application
+
+| synthetic case | device scale | rows | drawn whole | shortened, ending in one U+2026, a prefix of the full name | start cut at the canvas edge |
+|---|---|---|---|---|---|
+| shared prefix | 100 % · 175 % · 300 % | 3 | 1 ("Superstore") | 2 | 0 |
+| S2, ordinary names | 100 % · 175 % · 300 % | 161 | 161 | 0 | 0 |
+| LONG | 100 % · 175 % · 300 % | 392 | 0 | 392 (widest drawn 238 px) | 0 |
+
+In every run the drawn labels, top to bottom, are the table's rows in the
+table's order; the headline is unchanged (€246.25, €24,733.27, €55,560.34
+before and after); one amount label per bar, as before; and clicking each of
+the first three rows opens the detail pane headed with that row's full name.
+
+The shared-prefix case (C3): "Northwind Regional Energy Cooperative
+Association — Amsterdam Noord" (€120.00) and "… — Rotterdam Zuid" (€18.75) are
+both drawn as "Northwind Regional Energy Cooperati…", as two separate bars (at
+33 px and 131 px) with "Superstore" (€107.50) between them, and remain two
+table rows with their full names; each opens its own detail pane. **Residual,
+recorded and not solved here:** two end-shortened labels can read identically;
+the bar's position, its amount and the table tell them apart. See
+`t2_02_after_shared_prefix_ellipsis.png`, `t2_04_after_long_names_ellipsis.png`.
+
+### Suite
+
+`test/chart-labels.test.ts` (part of `npm test`): the label form (end only,
+one U+2026, 240 px, never wrapped); the family is ECharts' own Windows default,
+read from its source; the gutter holds the widest label over every row,
+including one at a row `containLabel` would not have sampled; ECharts' own
+`truncateText` with this configuration keeps ordinary names whole and gives a
+long name its beginning plus one ellipsis, and marks both shared-prefix names;
+only the category axis uses it, and the table cell and detail heading still
+print `row.displayName`. `npm test`: 171 tests, 171 pass; typecheck pass.

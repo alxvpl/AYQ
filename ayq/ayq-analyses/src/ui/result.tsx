@@ -3,7 +3,7 @@ import { ACCENT } from './tokens.js';
 import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { formatDate, formatList } from '../format.js';
-import { canvasFitsRaster, chartGeometry } from '../geometry.js';
+import { CATEGORY_AXIS_LABEL, canvasFitsRaster, categoryLabelGutter, chartGeometry } from '../geometry.js';
 import { formatCount, formatMoney, formatSignedMoney } from '../money.js';
 import { nextSortState, sortRows, type SortColumn, type SortState } from '../sort.js';
 import { useLocale, useText } from './text.js';
@@ -24,6 +24,14 @@ interface ResultViewProps {
 /** The chart's height follows its rows (a provisional build value, r004 §12). */
 function chartHeight(rows: number): number {
   return Math.max(140, rows * 44 + 48);
+}
+
+/** A name's full width in the category label's own font, as the canvas will draw it. */
+function measureCategoryLabel(): (text: string) => number {
+  const context = document.createElement('canvas').getContext('2d');
+  if (context === null) return () => CATEGORY_AXIS_LABEL.width;
+  context.font = `${CATEGORY_AXIS_LABEL.fontSize}px "${CATEGORY_AXIS_LABEL.fontFamily}"`;
+  return text => context.measureText(text).width;
 }
 
 function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: string }): JSX.Element {
@@ -57,7 +65,9 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
     const ordered = [...rows].reverse();
     const lengths = chartGeometry(ordered.map(row => row.moneyOutMinor));
     chart.setOption({
-      grid: { left: 8, right: 24, top: 8, bottom: 24, containLabel: true },
+      // The labels' gutter is measured over every row in the label's own font
+      // (geometry.ts), so no label starts beyond the canvas's left edge.
+      grid: { left: 8 + categoryLabelGutter(ordered.map(row => row.displayName), measureCategoryLabel()), right: 24, top: 8, bottom: 24 },
       // The tooltip prints the exact row figure and nothing else: a sentence
       // composed around it would be interface text outside the catalogue.
       tooltip: {
@@ -75,7 +85,7 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
         axisLabel: { show: false },
         max: (extent: { max: number }) => (extent.max > 0 ? extent.max * 1.25 : 0),
       },
-      yAxis: { type: 'category', data: ordered.map(row => row.displayName) },
+      yAxis: { type: 'category', data: ordered.map(row => row.displayName), axisLabel: CATEGORY_AXIS_LABEL },
       series: [
         {
           type: 'bar',
