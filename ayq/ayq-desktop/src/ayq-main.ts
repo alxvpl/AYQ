@@ -13,7 +13,14 @@
 // two halves meet.
 
 import { fork } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { release } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,7 +49,9 @@ import {
   type AyqImportSummary,
   type AyqPickedFile,
   type AyqRequest,
+  type AyqRequestBody,
   type AyqResponse,
+  type AyqResults,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 // The token module itself, so that the acceptance run compares the screen
 // against the product's own declared values rather than against a second copy
@@ -62,6 +71,8 @@ import {
 // above: the acceptance run compares the screen against the product's own
 // declared values rather than against a second copy written into a check.
 import { ayqCompiledIdentity } from './ayq-about.ts';
+import { ayqBackupsDir, ayqManifestDigest } from './ayq-backup.ts';
+import type { AyqBackupManifest } from './ayq-backup.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -1849,6 +1860,218 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
+ * Settings → Data & Backup, end to end (04 A38; 03 §12; 030 §5).
+ *
+ * Both halves of the state are given a value a person could see — a
+ * counterparty's name in the AYQ store, a category's plan in the Actual budget
+ * — and a backup is made through the window's own button. Both are changed.
+ * Then two sets that must never be restored are offered through the same
+ * request the window sends: one mixing a store from another backup, and one
+ * sealed correctly but written by a newer AYQ. Each has to be refused with the
+ * state exactly as it was. Last, the real backup is restored through the
+ * window, confirmation and all, and both halves have to be back.
+ *
+ * The two refused sets are built here, in the host, beside the real ones. That
+ * is the acceptance run standing in for somebody who copied files around by
+ * hand; the application itself never writes a set anywhere but through the
+ * engine.
+ */
+async function backupShown(window: BrowserWindow): Promise<string> {
+  let counter = 0;
+  const engineAsk = async <K extends keyof AyqResults>(
+    body: AyqRequestBody & { kind: K },
+  ): Promise<AyqResults[K]> => {
+    counter += 1;
+    const answer = await ask({ ...body, id: `smoke-backup-${counter}` } as AyqRequest);
+    if (!answer.ok) throw new Error(`${body.kind}: ${answer.message}`);
+    return answer.result as AyqResults[K];
+  };
+  const storeHash = (): string =>
+    createHash('sha256')
+      .update(readFileSync(join(dataDir, 'ayq-store.json')))
+      .digest('hex');
+
+  const listed = await engineAsk({ kind: 'counterparties.list' });
+  const key = listed.rows[0]?.key;
+  if (key === undefined) return 'the budget has no counterparty to name';
+  const category = (await engineAsk({ kind: 'categories.list' })).find(
+    one => !one.isIncome,
+  );
+  if (category === undefined) return 'the budget has no expense category';
+  const month = new Date().toISOString().slice(0, 7);
+
+  const facts = async (): Promise<string> => {
+    const summary = await engineAsk({ kind: 'summary' });
+    const names = await engineAsk({ kind: 'counterparties.list' });
+    const plan = await engineAsk({ kind: 'budget.month', month });
+    return JSON.stringify({
+      transactions: summary.transactionCount,
+      name: names.rows.find(one => one.key === key)?.name,
+      plan: plan.categories.find(one => one.categoryId === category.id)?.planCents,
+    });
+  };
+
+  await engineAsk({
+    kind: 'counterparty.setName',
+    counterpartyKey: key,
+    displayName: 'Backed-up name',
+  });
+  await engineAsk({
+    kind: 'budget.setPlan',
+    month,
+    categoryId: category.id,
+    cents: 12_300,
+  });
+  const before = await facts();
+
+  // Create backup now, pressed on the screen.
+  if (!(await openDestination(window, 'settings'))) return 'Settings never opened';
+  const openTab = async (): Promise<boolean> => {
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      const there = await window.webContents.executeJavaScript(`(() => {
+        const tab = document.querySelector('[data-ayq-screen-tab="backup"]');
+        if (tab) tab.click();
+        return !!document.querySelector('[data-ayq-backup-screen]');
+      })()`);
+      if (there === true) return true;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return false;
+  };
+  if (!(await openTab())) return 'the Data & Backup tab never drew';
+
+  const waitFor = async (selector: string): Promise<string | null> => {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      const said = await window.webContents.executeJavaScript(
+        `(document.querySelector('${selector}') || {}).textContent ?? null`,
+      );
+      if (typeof said === 'string') return said;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return null;
+  };
+
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-action="backup-now"]')?.click(); true`,
+  );
+  if ((await waitFor('[data-ayq-backup-said="done"]')) === null) {
+    return 'Create backup now said nothing, or said it failed';
+  }
+  const made = await engineAsk({ kind: 'backup.overview' });
+  const backupId = made.latestBackupId;
+  const first = made.backups.find(one => one.backupId === backupId);
+  if (backupId === null || first?.trigger !== 'manual') {
+    return 'the button made no backup of its own';
+  }
+  if (made.lastAttempt?.outcome !== 'succeeded') return 'the last attempt is not recorded';
+
+  // Both halves change.
+  await engineAsk({
+    kind: 'counterparty.setName',
+    counterpartyKey: key,
+    displayName: 'Changed name',
+  });
+  await engineAsk({
+    kind: 'budget.setPlan',
+    month,
+    categoryId: category.id,
+    cents: 45_600,
+  });
+  const after = await facts();
+  if (after === before) return 'changing the state changed nothing';
+
+  // A second backup, of the changed state, to take parts from.
+  const second = await engineAsk({ kind: 'backup.create' });
+  if (second.outcome !== 'created') return 'a second backup could not be made';
+  const backups = ayqBackupsDir(dataDir);
+  const manifestOf = (id: string): AyqBackupManifest =>
+    JSON.parse(readFileSync(join(backups, id, 'manifest.json'), 'utf8')) as AyqBackupManifest;
+  const hash = (file: string): { bytes: number; sha256: string } => {
+    const bytes = readFileSync(file);
+    return { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+  };
+
+  // Mixed: the second backup, carrying the first backup's store.
+  const mixedId = second.backupId.replace(/-[a-z0-9]{6}$/, '-mixed1');
+  cpSync(join(backups, second.backupId), join(backups, mixedId), { recursive: true });
+  cpSync(join(backups, backupId, 'ayq-store.json'), join(backups, mixedId, 'ayq-store.json'));
+  const mixed = manifestOf(second.backupId);
+  mixed.backupId = mixedId;
+  mixed.digest = ayqManifestDigest(mixedId, mixed.createdAt, mixed.files);
+  writeFileSync(join(backups, mixedId, 'manifest.json'), JSON.stringify(mixed, null, 2));
+
+  // Newer: sealed correctly in every respect except that a newer AYQ wrote it.
+  const newerId = second.backupId.replace(/-[a-z0-9]{6}$/, '-newer1');
+  cpSync(join(backups, second.backupId), join(backups, newerId), { recursive: true });
+  const newerStore = JSON.parse(
+    readFileSync(join(backups, newerId, 'ayq-store.json'), 'utf8'),
+  ) as { version: number };
+  newerStore.version += 1;
+  writeFileSync(join(backups, newerId, 'ayq-store.json'), JSON.stringify(newerStore, null, 2));
+  const newer = manifestOf(second.backupId);
+  newer.backupId = newerId;
+  newer.storeVersion = newerStore.version;
+  newer.files = newer.files.map(one => ({
+    path: one.path,
+    ...hash(join(backups, newerId, ...one.path.split('/'))),
+  }));
+  newer.digest = ayqManifestDigest(newerId, newer.createdAt, newer.files);
+  writeFileSync(join(backups, newerId, 'manifest.json'), JSON.stringify(newer, null, 2));
+
+  for (const [id, expected] of [
+    [mixedId, 'mismatch'],
+    [newerId, 'newer-store'],
+  ] as const) {
+    const storeBefore = storeHash();
+    const refused = await engineAsk({ kind: 'backup.restore', backupId: id });
+    if (refused.outcome !== 'refused' || refused.refusal !== expected) {
+      return `the ${expected} set was not refused as ${expected}: ${JSON.stringify(refused.outcome === 'refused' ? refused.refusal : refused.outcome)}`;
+    }
+    if ((await facts()) !== after) return `refusing the ${expected} set changed the state`;
+    if (storeHash() !== storeBefore) return `refusing the ${expected} set rewrote the store`;
+    if (existsSync(join(dataDir, '.ayq-restore'))) return `refusing the ${expected} set began a restore`;
+  }
+
+  // Restore the first backup through the window, confirmed.
+  await openDestination(window, 'today');
+  await openDestination(window, 'settings');
+  if (!(await openTab())) return 'the Data & Backup tab never drew again';
+  const pressed = await window.webContents.executeJavaScript(`(() => {
+    const row = document.querySelector('[data-ayq-row="${backupId}"]');
+    const restore = row && row.querySelector('[data-ayq-action="backup-restore"]');
+    if (!restore) return false;
+    restore.click();
+    return true;
+  })()`);
+  if (pressed !== true) return 'the first backup offers no restore';
+  if ((await waitFor('[data-ayq-backup-confirm]')) === null) {
+    return 'restoring did not ask first';
+  }
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-action="backup-restore-go"]')?.click(); true`,
+  );
+  if ((await waitFor('[data-ayq-backup-said="done"]')) === null) {
+    return 'the restore said nothing, or said it did not happen';
+  }
+  const restored = await facts();
+  if (restored !== before) {
+    return `the restore brought back ${restored}, expected ${before}`;
+  }
+  const kept = (await engineAsk({ kind: 'backup.overview' })).backups.some(
+    one => one.trigger === 'before-restore',
+  );
+  if (!kept) return 'what the restore replaced was not kept';
+
+  process.stdout.write(
+    `[ayq-smoke] backup: made ${backupId}; refused mixed and newer with the state ` +
+      `intact; restored ${before}\n`,
+  );
+  return '';
+}
+
+/**
  * The strict detector and the Plan's historical suggestions, on the window
  * (9 §9.1, 10 §10.3).
  *
@@ -3540,6 +3763,21 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // 04 A38 and 03 §12: a backup made, two bad sets refused, the backup restored.
+  const backupAsked = process.env.AYQ_SMOKE_BACKUP === '1';
+  let backup = 'not asked';
+  let backupOk = true;
+  if (backupAsked) {
+    const wrong = await backupShown(window).catch((error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    );
+    backup = wrong === '' ? 'held' : wrong;
+    backupOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] Data & Backup: ${backupOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // 9 §9.1 and 10 §10.3: what history is allowed to suggest, and what it is
   // allowed to do with the suggestion.
   const suggestAsked = process.env.AYQ_SMOKE_SUGGEST === '1';
@@ -3653,6 +3891,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     reportsOk &&
     balanceOk &&
     aboutOk &&
+    backupOk &&
     suggestOk &&
     pagedOk;
 
@@ -3703,6 +3942,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           balanceOk,
           about,
           aboutOk,
+          backup,
+          backupOk,
           suggest,
           suggestOk,
           pagedOk,
@@ -3739,7 +3980,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is
