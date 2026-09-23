@@ -19,6 +19,7 @@ import { ayqApplyAliases, ayqRememberAlias } from './ayq-aliases.ts';
 import { ayqCounterpartyDetail } from './ayq-counterparties.ts';
 import { ayqApplyRules } from './ayq-rules.ts';
 import { ayqReadStore } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 export async function ayqMergeCounterparty(
   dataDir: string,
@@ -26,18 +27,20 @@ export async function ayqMergeCounterparty(
   intoKey: string,
 ): Promise<AyqCounterpartyMerged> {
   if (counterpartyKey === intoKey) {
-    throw new Error('a counterparty cannot be merged into itself');
+    throw new AyqEngineError('counterparty-self', 'a counterparty cannot be merged into itself');
   }
   const from = await ayqCounterpartyDetail(dataDir, counterpartyKey);
   const into = await ayqCounterpartyDetail(dataDir, intoKey);
   if (into.counterparty.transactions === 0) {
-    throw new Error(
+    throw new AyqEngineError(
+      'counterparty-not-found',
       'no counterparty in this budget has that key; a merge points at one ' +
         'that exists',
     );
   }
   if (from.variants.length === 0) {
-    throw new Error(
+    throw new AyqEngineError(
+      'merge-nothing',
       'nothing to merge: no statement variant resolves to that counterparty',
     );
   }

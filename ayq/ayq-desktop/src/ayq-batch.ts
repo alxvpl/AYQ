@@ -10,6 +10,8 @@
 // lent here rather than imported, because the module that opens the budget must
 // not be imported by the modules that use it.
 
+import { AyqEngineError } from './ayq-error.ts';
+
 /** What `api.init` returns, narrowed to the one method this needs. */
 type AyqSend = (name: string, args?: unknown) => Promise<unknown>;
 
@@ -49,7 +51,7 @@ export async function ayqSetPayees(
 
 async function batched(updates: Array<{ id: string }>): Promise<void> {
   if (updates.length === 0) return;
-  if (!send) throw new Error('the budget is not open');
+  if (!send) throw new AyqEngineError('unexpected', 'the budget is not open');
 
   for (let at = 0; at < updates.length; at += 1000) {
     await send('transactions-batch-update', {

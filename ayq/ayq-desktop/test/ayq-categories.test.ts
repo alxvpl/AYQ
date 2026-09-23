@@ -149,7 +149,7 @@ test('a category in use is not removed without a destination', async () => {
     dataDir,
   );
   assert.equal(refused.ok, false);
-  assert.match(refused.ok ? '' : refused.message, /still in use/);
+  assert.match(refused.ok ? '' : refused.detail, /still in use/);
   assert.ok(
     (await ask(dataDir, { kind: 'categories.list' })).some(
       one => one.id === shopping.id,

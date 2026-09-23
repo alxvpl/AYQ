@@ -218,7 +218,7 @@ const OFFER: AyqMatches = {
       transactionPayee: 'TESTVERHUUR B.V.',
       transactionAmountCents: -120_000,
       daysApart: 3,
-      evidence: ['the amount is exact', 'the counterparty has not been decided'],
+      evidence: ['same-amount'],
       confident: false,
     },
   ],
@@ -590,7 +590,8 @@ test('a match AYQ is unsure of waits, with the evidence for agreeing to it', asy
   assert.match(said, /TESTVERHUUR B\.V\./);
   // The evidence, in words, so agreeing to it is informed rather than blind.
   const evidence = offer.querySelector('[data-ayq-evidence]')?.textContent ?? '';
-  assert.match(evidence, /the amount is exact/);
+  // A code, worded by the catalogue (04 A24).
+  assert.match(evidence, /the same amount/);
   assert.match(evidence, /3 days apart/);
 
   await window.close();

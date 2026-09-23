@@ -509,7 +509,7 @@ test('a store from the future is refused rather than read as the present', () =>
   );
 });
 
-test('version 8 becomes version 9 without a decision changing', () => {
+test('version 8 becomes the current version without a decision changing', () => {
   // 03 §5.8: proved on a store of the previous version, counting the records
   // before and after and showing that nothing the owner decided moved.
   //
@@ -534,7 +534,7 @@ test('version 8 becomes version 9 without a decision changing', () => {
 
   const after = ayqMigrate(structuredClone(before));
 
-  assert.equal(after.version, 9);
+  assert.equal(after.version, AYQ_STORE_VERSION);
   assert.equal(Object.keys(after.decisions).length, decisionsBefore);
   assert.equal(Object.keys(after.provenance).length, provenanceBefore);
   assert.deepEqual(after.decisions, before.decisions);
@@ -547,7 +547,7 @@ test('version 8 becomes version 9 without a decision changing', () => {
   }
 });
 
-test('migrating a version 9 store again changes nothing', () => {
+test('migrating a migrated store again changes nothing', () => {
   // §5.5: a migration is resumable by being repeatable.
   const once = ayqMigrate(atVersion(8));
   const twice = ayqMigrate(structuredClone(once));

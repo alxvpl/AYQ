@@ -51,7 +51,10 @@ test('a counterparty the table knows is filed', () => {
 test('the reason is recorded, because §11.11 asks for verifiable', () => {
   const filed = ayqProposedCategory(spending('Albert Heijn 1234 Amsterdam'));
   assert.equal(filed?.categoryName, 'Groceries');
-  assert.match(filed?.because ?? '', /ALBERT HEIJN/);
+  assert.deepEqual(filed?.reason, {
+    code: 'counterparty',
+    counterparty: 'ALBERT HEIJN',
+  });
 });
 
 test('a counterparty the table does not know stays unfiled', () => {

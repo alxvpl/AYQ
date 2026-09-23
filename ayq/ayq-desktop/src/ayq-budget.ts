@@ -25,6 +25,7 @@ import type {
 
 import { ayqCategories } from './ayq-categories.ts';
 import { ayqCategorySpending } from './ayq-ledger.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 /** What the budget's type must be for 03 §7.8 to hold. PROVISIONAL. */
 export const AYQ_BUDGET_TYPE = 'tracking';
@@ -153,7 +154,7 @@ export async function ayqBudgetMonth(
   dataDir: string,
   month: string,
 ): Promise<AyqBudgetMonth> {
-  if (!MONTH.test(month)) throw new Error('a budget month is YYYY-MM');
+  if (!MONTH.test(month)) throw new AyqEngineError('month-invalid', 'a budget month is YYYY-MM');
   // A month Actual keeps no budget for holds no plan, which is the truth about
   // it rather than an error. Saying so lets the forecast reach its full twelve
   // months without the last of them having to be a refusal.
@@ -212,15 +213,17 @@ export async function ayqSetPlan(
   categoryId: string,
   cents: number,
 ): Promise<AyqBudgetMonth> {
-  if (!MONTH.test(month)) throw new Error('a budget month is YYYY-MM');
+  if (!MONTH.test(month)) throw new AyqEngineError('month-invalid', 'a budget month is YYYY-MM');
   if (!Number.isInteger(cents) || cents < 0) {
-    throw new Error('a plan is a whole number of cents, and not negative');
+    throw new AyqEngineError('plan-amount-invalid', 'a plan is a whole number of cents, and not negative');
   }
   if (!(await ayqBudgetMonths()).includes(month)) {
-    throw new Error(
+    throw new AyqEngineError(
+      'month-not-kept',
       `this budget has no month ${month} to plan in: Actual keeps budget ` +
         'months from three before the earliest transaction to twelve after ' +
         'the current one',
+      { month },
     );
   }
   await api.setBudgetAmount(month, categoryId, cents);

@@ -207,7 +207,8 @@ function startEngine(): EngineHandle {
         id,
         ok: false,
         kind: 'error',
-        message: `the AYQ engine stopped (${why}). Close the window and open AYQ again.`,
+        code: 'engine-stopped',
+        detail: `the AYQ engine stopped (${why})`,
       });
     }
   };
@@ -315,7 +316,8 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
         id: request.id,
         ok: false,
         kind: 'error',
-        message: error instanceof Error ? error.message : String(error),
+        code: 'picker-failed',
+        detail: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -325,7 +327,8 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
       id: request.id,
       ok: false,
       kind: 'error',
-      message: 'the AYQ engine is not running',
+      code: 'engine-not-running',
+      detail: 'the AYQ engine is not running',
     });
   }
 
@@ -337,7 +340,9 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
           id: request.id,
           ok: false,
           kind: 'error',
-          message: `the AYQ engine did not answer within ${
+          code: 'engine-timeout',
+          params: { minutes: AYQ_ENGINE_PATIENCE / 60_000 },
+          detail: `the AYQ engine did not answer within ${
             AYQ_ENGINE_PATIENCE / 60_000
           } minutes`,
         });
@@ -1883,7 +1888,9 @@ async function backupShown(window: BrowserWindow): Promise<string> {
   ): Promise<AyqResults[K]> => {
     counter += 1;
     const answer = await ask({ ...body, id: `smoke-backup-${counter}` } as AyqRequest);
-    if (!answer.ok) throw new Error(`${body.kind}: ${answer.message}`);
+    if (!answer.ok) {
+      throw new Error(`${body.kind}: ${answer.code} (${answer.detail})`);
+    }
     return answer.result as AyqResults[K];
   };
   const storeHash = (): string =>

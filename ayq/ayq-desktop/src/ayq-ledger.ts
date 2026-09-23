@@ -60,6 +60,7 @@ import {
   ayqMoneyKind,
   ayqSpendingCents,
 } from './ayq-totals.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 /** How many rows the screen is given when it does not ask for a number. */
 export const AYQ_LEDGER_LIMIT = 500;
@@ -633,7 +634,8 @@ export async function ayqRowsInScope(
   }
 
   if (!ayqFilterIsAScope(scope.filter)) {
-    throw new Error(
+    throw new AyqEngineError(
+      'bulk-needs-scope',
       'a bulk correction needs a stated scope: an account, a period, a ' +
         'category, a counterparty, a word or the unfiled — the amount alone is ' +
         'not one (03 §4.8)',
@@ -670,7 +672,7 @@ export async function ayqDetail(
   )) as { data?: AyqQueriedRow[] };
 
   const found = (answer.data ?? [])[0];
-  if (!found) throw new Error(`no transaction ${transactionId} in this budget`);
+  if (!found) throw new AyqEngineError('transaction-not-found', `no transaction ${transactionId} in this budget`);
 
   const store = ayqReadStore(dataDir);
   const key = ayqRowKey(found);

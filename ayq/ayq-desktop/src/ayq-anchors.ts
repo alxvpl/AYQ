@@ -49,6 +49,7 @@ import {
   type AyqBalanceAnchor,
   type AyqStore,
 } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 /** The payee Actual itself gives the row; used only when creating one. */
 const STARTING_BALANCE = 'Starting Balance';
@@ -279,7 +280,8 @@ export async function ayqApplyAnchor(anchor: AyqBalanceAnchor): Promise<void> {
   );
 
   if (reached !== amountCents) {
-    throw new Error(
+    throw new AyqEngineError(
+      'anchor-disagrees',
       `the anchor for this account is ${amountCents} cents on ${coverageDate}, ` +
         `and Actual makes the balance ${reached} cents on that day`,
     );

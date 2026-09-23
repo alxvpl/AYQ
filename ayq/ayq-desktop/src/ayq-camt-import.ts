@@ -42,6 +42,7 @@ import {
   ayqWriteStore,
   type AyqCoverageEvidence,
 } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 /** The name the imported account gets: the statement's own IBAN, masked. */
 export function ayqMaskAccount(entries: AyqBankEntry[]): string {
@@ -224,12 +225,16 @@ export async function ayqImportCamt(
   paths: string[],
   budget: { budgetId: string; budgetName: string },
 ): Promise<AyqImportSummary> {
-  if (paths.length === 0) throw new Error('no file was chosen');
+  if (paths.length === 0) throw new AyqEngineError('import-no-file', 'no file was chosen');
 
   // One unusable file does not abandon the others. Each is reported by name so
   // the person can see which one it was, and the readable ones still import.
   const { files, unreadable } = await ayqCollectTargets(paths);
-  const problems: AyqImportProblem[] = [...unreadable];
+  // The code crosses to the window; the camt package's English stays behind.
+  const problems: AyqImportProblem[] = unreadable.map(one => ({
+    name: one.name,
+    code: one.code,
+  }));
 
   const records: AyqBankEntry[] = [];
   for (const file of files) {
@@ -239,33 +244,28 @@ export async function ayqImportCamt(
       // is a file the person chose and AYQ could not use, so it is named like
       // any other, rather than disappearing into a total of zero.
       if (entries.length === 0) {
-        problems.push({
-          name: file.name,
-          reason: 'it holds no CAMT.053 entries',
-        });
+        problems.push({ name: file.name, code: 'no-entries' });
       }
       records.push(...entries);
     } catch {
       // Whatever the parser objected to would quote the document, and a
       // statement's contents do not belong in a message. The name does.
-      problems.push({
-        name: file.name,
-        reason: 'it is not a CAMT.053 document',
-      });
+      problems.push({ name: file.name, code: 'not-camt' });
     }
   }
 
   // Nothing readable at all is a failure, not an import of nothing: the budget
   // is left exactly as it was and the person is told why, file by file.
   if (records.length === 0) {
-    throw new Error(
+    // Each file and its code go to the window, which words them; the detail
+    // is for a log.
+    throw new AyqEngineError(
+      'import-nothing-readable',
       problems.length === 0
-        ? paths.length === 1
-          ? 'that file holds no CAMT document'
-          : 'none of those files holds a CAMT document'
-        : problems
-            .map(problem => `${problem.name}: ${problem.reason}`)
-            .join('; '),
+        ? 'none of the chosen files holds a CAMT document'
+        : problems.map(problem => `${problem.name}: ${problem.code}`).join('; '),
+      { files: paths.length },
+      problems,
     );
   }
 
