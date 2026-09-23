@@ -16,7 +16,11 @@ import type {
   AyqCounterparty,
   AyqTransactionDetail,
 } from '../ayq-ipc-contract.ts';
-import { ayqFilingReasonText } from '../ayq-reasons.ts';
+import {
+  ayqFilingReasonText,
+  ayqPaymentKindText,
+  ayqResolvedByText,
+} from '../ayq-reasons.ts';
 import { ayqDate, ayqMoment, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
@@ -235,10 +239,17 @@ export function AyqTransactionDetailPane({
         <p className={styles.line}>{ayqText('detail.evidence.none')}</p>
       ) : (
         <>
+          {/* Identifiers, worded (04 A24): the raw value never reaches the screen. */}
           <Field label={ayqText('detail.evidence.resolvedBy')}>
-            {provenance.resolvedBy}
+            <span data-ayq-evidence-resolved-by="">
+              {ayqResolvedByText(provenance.resolvedBy)}
+            </span>
           </Field>
-          <Field label={ayqText('detail.evidence.kind')}>{provenance.kind}</Field>
+          <Field label={ayqText('detail.evidence.kind')}>
+            <span data-ayq-evidence-kind="">
+              {ayqPaymentKindText(provenance.kind)}
+            </span>
+          </Field>
           {provenance.counterpartyName == null ? null : (
             <Field label={ayqText('detail.evidence.importedName')}>
               <span className={styles.mono}>{provenance.counterpartyName}</span>

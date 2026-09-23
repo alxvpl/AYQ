@@ -43,6 +43,53 @@ export function ayqImportProblemText(problem: AyqImportProblem): string {
   });
 }
 
+/**
+ * How the counterparty was identified — the resolver layer that decided
+ * (`AyqCounterpartyLayer` in ayq-camt). Every value it can produce is here.
+ */
+export const AYQ_RESOLVED_BY = [
+  'bank-transaction-code',
+  'structured',
+  'intermediary',
+  'description',
+  'alias',
+  'unresolved',
+] as const;
+
+/** The payment class read off BkTxCd (`AyqPaymentKind` in ayq-camt). */
+export const AYQ_PAYMENT_KINDS = [
+  'card-terminal',
+  'card-withdrawal',
+  'direct-debit',
+  'credit-transfer',
+  'bank-fee',
+  'interest',
+  'reversal',
+  'unknown',
+] as const;
+
+/**
+ * How the counterparty was identified, in words.
+ *
+ * A value this AYQ does not know — one an older store kept, or a newer engine
+ * produced — is never shown as it stands: the catalogue says it is not one it
+ * describes (04 A24).
+ */
+export function ayqResolvedByText(value: string): string {
+  const known = (AYQ_RESOLVED_BY as readonly string[]).includes(value);
+  return known
+    ? ayqText(`reason.resolvedBy.${value as (typeof AYQ_RESOLVED_BY)[number]}`)
+    : ayqText('reason.resolvedBy.other');
+}
+
+/** What kind of payment the bank said it was, in words; the same fallback. */
+export function ayqPaymentKindText(value: string): string {
+  const known = (AYQ_PAYMENT_KINDS as readonly string[]).includes(value);
+  return known
+    ? ayqText(`reason.kind.${value as (typeof AYQ_PAYMENT_KINDS)[number]}`)
+    : ayqText('reason.kind.other');
+}
+
 /** One thing an actual transaction and an expected payment agree on. */
 export function ayqMatchEvidenceText(evidence: AyqMatchEvidence): string {
   return ayqText(`reason.match.${evidence}`);

@@ -98,8 +98,8 @@ const DETAIL: AyqTransactionDetail = {
     importId: 'imp-1',
     counterpartyKey: 'TESTFUEL',
     counterpartyName: 'TESTFUEL 22',
-    resolvedBy: 'card descriptor',
-    kind: 'card payment',
+    resolvedBy: 'description',
+    kind: 'card-terminal',
     counterpartyIban: null,
     intermediary: null,
     mandateId: null,
@@ -415,7 +415,8 @@ test('choosing a row opens the evidence, the provenance and the decisions', asyn
 
   assert.match(said, /TESTFUEL/);
   // The evidence behind the counterparty (03 §3.5), not a name and a shrug.
-  assert.match(said, /card descriptor/);
+  assert.ok(said.includes(ayqText('reason.resolvedBy.description')));
+  assert.ok(said.includes(ayqText('reason.kind.card-terminal')));
   assert.match(said, /PMNT\/CCRD\/POSD/);
   assert.match(said, /TESTFUEL 22/);
   // Who decided the category, and every decision before it.
