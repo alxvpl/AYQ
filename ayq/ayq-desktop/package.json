@@ -38,7 +38,7 @@
   },
   "productName": "AYQ",
   "ayq": {
-    "build": "010"
+    "build": "011"
   },
   "build": {
     "appId": "eu.ayq.desktop",
@@ -75,7 +75,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "${productName}-build-010-windows-${arch}-setup.${ext}"
+      "artifactName": "${productName}-build-011-windows-${arch}-setup.${ext}"
     },
     "nsis": {
       "oneClick": true,
