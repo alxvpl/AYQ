@@ -357,7 +357,7 @@ export function AyqApplication(): ReactNode {
           {body}
         </AyqScreen>
       </div>
-      <AyqStatusBar status={status} summary={summary} failure={failure} />
+      <AyqStatusBar summary={summary} />
     </div>
   );
 }
