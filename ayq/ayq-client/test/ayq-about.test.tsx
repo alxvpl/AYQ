@@ -82,6 +82,12 @@ test('About says which build this is, in the words 12 §12.1 fixes', async () =>
   const window = await ayqOpenWindow(engine());
   await window.render(screen);
 
+  // The mark is on About, drawn from the vector master, beside the name.
+  const mark = window.container.querySelector('[data-ayq-mark]');
+  assert.ok(mark, 'About carries no mark');
+  assert.ok(mark.querySelector('svg'), 'the mark is not the vector master');
+  assert.equal(mark.getAttribute('aria-hidden'), 'true');
+
   const said = (mark: string): string =>
     window.container
       .querySelector(`[data-ayq-about="${mark}"]`)

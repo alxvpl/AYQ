@@ -50,6 +50,18 @@ function apart(one: number, other: number): number {
   return gap > 180 ? 360 - gap : gap;
 }
 
+/**
+ * How far a state colour's hue sits from the accent's, in degrees, or
+ * undefined for a tone with almost no chroma, which cannot be confused with
+ * a saturated mint. Under 45° is close enough to read as the accent (A17),
+ * however much paler or darker the state is drawn.
+ */
+function gapFromAccent(colour: string): number | undefined {
+  const theirs = hue(colour);
+  if (theirs.chroma < 8) return undefined;
+  return apart(theirs.angle, hue(AYQ_ACCENT).angle);
+}
+
 test('every filled accent surface carries its foreground at 4.5:1', () => {
   for (const ground of AYQ_GROUNDS_RESOLVED) {
     for (const filled of ayqFilledAccentSurfaces(ground)) {
@@ -103,15 +115,35 @@ test('the accent and the state scale never share a tone', () => {
       );
     }
     for (const colour of states) {
-      const theirs = hue(colour);
-      if (theirs.chroma < 8) continue;
-      const gap = apart(theirs.angle, accent.angle);
+      const gap = gapFromAccent(colour);
+      if (gap === undefined) continue;
       assert.ok(
         gap >= 45,
         `${ground}: the state colour ${colour} is ${gap.toFixed(0)}° from the ` +
           'accent, which is close enough to read as the accent',
       );
     }
+  }
+});
+
+test('the green "owner set" the template drew is refused as a state', () => {
+  // Template r003 drew confirmed / owner set in a green near the mint, and a
+  // weaker rule was once written so that it would pass. A17 was not revised
+  // (PF-001 EXCHANGE 015–017): the gate above must refuse that chip in both
+  // grounds. The light wash on its own is too grey to be judged; its ink is not.
+  const rejected = {
+    light: { fg: '#1f6b47', bg: '#e1f0e7' },
+    dark: { fg: '#8fd9b0', bg: '#1b3f2c' },
+  };
+  for (const [ground, pair] of Object.entries(rejected)) {
+    const refused = [pair.fg, pair.bg].filter(colour => {
+      const gap = gapFromAccent(colour);
+      return gap !== undefined && gap < 45;
+    });
+    assert.ok(
+      refused.includes(pair.fg),
+      `${ground}: the green owner-set chip ${pair.fg} on ${pair.bg} would pass as a state`,
+    );
   }
 });
 
@@ -158,15 +190,17 @@ test('all three grounds resolve to a complete token set', () => {
     }
   }
 
-  // Every state of A17 is in both grounds, foreground and background.
+  // Every state of A17 is in both grounds, foreground and background. The
+  // operational chip has no fill of its own and is read on the pane.
   for (const ground of AYQ_GROUNDS_RESOLVED) {
     for (const state of AYQ_STATES) {
       const pair = AYQ_TOKENS[ground].state[state];
       assert.ok(pair.fg !== undefined && pair.bg !== undefined);
+      const on = pair.bg === 'transparent' ? AYQ_TOKENS[ground].surface.pane : pair.bg;
       assert.ok(
-        ayqContrast(pair.fg, pair.bg) >= 4.5,
+        ayqContrast(pair.fg, on) >= 4.5,
         `${ground}: the ${state} chip reads at ` +
-          `${ayqContrast(pair.fg, pair.bg).toFixed(2)}:1`,
+          `${ayqContrast(pair.fg, on).toFixed(2)}:1`,
       );
     }
   }

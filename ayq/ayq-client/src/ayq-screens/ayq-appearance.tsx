@@ -20,6 +20,8 @@ import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { useAyqGround } from '../ayq-ui/ayq-ground-provider.tsx';
+import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
+import { AyqSettingBody, AyqSettingRow } from './ayq-settings.tsx';
 import { ayqText, type AyqStringKey } from '../ayq-strings.ts';
 import {
   AYQ_ACCENT,
@@ -78,10 +80,12 @@ const useStyles = makeStyles({
 
 const STATE_LABEL: Record<AyqStateName, AyqStringKey> = {
   confirmed: 'state.confirmed',
+  rule: 'state.rule',
   suggested: 'state.suggested',
   overdue: 'state.overdue',
   neutral: 'state.neutral',
   uncategorised: 'state.uncategorised',
+  operational: 'state.operational',
 };
 
 const GROUND_LABEL: Record<AyqGround, AyqStringKey> = {
@@ -95,106 +99,94 @@ export function AyqAppearanceScreen(): ReactNode {
   const { ground, resolved, failure, saving, choose } = useAyqGround();
 
   return (
-    <div className={styles.screen} data-ayq-screen="appearance">
-      <Text as="h2" className={styles.heading}>
-        {ayqText('appearance.title')}
-      </Text>
-      <Text className={styles.blurb}>{ayqText('appearance.blurb')}</Text>
+    <div data-ayq-screen="appearance">
+      <AyqPane mark="appearance">
+        <AyqSettingBody>
+          {/* The ground (A23): a choice, and what System resolved to. */}
+          <AyqSettingRow
+            mark="ground"
+            name={ayqText('appearance.ground.heading')}
+            note={
+              <>
+                {ground === 'system'
+                  ? ayqText('appearance.ground.following', {
+                      ground: ayqText(
+                        resolved === 'dark' ? 'ground.dark' : 'ground.light',
+                      ),
+                    })
+                  : ayqText('appearance.ground.hint')}
+                {saving ? <> {ayqText('appearance.saving')}</> : null}
+                {failure === null ? null : (
+                  <span className={styles.failure} data-ayq-ground-failure="yes">
+                    {' '}
+                    {ayqText('appearance.failed', { reason: failure })}
+                  </span>
+                )}
+              </>
+            }
+          >
+            <RadioGroup
+              layout="horizontal"
+              value={ground}
+              data-ayq-ground-choice={ground}
+              onChange={(_event, data) => choose(data.value as AyqGround)}
+            >
+              {AYQ_GROUNDS.map(one => (
+                <Radio
+                  key={one}
+                  value={one}
+                  label={ayqText(GROUND_LABEL[one])}
+                  data-ayq-ground-option={one}
+                />
+              ))}
+            </RadioGroup>
+          </AyqSettingRow>
 
-      <section className={styles.pane}>
-        <Text className={styles.heading}>
-          {ayqText('appearance.ground.heading')}
-        </Text>
-        <RadioGroup
-          layout="horizontal"
-          value={ground}
-          data-ayq-ground-choice={ground}
-          onChange={(_event, data) => choose(data.value as AyqGround)}
-        >
-          {AYQ_GROUNDS.map(one => (
-            <Radio
-              key={one}
-              value={one}
-              label={ayqText(GROUND_LABEL[one])}
-              data-ayq-ground-option={one}
-            />
-          ))}
-        </RadioGroup>
-        <Text className={styles.note}>
-          {ground === 'system'
-            ? ayqText('appearance.ground.following', {
-                ground: ayqText(
-                  resolved === 'dark' ? 'ground.dark' : 'ground.light',
-                ),
-              })
-            : ayqText('appearance.ground.hint')}
-        </Text>
-        {saving ? (
-          <Text className={styles.note}>{ayqText('appearance.saving')}</Text>
-        ) : null}
-        {failure === null ? null : (
-          <Text className={styles.failure} data-ayq-ground-failure="yes">
-            {ayqText('appearance.failed', { reason: failure })}
-          </Text>
-        )}
-      </section>
+          <AyqSettingRow
+            mark="buttons"
+            name={ayqText('appearance.buttons.heading')}
+            note={ayqText('appearance.buttons.note')}
+          >
+            <AyqButton filled>{ayqText('appearance.buttons.primary')}</AyqButton>
+            <AyqButton>{ayqText('appearance.buttons.secondary')}</AyqButton>
+            <AyqButton disabled>{ayqText('appearance.buttons.disabled')}</AyqButton>
+          </AyqSettingRow>
 
-      <section className={styles.pane}>
-        <Text className={styles.heading}>
-          {ayqText('appearance.accent.heading')}
-        </Text>
-        <div className={styles.row}>
-          <span className={styles.swatch} data-ayq-accent={AYQ_ACCENT}>
-            {AYQ_ACCENT}
-          </span>
-          <Text className={styles.note}>
-            {ayqText('appearance.accent.note')}
-          </Text>
-        </div>
-      </section>
+          <AyqSettingRow
+            mark="accent"
+            name={ayqText('appearance.accent.heading')}
+            note={ayqText('appearance.accent.note')}
+          >
+            <span className={styles.swatch} data-ayq-accent={AYQ_ACCENT}>
+              {AYQ_ACCENT}
+            </span>
+          </AyqSettingRow>
 
-      <section className={styles.pane}>
-        <Text className={styles.heading}>
-          {ayqText('appearance.states.heading')}
-        </Text>
-        <div className={styles.row}>
-          {AYQ_STATES.map(state => (
-            <AyqStateChip
-              key={state}
-              state={state}
-              label={ayqText(STATE_LABEL[state])}
-            />
-          ))}
-        </div>
-      </section>
+          <AyqSettingRow mark="states" name={ayqText('appearance.states.heading')}>
+            {AYQ_STATES.map(state => (
+              <AyqStateChip
+                key={state}
+                state={state}
+                label={ayqText(STATE_LABEL[state])}
+              />
+            ))}
+          </AyqSettingRow>
 
-      <section className={styles.pane}>
-        <Text className={styles.heading}>
-          {ayqText('appearance.figures.heading')}
-        </Text>
-        <div className={styles.row}>
-          <AyqFigure cents={197845} size="headline" />
-          <AyqFigure cents={-17974} size="large" />
-          <AyqFigure cents={306026} withSymbol />
-        </div>
-        <Text className={styles.note}>
-          {ayqText('appearance.figures.note')}
-        </Text>
-        <Text className={styles.note}>{ayqText('sample.figure.note')}</Text>
-      </section>
-
-      <section className={styles.pane}>
-        <Text className={styles.heading}>
-          {ayqText('appearance.buttons.heading')}
-        </Text>
-        <div className={styles.row}>
-          <AyqButton filled>{ayqText('appearance.buttons.primary')}</AyqButton>
-          <AyqButton>{ayqText('appearance.buttons.secondary')}</AyqButton>
-        </div>
-        <Text className={styles.note}>
-          {ayqText('appearance.buttons.note')}
-        </Text>
-      </section>
+          <AyqSettingRow
+            mark="figures"
+            name={ayqText('appearance.figures.heading')}
+            note={
+              <>
+                {ayqText('appearance.figures.note')} {ayqText('sample.figure.note')}
+              </>
+            }
+          >
+            <AyqFigure cents={197845} size="headline" />
+            <AyqFigure cents={-17974} size="large" />
+            <AyqFigure cents={306026} withSymbol />
+          </AyqSettingRow>
+        </AyqSettingBody>
+      </AyqPane>
     </div>
   );
 }

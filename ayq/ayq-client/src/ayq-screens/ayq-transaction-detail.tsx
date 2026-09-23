@@ -8,7 +8,7 @@
 //
 // Nothing is computed here. Every fact is the engine's answer, formatted.
 
-import { Select, makeStyles } from '@fluentui/react-components';
+import { Select, makeStyles, mergeClasses } from '@fluentui/react-components';
 import { useState, type ReactNode } from 'react';
 
 import type {
@@ -20,34 +20,43 @@ import { ayqDate, ayqMoment, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorderTop } from '../ayq-ui/ayq-css.ts';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
+import { AyqRuleCard } from './ayq-rule-card.tsx';
 
 const useStyles = makeStyles({
-  pane: { padding: `${AYQ_METRIC.space.screen}px` },
+  // Template r003's detail: sections on 14×18, the counterparty at 20, the
+  // figure at 28, facts on a 138 grid parted by the section line.
+  pane: { padding: `14px ${AYQ_METRIC.panePadding}px` },
   name: {
-    margin: '0 0 2px',
+    margin: '2px 0',
     fontFamily: 'var(--ayq-font-display)',
-    fontSize: 'var(--ayq-size-heading)',
+    fontSize: 'var(--ayq-size-screen)',
     fontWeight: AYQ_TYPE.weight.semibold,
     color: 'var(--ayq-ink)',
     overflowWrap: 'anywhere',
   },
-  big: { margin: `${AYQ_METRIC.space.small}px 0 ${AYQ_METRIC.space.wide}px` },
+  sub: {
+    margin: '0',
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-faint)',
+  },
+  big: { margin: `${AYQ_METRIC.space.ten}px 0 14px` },
   field: {
     display: 'grid',
-    gridTemplateColumns: '118px minmax(0, 1fr)',
-    gap: `${AYQ_METRIC.space.medium}px`,
+    gridTemplateColumns: '138px minmax(0, 1fr)',
+    gap: `${AYQ_METRIC.space.wide}px`,
     padding: `${AYQ_METRIC.space.small}px 0`,
-    ...ayqBorderTop('var(--ayq-line)'),
+    ...ayqBorderTop('var(--ayq-section)'),
   },
-  label: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
+  label: { color: 'var(--ayq-label)', fontSize: 'var(--ayq-size-small)' },
   value: { margin: '0', overflowWrap: 'anywhere', color: 'var(--ayq-ink)' },
   mono: { fontFamily: 'var(--ayq-font-mono)', fontSize: '12px' },
   heading: {
-    margin: `${AYQ_METRIC.space.screen}px 0 ${AYQ_METRIC.space.small}px`,
-    fontSize: 'var(--ayq-size-small)',
-    color: 'var(--ayq-ink-quiet)',
+    margin: `14px 0 ${AYQ_METRIC.space.ten}px`,
+    fontSize: 'var(--ayq-size-heading)',
+    color: 'var(--ayq-ink)',
     fontWeight: AYQ_TYPE.weight.semibold,
   },
   actions: {
@@ -69,6 +78,23 @@ const useStyles = makeStyles({
     fontSize: 'var(--ayq-size-small)',
   },
   quiet: { color: 'var(--ayq-ink-faint)' },
+  section: {
+    margin: `0 -${AYQ_METRIC.panePadding}px`,
+    padding: `14px ${AYQ_METRIC.panePadding}px`,
+    ...ayqBorderTop('var(--ayq-line)'),
+  },
+  sectionTitle: {
+    margin: `0 0 ${AYQ_METRIC.space.ten}px`,
+    fontSize: 'var(--ayq-size-heading)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
+  },
+  full: { width: '100%' },
+  help: {
+    margin: `${AYQ_METRIC.space.small}px 0 0`,
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-faint)',
+  },
   empty: { padding: '34px 18px', textAlign: 'center', color: 'var(--ayq-ink-faint)' },
 });
 
@@ -96,6 +122,9 @@ export function AyqTransactionDetailPane({
   onCorrectCounterparty,
   onShowTheRule,
   onNeedCounterparties,
+  onRuleChanged,
+  onFailure,
+  onManageCounterparty,
 }: {
   detail: AyqTransactionDetail | null;
   categories: readonly AyqCategory[];
@@ -105,8 +134,14 @@ export function AyqTransactionDetailPane({
   onCorrectCounterparty(counterpartyKey: string): void;
   onShowTheRule(): void;
   onNeedCounterparties(): void;
+  /** The rule that files this row was corrected or removed here (04 A7). */
+  onRuleChanged(said: string): void;
+  onFailure(message: string): void;
+  /** Opens the counterparty's own page (04 A37), when the caller has one. */
+  onManageCounterparty?(counterpartyKey: string): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [correcting, setCorrecting] = useState(false);
   const [chosen, setChosen] = useState<string | null>(null);
 
@@ -127,25 +162,56 @@ export function AyqTransactionDetailPane({
   return (
     <div className={styles.pane} data-ayq-detail={row.id}>
       <h3 className={styles.name}>{row.payee ?? ayqText('detail.category.none')}</h3>
+      <p className={styles.sub}>
+        {ayqDate(row.date)} · {row.account}
+      </p>
       <div className={styles.big}>
-        <AyqFigure cents={row.amountCents} size="large" withSymbol />
+        <AyqFigure cents={row.amountCents} size="large" withSymbol align="left" />
       </div>
 
-      <Field label={ayqText('register.column.date')}>{ayqDate(row.date)}</Field>
-      <Field label={ayqText('register.column.account')}>{row.account}</Field>
-
-      <Field label={ayqText('detail.category')}>
-        {row.category === null ? (
-          <AyqStateChip
-            state="uncategorised"
-            label={ayqText('detail.category.none')}
-          />
+      <div className={styles.section} data-ayq-detail-category="">
+        <h4 className={styles.sectionTitle}>{ayqText('detail.category')}</h4>
+        <Select
+          className={mergeClasses(fields.field, styles.full)}
+          data-ayq-category-choice=""
+          aria-label={ayqText('detail.action.changeCategory')}
+          value={row.categoryId ?? ''}
+          onChange={(_event, data) =>
+            onCategory(data.value === '' ? null : data.value)
+          }
+        >
+          <option value="">{ayqText('detail.category.none')}</option>
+          {categories.map(category => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </Select>
+        <p className={styles.help}>
+          {row.category === null ? (
+            <AyqStateChip
+              state="uncategorised"
+              label={ayqText('detail.category.none')}
+            />
+          ) : (
+            <>
+              {row.category} <span className={styles.quiet}>{by}</span>
+            </>
+          )}
+        </p>
+        {/* The rule that files this counterparty is inspected, corrected and
+            removed where it is seen, with the consequence stated first (A7). */}
+        {rule === null ? (
+          <p className={styles.line}>{ayqText('detail.rule.none')}</p>
         ) : (
-          <>
-            {row.category} <span className={styles.quiet}>{by}</span>
-          </>
+          <AyqRuleCard
+            rule={rule}
+            categories={categories}
+            onFailure={onFailure}
+            onDone={onRuleChanged}
+          />
         )}
-      </Field>
+      </div>
 
       <Field label={ayqText('detail.match')}>
         {match === null ? (
@@ -239,22 +305,6 @@ export function AyqTransactionDetailPane({
       )}
 
       <div className={styles.actions}>
-        <Select
-          data-ayq-category-choice=""
-          aria-label={ayqText('detail.action.changeCategory')}
-          value={row.categoryId ?? ''}
-          onChange={(_event, data) =>
-            onCategory(data.value === '' ? null : data.value)
-          }
-        >
-          <option value="">{ayqText('detail.category.none')}</option>
-          {categories.map(category => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </Select>
-
         <AyqButton
           mark="correct-counterparty"
           onClick={() => {
@@ -268,16 +318,18 @@ export function AyqTransactionDetailPane({
         <AyqButton mark="show-the-rule" onClick={onShowTheRule}>
           {ayqText('detail.action.showTheRule')}
         </AyqButton>
+
+        {onManageCounterparty === undefined ||
+        detail.counterpartyKey === null ? null : (
+          <AyqButton
+            mark="manage-counterparty"
+            onClick={() => onManageCounterparty(detail.counterpartyKey ?? '')}
+          >
+            {ayqText('detail.action.manageCounterparty')}
+          </AyqButton>
+        )}
       </div>
 
-      <p className={styles.line}>
-        {rule === null
-          ? ayqText('detail.rule.none')
-          : ayqText('detail.rule.stands', {
-              counterparty: rule.counterpartyKey,
-              category: rule.categoryName,
-            })}
-      </p>
 
       {!correcting ? null : (
         <div className={styles.form} data-ayq-correct-counterparty="">

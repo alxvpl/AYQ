@@ -391,6 +391,77 @@ test('every action says what it reaches, and the two scopes are separate', async
   await window.close();
 });
 
+test('every row states a category or Uncategorised, and the detail tells the occurrence from the series', async () => {
+  const window = await ayqOpenWindow(engine());
+  await window.render(screen());
+
+  // A32: no blank where a category should be.
+  const once = rowFor(window, 'record:rec-once:2026-09-20');
+  assert.ok(
+    once.querySelector('[data-ayq-cell="category"] [data-ayq-state="uncategorised"]'),
+    'a record with no category is drawn as a blank',
+  );
+  assert.equal(
+    rowFor(window, 'record:rec-rent:2026-09-01').querySelector('[data-ayq-cell="category"]')
+      ?.textContent,
+    'Housing',
+  );
+
+  await ayqPress(rowFor(window, 'record:rec-rent:2026-09-01'));
+  const pane = window.container.querySelector('[data-ayq-record="rec-rent"]');
+  assert.ok(pane);
+  // This occurrence, with its own position after it; and the record it comes
+  // from, as two blocks.
+  assert.ok(pane.querySelector('[data-ayq-occurrence="2026-09-01"]'));
+  assert.equal(
+    pane.querySelector('[data-ayq-pane-position]')?.getAttribute('data-ayq-pane-position'),
+    '180000',
+  );
+  assert.match(pane.querySelector('[data-ayq-pane-category]')?.textContent ?? '', /Housing/);
+  assert.match(pane.textContent ?? '', new RegExp(ayqText('upcoming.pane.record')));
+
+  // Matching is automatic: it ran before anything was drawn, and the re-check
+  // is a secondary control outside the working bar.
+  assert.equal(window.asked[0]?.kind === 'settings.get' ? window.asked[1]?.kind : window.asked[0]?.kind, 'match.propose');
+  const bar = window.container.querySelector('[data-ayq-matches]');
+  assert.equal(bar?.querySelector('[data-ayq-action="plan-match"]'), null, 'the re-check sits in the working bar');
+  assert.ok(
+    window.container.querySelector('[data-ayq-rematch] [data-ayq-action="plan-match"]'),
+    'no secondary re-check',
+  );
+  assert.match(
+    window.container.querySelector('[data-ayq-rematch]')?.textContent ?? '',
+    /runs by itself/,
+  );
+  await window.close();
+});
+
+test('with no position to project from, Position after is Unknown, not a figure', async () => {
+  const unknown = {
+    ...FORECAST,
+    availableFundsCents: null,
+    lowest: null,
+    closingCents: null,
+    events: FORECAST.events.map(event => ({ ...event, balanceCents: null })),
+  };
+  const window = await ayqOpenWindow(engine({ forecast: unknown }));
+  await window.render(screen());
+  const rent = rowFor(window, 'record:rec-rent:2026-09-01');
+  assert.equal(rent.querySelector('[data-ayq-cell="balance"] [data-ayq-figure]'), null);
+  assert.equal(
+    rent.querySelector('[data-ayq-cell="balance"] [data-ayq-position]')?.textContent,
+    ayqText('upcoming.position.unknown'),
+  );
+  // Still shown, still expected: what is due does not depend on the bank.
+  assert.equal(rent.querySelector('[data-ayq-cell="amount"] [data-ayq-figure]')?.getAttribute('data-ayq-figure'), '-120000');
+  await ayqPress(rent);
+  assert.equal(
+    window.container.querySelector('[data-ayq-pane-position]')?.getAttribute('data-ayq-pane-position'),
+    'unknown',
+  );
+  await window.close();
+});
+
 test('a single payment is offered nothing that reaches beyond itself (§7.17)', async () => {
   const window = await ayqOpenWindow(engine());
   await window.render(screen());

@@ -32,6 +32,7 @@ import type {
   AyqSummary,
 } from './ayq-ipc-contract.ts';
 import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
+import { AyqCounterpartyScreen } from './ayq-screens/ayq-counterparty.tsx';
 import { AyqPlanScreen } from './ayq-screens/ayq-plan.tsx';
 import { AyqReportsScreen } from './ayq-screens/ayq-reports.tsx';
 import { AyqReviewScreen } from './ayq-screens/ayq-review.tsx';
@@ -50,18 +51,20 @@ import { AyqNotice } from './ayq-ui/ayq-notice.tsx';
 import { AyqRail } from './ayq-ui/ayq-rail.tsx';
 import { AyqScreen } from './ayq-ui/ayq-screen.tsx';
 import { AyqStatusBar } from './ayq-ui/ayq-status-bar.tsx';
+import { AyqTitleBar } from './ayq-ui/ayq-title-bar.tsx';
 
 const useStyles = makeStyles({
   window: {
     height: '100%',
     display: 'grid',
     gridTemplateColumns: `${AYQ_METRIC.railWidth}px minmax(0, 1fr)`,
-    gridTemplateRows: `minmax(0, 1fr) var(--ayq-status-height)`,
+    gridTemplateRows: `${AYQ_METRIC.titleBarHeight}px minmax(0, 1fr) var(--ayq-status-height)`,
     backgroundColor: 'var(--ayq-ground)',
     overflow: 'hidden',
   },
   middle: {
     gridColumn: '2',
+    gridRow: '2',
     display: 'flex',
     flexDirection: 'column',
     minHeight: '0',
@@ -77,6 +80,11 @@ export function AyqApplication(): ReactNode {
   const [settingsTab, setSettingsTab] = useState<AyqSettingsTab>('appearance');
   /** Which account's detail Today opened, if it opened one (7 §7.3). */
   const [account, setAccount] = useState<string | null>(null);
+  /** Which counterparty's page is open, and where it was opened from (A37). */
+  const [counterparty, setCounterparty] = useState<{
+    key: string;
+    from: AyqDestination;
+  } | null>(null);
   const [status, setStatus] = useState<AyqEngineStatus | null>(null);
   const [summary, setSummary] = useState<AyqSummary | null>(null);
   // Two different things, and conflating them would be a defect rather than an
@@ -194,12 +202,25 @@ export function AyqApplication(): ReactNode {
           setDestination('settings');
           setSettingsTab('rules');
         }}
+        onOpenCounterparty={key => {
+          setCounterparty({ key, from: 'register' });
+          setDestination('counterparty');
+        }}
         onFailure={say}
         onLoaded={ledgerLoaded}
       />
     );
   } else if (destination === 'import') {
-    body = <AyqImportScreen onImported={reload} onFailure={say} />;
+    body = (
+      <AyqImportScreen
+        onImported={reload}
+        onFailure={say}
+        onOpenAccount={accountId => {
+          setAccount(accountId);
+          setDestination('accounts');
+        }}
+      />
+    );
   } else if (destination === 'settings') {
     body = (
       <AyqSettingsScreen
@@ -207,6 +228,10 @@ export function AyqApplication(): ReactNode {
         onFailure={say}
         onChanged={reload}
         onOpenAccounts={() => setDestination('accounts')}
+        onOpenAccount={accountId => {
+          setAccount(accountId);
+          setDestination('accounts');
+        }}
       />
     );
   } else if (destination === 'review') {
@@ -217,7 +242,29 @@ export function AyqApplication(): ReactNode {
           setFilter({ counterpartyKey });
           setDestination('register');
         }}
+        onManage={key => {
+          setCounterparty({ key, from: 'review' });
+          setDestination('counterparty');
+        }}
         onChanged={reload}
+      />
+    );
+  } else if (destination === 'counterparty' && counterparty !== null) {
+    // A secondary surface, like Accounts: reached from a transaction or from
+    // Review, never from the rail, and it offers the way back to where it was
+    // opened from (04 A37).
+    body = (
+      <AyqCounterpartyScreen
+        key={counterparty.key}
+        counterpartyKey={counterparty.key}
+        onFailure={say}
+        onChanged={reload}
+        onOpenRegister={counterpartyKey => {
+          setFilter({ counterpartyKey });
+          setDestination('register');
+        }}
+        onOpenKey={key => setCounterparty({ key, from: counterparty.from })}
+        onBack={() => setDestination(counterparty.from)}
       />
     );
   } else if (destination === 'accounts') {
@@ -264,16 +311,20 @@ export function AyqApplication(): ReactNode {
   } else {
     body = (
       <AyqReportsScreen
-        onOpenRegister={() => {
-          setFilter({});
+        accounts={summary?.accounts ?? []}
+        onOpenRegister={chosen => {
+          // The real filter, not a claim that one was applied (03 §7.26).
+          setFilter(chosen);
           setDestination('register');
         }}
+        onFailure={say}
       />
     );
   }
 
   return (
     <div className={styles.window} data-ayq-window="">
+      <AyqTitleBar />
       <AyqRail
         current={destination}
         open={next => {
@@ -289,7 +340,11 @@ export function AyqApplication(): ReactNode {
         />
         <AyqScreen
           name={destination}
-          title={ayqText(AYQ_DESTINATION_LABEL[destination])}
+          title={
+            destination === 'counterparty'
+              ? ''
+              : ayqText(AYQ_DESTINATION_LABEL[destination])
+          }
           blurb={
             AYQ_DESTINATION_BLURB[destination] === undefined
               ? undefined

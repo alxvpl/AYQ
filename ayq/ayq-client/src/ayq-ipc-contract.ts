@@ -331,6 +331,123 @@ export type AyqCounterpartyFiled = {
   ruleWritten: boolean;
 };
 
+/**
+ * The bounded set of existing transactions a bulk correction is about.
+ *
+ * 03 §4.7 gives a manual correction an explicit scope, and §4.8 names the two
+ * forms it may take: the rows a person picked, one by one, or a clearly stated
+ * existing-record scope. The second is the Register's own filter — every row it
+ * admits, not only the page that happens to be on the screen. Amount alone is
+ * never such a scope (§4.8): a filter that says nothing but "between ten and
+ * twenty euros" is refused by the engine, and the screen does not offer it.
+ *
+ * Either way it is a decision about records that already exist. No rule is
+ * written and no automation is widened by it (04 A36).
+ */
+export type AyqBulkScope =
+  | { kind: 'selected'; transactionIds: string[] }
+  | { kind: 'filter'; filter: AyqLedgerFilter };
+
+/**
+ * What a bulk correction would touch, stated before it is executed (04 A36).
+ *
+ * `transactions` is the size of the scope itself. A counterparty correction
+ * reaches further than that: it is an identity decision about the names the
+ * bank printed (03 §3.11), so every transaction under those names moves, not
+ * only the ones in the scope. `variants` lists those names, each with the
+ * number of transactions in the whole budget that carry it, so the screen can
+ * say how far the decision reaches before anyone makes it.
+ */
+export type AyqBulkScopeReport = {
+  transactions: number;
+  /**
+   * How many of them already carry a decision made by hand. A bulk correction
+   * keeps those unless it is told otherwise (03 §4.9), so the screen says how
+   * many there are before the decision is made, not after.
+   */
+  byHand: number;
+  variants: Array<{
+    variantKey: string;
+    variant: string;
+    /** Every transaction in the budget imported under this name. */
+    transactions: number;
+  }>;
+  /** The sum over `variants` — what a counterparty correction would move. */
+  variantTransactions: number;
+};
+
+/** What filing a scope by hand came to. */
+export type AyqBulkCategorised = {
+  /** How many the scope held when the decision was executed. */
+  scoped: number;
+  categorised: number;
+  /**
+   * Already filed by hand into something else, and left exactly as they were
+   * because `includeByHand` was not set: a bulk correction never overwrites
+   * an earlier manual decision silently (03 §4.9). Counted so the screen can
+   * say so.
+   */
+  keptByHand: number;
+};
+
+/** What recording the names behind a scope as one counterparty came to. */
+export type AyqBulkCounterparty = {
+  /** How many bank names were recorded as the counterparty. */
+  variants: number;
+  /** Every transaction that now carries it, in or out of the scope. */
+  moved: number;
+  counterpartyKey: string;
+  counterpartyName: string;
+};
+
+/**
+ * What still uses a category, said before it is removed (04 A35).
+ *
+ * Removal never destroys or reclassifies data in silence: the owner is shown
+ * these counts and chooses where what used the category goes. Every count is
+ * read from the budget and the store at the moment of asking.
+ */
+export type AyqCategoryImpact = {
+  categoryId: string;
+  name: string;
+  isIncome: boolean;
+  /** Transactions filed in it, however they were filed. */
+  transactions: number;
+  /** Learned rules that file into it, by name (03 §4.2). */
+  rules: number;
+  /** Planned and recurring records that carry it (03 §7.23). */
+  planned: number;
+  /** Months of the Plan with an amount set for it. */
+  plannedMonths: number;
+  /** True when none of the above is non-zero: one confirmed action removes it. */
+  unused: boolean;
+};
+
+/**
+ * Where what used a removed category goes.
+ *
+ * A category of the same kind, into which the transactions, the plan amounts,
+ * the rules and the planned records move; or the explicit `Uncategorised`
+ * state (03 §4.5, §7.23), in which the transactions and planned records
+ * survive without a category, and the rules — which cannot file into nothing
+ * — are removed, said in advance.
+ */
+export type AyqCategoryDestination =
+  | { kind: 'category'; categoryId: string }
+  | { kind: 'uncategorised' };
+
+/** What removing a category came to. */
+export type AyqCategoryRemoved = {
+  categories: AyqCategory[];
+  removed: string;
+  /** The destination's name, or null for Uncategorised. */
+  movedTo: string | null;
+  transactions: number;
+  rulesMoved: number;
+  rulesRemoved: number;
+  planned: number;
+};
+
 /** Which period, and which account, the spending question is being asked of. */
 export type AyqSpendingFilter = {
   /** Inclusive YYYY-MM-DD bounds; both absent means everything there is. */
@@ -490,6 +607,32 @@ export type AyqCategoryRule = {
   createdAt: string;
 };
 
+/**
+ * What a rule has done, counted now (04 A7, 03 §4.4).
+ *
+ * Stated wherever the rule is seen, before correction or removal is offered:
+ * a person deciding about a rule is deciding about these transactions too, and
+ * about the ones the rule may not touch.
+ */
+export type AyqRuleImpact = {
+  rule: AyqCategoryRule;
+  /** Transactions the rule filed and that still stand as it filed them. */
+  filed: number;
+  /** Transactions of this counterparty filed by hand — outside its reach. */
+  byHand: number;
+  /** False when the budget lacks the category: the rule files nothing. */
+  categoryExists: boolean;
+};
+
+/** What correcting a rule came to. */
+export type AyqRuleCorrected = {
+  rules: AyqCategoryRule[];
+  rule: AyqCategoryRule;
+  /** Transactions that now stand as the corrected rule files them. */
+  filed: number;
+  byHand: number;
+};
+
 export type AyqRecurring = {
   /** The canonical counterparty key. */
   key: string;
@@ -569,6 +712,8 @@ export type AyqCounterpartyVariant = {
   lastDate: string;
   /** True when this variant is under this counterparty because a person said so. */
   aliased: boolean;
+  /** The identity decision that put it here, when one did — what undoes it. */
+  aliasId: string | null;
 };
 
 export type AyqCounterpartyDetail = {
@@ -578,6 +723,23 @@ export type AyqCounterpartyDetail = {
   recurring: AyqRecurring | null;
   /** The newest transactions of this counterparty. */
   recent: AyqLedgerRow[];
+  /** The learned rules keyed on it (03 §4.1). */
+  rules: AyqCategoryRule[];
+  /** True when `counterparty.name` is the owner's; the statement's stays in variants. */
+  ownerNamed: boolean;
+};
+
+/** What merging one counterparty into another came to (04 A37). */
+export type AyqCounterpartyMerged = {
+  /** The survivor. */
+  counterpartyKey: string;
+  counterpartyName: string;
+  /** Identity decisions written: one per statement variant of the merged one. */
+  variants: number;
+  /** Transactions whose payee moved. */
+  moved: number;
+  rulesMoved: number;
+  rulesRemoved: number;
 };
 
 /**
@@ -1216,15 +1378,24 @@ export type AyqResults = {
   'transaction.detail': AyqTransactionDetail;
   'transaction.categorise': AyqCategorised;
   'transaction.categoriseCounterparty': AyqCounterpartyFiled;
+  'transactions.scope': AyqBulkScopeReport;
+  'transactions.categoriseMany': AyqBulkCategorised;
+  'transactions.correctCounterparty': AyqBulkCounterparty;
   'categories.list': AyqCategory[];
   'categories.create': AyqCategory[];
   'categories.rename': AyqCategory[];
+  'categories.move': AyqCategory[];
+  'categories.impact': AyqCategoryImpact;
+  'categories.remove': AyqCategoryRemoved;
   'rules.list': AyqCategoryRule[];
+  'rules.impact': AyqRuleImpact;
+  'rules.correct': AyqRuleCorrected;
   'rules.remove': AyqCategoryRule[];
   'rules.apply': { categorised: number };
   'recurring.list': AyqRecurring[];
   'counterparties.list': AyqCounterpartyList;
   'counterparty.detail': AyqCounterpartyDetail;
+  'counterparty.merge': AyqCounterpartyMerged;
   'aliases.list': AyqAliasRecord[];
   'alias.create': AyqAliasApplied;
   'alias.remove': AyqAliasApplied;
@@ -1233,6 +1404,7 @@ export type AyqResults = {
   spending: AyqSpending;
   'counterparties.unfiled': AyqUnfiled[];
   'import.pick': AyqPickedFile;
+  'window.ground': { applied: boolean };
   'import.camt': AyqImportSummary;
   'plan.list': AyqPlan;
   'plan.save': AyqPlan;
@@ -1365,15 +1537,113 @@ export type AyqRequestBody =
       categoryId: string;
       createRule: boolean;
     }
+  | {
+      /** What a bulk correction over this scope would touch, before it is made. */
+      kind: 'transactions.scope';
+      scope: AyqBulkScope;
+    }
+  | {
+      /**
+       * Files every transaction in the scope, by hand, and learns nothing.
+       *
+       * A manual decision about each of them (03 §4.7), recorded as such, so no
+       * rule may overwrite it afterwards. One already filed by hand into
+       * something else is kept and counted (§4.9). No rule is written: that is a
+       * separate statement, and this request cannot make it.
+       */
+      kind: 'transactions.categoriseMany';
+      scope: AyqBulkScope;
+      /** null clears the category. */
+      categoryId: string | null;
+      /**
+       * Also change the rows already filed by hand into something else.
+       *
+       * Off, they are kept and counted (03 §4.9): a bulk correction does not
+       * overwrite an earlier manual decision silently. On, the person has been
+       * told how many there are and has said so — a newer decision by hand over
+       * an older one, which is theirs to make (§4.4).
+       */
+      includeByHand?: boolean;
+    }
+  | {
+      /**
+       * Records every bank name behind the scope as this counterparty.
+       *
+       * An identity decision (03 §3.11, §3.14), made once per name the bank
+       * printed rather than once per transaction, which is why it reaches every
+       * transaction under those names and not only the scope. The report from
+       * `transactions.scope` says how far that is.
+       */
+      kind: 'transactions.correctCounterparty';
+      scope: AyqBulkScope;
+      counterpartyKey: string;
+    }
   | { kind: 'categories.list' }
   | { kind: 'categories.create'; name: string; groupId: string }
   | { kind: 'categories.rename'; categoryId: string; name: string }
+  | {
+      /** Moves a category to another group of the same kind (04 A35). */
+      kind: 'categories.move';
+      categoryId: string;
+      groupId: string;
+    }
+  | {
+      /** What still uses this category — asked before any removal is offered. */
+      kind: 'categories.impact';
+      categoryId: string;
+    }
+  | {
+      /**
+       * Removes a category, with an explicit destination for what used it.
+       *
+       * A category in use cannot be removed without one: the engine refuses.
+       * An unused one needs none. Nothing is destroyed or reclassified in
+       * silence (04 A35); the answer says what moved where.
+       */
+      kind: 'categories.remove';
+      categoryId: string;
+      destination?: AyqCategoryDestination;
+    }
   | { kind: 'rules.list' }
-  | { kind: 'rules.remove'; ruleId: string }
+  | {
+      /** What a rule has filed, and what it may not touch, counted now. */
+      kind: 'rules.impact';
+      ruleId: string;
+    }
+  | {
+      /**
+       * Changes where a rule files, and re-files what the rule itself filed
+       * (03 §4.4). Never a transaction filed by hand: a manual decision
+       * outranks the rule, before and after the correction.
+       */
+      kind: 'rules.correct';
+      ruleId: string;
+      categoryId: string;
+    }
+  | {
+      /**
+       * Removes a rule. It stops applying to later imports; what it already
+       * filed stays where it is, and nothing is re-filed (04 A7).
+       */
+      kind: 'rules.remove';
+      ruleId: string;
+    }
   | { kind: 'rules.apply' }
   | { kind: 'recurring.list' }
   | { kind: 'counterparties.list'; filter?: AyqCounterpartyFilter }
   | { kind: 'counterparty.detail'; key: string }
+  | {
+      /**
+       * Says that one counterparty is really another (04 A37; 03 §3.6).
+       *
+       * One alias per statement variant of `counterpartyKey`, into `intoKey`;
+       * every transaction moves and every record is kept. Reversible only by
+       * removing those aliases, one at a time, from the survivor.
+       */
+      kind: 'counterparty.merge';
+      counterpartyKey: string;
+      intoKey: string;
+    }
   | { kind: 'aliases.list' }
   | {
       /**
@@ -1394,6 +1664,15 @@ export type AyqRequestBody =
   | { kind: 'spending'; filter?: AyqSpendingFilter }
   | { kind: 'counterparties.unfiled'; filter?: AyqSpendingFilter }
   | { kind: 'import.pick' }
+  | {
+      /**
+       * The ground the window resolved to, told to the host so the native
+       * title-bar controls are painted to match (04 A26). Answered by the
+       * host, not the engine: it is about this window, not the budget.
+       */
+      kind: 'window.ground';
+      resolved: 'light' | 'dark';
+    }
   | { kind: 'import.camt'; paths: string[] }
   | {
       /**

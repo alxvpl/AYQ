@@ -5,14 +5,18 @@
 // and the engine reads it (02 §3.1).
 
 import { makeStyles } from '@fluentui/react-components';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { ayqAsk } from '../ayq-bridge.ts';
-import type { AyqImportSummary } from '../ayq-ipc-contract.ts';
-import { ayqCount, ayqText } from '../ayq-strings.ts';
-import { AYQ_METRIC } from '../ayq-tokens.ts';
+import type { AyqAccountSummary, AyqImportSummary } from '../ayq-ipc-contract.ts';
+import { ayqCount, ayqDate, ayqMoment, ayqText } from '../ayq-strings.ts';
+import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
+import { ayqBorder } from '../ayq-ui/ayq-css.ts';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
+import { AyqScreenActions } from '../ayq-ui/ayq-screen.tsx';
+import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
+import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 import { AyqBalanceForm } from './ayq-balance-form.tsx';
 import { AyqImportHistory } from './ayq-import-history.tsx';
 
@@ -24,7 +28,44 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
   },
   said: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)' },
-  history: { padding: `0 ${AYQ_METRIC.space.screen}px ${AYQ_METRIC.space.wide}px` },
+  history: {},
+  quiet: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
+  // Template r003's info bar: a glyph, a title and a note, the action at the right.
+  info: {
+    display: 'flex',
+    gap: `${AYQ_METRIC.space.wide}px`,
+    alignItems: 'center',
+    padding: `${AYQ_METRIC.space.wide}px ${AYQ_METRIC.panePadding}px`,
+    backgroundColor: 'var(--ayq-quiet)',
+    ...ayqBorder('var(--ayq-line)'),
+    borderRadius: 'var(--ayq-radius-medium)',
+  },
+  glyph: {
+    width: '26px',
+    height: '26px',
+    flex: 'none',
+    display: 'grid',
+    placeItems: 'center',
+    borderRadius: 'var(--ayq-radius-small)',
+    backgroundColor: 'var(--ayq-pane)',
+    ...ayqBorder('var(--ayq-line)'),
+    fontFamily: 'var(--ayq-font-mono)',
+    fontWeight: AYQ_TYPE.weight.bold,
+    color: 'var(--ayq-ink-quiet)',
+  },
+  infoText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    flexGrow: 1,
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-quiet)',
+  },
+  infoTitle: {
+    fontSize: 'var(--ayq-size-body)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
+  },
 });
 
 /**
@@ -44,14 +85,19 @@ function mark(
 export function AyqImportScreen({
   onImported,
   onFailure,
+  onOpenAccount,
 }: {
   onImported(): void;
   onFailure(message: string): void;
+  /** Opens one account's detail, where a balance is set. */
+  onOpenAccount?(accountId: string): void;
 }): ReactNode {
   const styles = useStyles();
   const [busy, setBusy] = useState(false);
+
   const [said, setSaid] = useState<string | null>(null);
   const [round, setRound] = useState(0);
+  const [accounts, setAccounts] = useState<readonly AyqAccountSummary[]>([]);
   /** The account the last import left without a balance, if it left one. */
   const [wanted, setWanted] = useState<{
     accountId: string;
@@ -59,6 +105,73 @@ export function AyqImportScreen({
     importId: string;
     coverageDate: string;
   } | null>(null);
+
+  // Import freshness by account (template r003): what each account's imports
+  // reach, read afresh after every import.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const listed = await ayqAsk({ kind: 'accounts.list' });
+      if (!listed.ok) throw new Error(listed.message);
+      if (live) setAccounts(listed.result as AyqAccountSummary[]);
+    })().catch((error: unknown) => {
+      if (live) onFailure(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      live = false;
+    };
+  }, [round, onFailure]);
+
+  const freshness: readonly AyqColumn<AyqAccountSummary>[] = [
+    {
+      id: 'account',
+      header: ayqText('accounts.column.name'),
+      cell: account => account.name,
+    },
+    {
+      id: 'lastImport',
+      header: ayqText('accounts.detail.lastImport'),
+      cell: account =>
+        account.lastImportAt === null
+          ? ayqText('accounts.detail.lastImport.never')
+          : ayqMoment(account.lastImportAt),
+    },
+    {
+      id: 'bankThrough',
+      header: ayqText('accounts.detail.bankThrough'),
+      cell: account =>
+        account.bankDataThrough === null
+          ? ayqText('accounts.detail.bankThrough.none')
+          : ayqDate(account.bankDataThrough),
+    },
+    {
+      id: 'coverage',
+      header: ayqText('accounts.detail.statements'),
+      cell: account =>
+        account.bankDataThrough === null ? (
+          <span className={styles.quiet}>{ayqText('accounts.statements.none')}</span>
+        ) : (
+          <AyqStateChip
+            state="operational"
+            ok
+            label={ayqText('import.coverage.through', {
+              date: ayqDate(account.bankDataThrough),
+            })}
+          />
+        ),
+    },
+    {
+      id: 'anchor',
+      header: ayqText('import.column.anchor'),
+      cell: account =>
+        account.anchor === null ? (
+          <AyqStateChip state="operational" label={ayqText('import.anchor.none')} />
+        ) : (
+          ayqDate(account.anchor.coverageDate)
+        ),
+    },
+  ];
+  const unanchored = accounts.filter(account => account.anchor === null);
 
   const run = useCallback(async (): Promise<void> => {
     setBusy(true);
@@ -131,23 +244,53 @@ export function AyqImportScreen({
 
   return (
     <>
-      <AyqPane mark="import">
-        <div
-          className={styles.actions}
-          style={{ padding: `${AYQ_METRIC.space.screen}px` }}
+      <AyqScreenActions>
+        {said === null ? null : <span className={styles.said}>{said}</span>}
+        <AyqButton
+          filled
+          mark="import"
+          disabled={busy}
+          onClick={() => void run()}
         >
-          <AyqButton
-            filled
-            mark="import"
-            disabled={busy}
-            onClick={() => void run()}
-          >
-            {ayqText('import.action')}
-          </AyqButton>
-          {said === null ? null : <span className={styles.said}>{said}</span>}
-        </div>
+          {ayqText('import.action')}
+        </AyqButton>
+      </AyqScreenActions>
 
-        {wanted === null ? null : (
+      <AyqPane mark="import-freshness" title={ayqText('import.freshness')}>
+        <AyqTable
+          mark="import-freshness"
+          columns={freshness}
+          rows={accounts}
+          keyOf={account => account.id}
+          empty={ayqText('accounts.empty')}
+        />
+      </AyqPane>
+
+      {unanchored.map(account => (
+        <div key={account.id} className={styles.info} data-ayq-import-unanchored={account.id}>
+          <span className={styles.glyph} aria-hidden="true">
+            {ayqText('upcoming.match.glyph')}
+          </span>
+          <span className={styles.infoText}>
+            <span className={styles.infoTitle}>
+              {ayqText('import.anchor.missing', { account: account.name })}
+            </span>
+            <span>{ayqText('import.anchor.missing.note')}</span>
+          </span>
+          {onOpenAccount === undefined ? null : (
+            <AyqButton
+              mark={`import-set-balance-${account.id}`}
+              onClick={() => onOpenAccount(account.id)}
+            >
+              {ayqText('today.account.setBalance')}
+            </AyqButton>
+          )}
+        </div>
+      ))}
+
+      {wanted === null ? null : (
+      <AyqPane mark="import">
+        {(
           <AyqBalanceForm
             title={ayqText('balance.set.title')}
             accountName={wanted.accountName}
@@ -177,8 +320,13 @@ export function AyqImportScreen({
           />
         )}
       </AyqPane>
+      )}
 
-      <AyqPane title={ayqText('import.history')} mark="import-history">
+      <AyqPane
+        title={ayqText('import.history')}
+        mark="import-history"
+        actions={<span className={styles.quiet}>{ayqText('import.history.note')}</span>}
+      >
         <div className={styles.history}>
           <AyqImportHistory round={round} onFailure={onFailure} />
         </div>

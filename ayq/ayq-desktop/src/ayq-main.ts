@@ -250,9 +250,37 @@ async function pickCamtFile(): Promise<AyqPickedFile> {
   return { paths: chosen.canceled ? [] : chosen.filePaths };
 }
 
+/** The native controls' colours for a ground: the rail's surface and ink. */
+function titleBarOverlay(resolved: 'light' | 'dark'): {
+  color: string;
+  symbolColor: string;
+  height: number;
+} {
+  const surface = AYQ_TOKENS[resolved].surface;
+  return {
+    color: surface.rail,
+    symbolColor: surface.railInkOn,
+    height: AYQ_METRIC.titleBarHeight,
+  };
+}
+
+/** What the controls were last painted for; read by the acceptance run. */
+let titleBarPainted: 'light' | 'dark' | null = null;
+
 async function ask(request: AyqRequest): Promise<AyqResponse> {
-  // The one request the host answers itself, because it is about this window
-  // and not about the budget. Everything else is relayed untouched.
+  // The two requests the host answers itself, because they are about this
+  // window and not about the budget. Everything else is relayed untouched.
+  if (request?.kind === 'window.ground') {
+    const resolved = request.resolved === 'dark' ? 'dark' : 'light';
+    let applied = false;
+    if (process.platform === 'win32' && mainWindow !== null) {
+      const { color, symbolColor } = titleBarOverlay(resolved);
+      mainWindow.setTitleBarOverlay({ color, symbolColor });
+      titleBarPainted = resolved;
+      applied = true;
+    }
+    return { id: request.id, ok: true, kind: 'window.ground', result: { applied } };
+  }
   if (request?.kind === 'import.pick') {
     try {
       return {
@@ -367,6 +395,15 @@ function createWindow(): BrowserWindow {
     // The ground the token module defines, so that the frame a person sees
     // before the first paint is the one the application then paints.
     backgroundColor: AYQ_TOKENS.light.surface.ground,
+    // The title bar is drawn by the renderer in the rail's surface, and the
+    // window controls stay Windows' own, painted over it in the rail's ink
+    // (04 A26 as the owner decided it). Repainted whenever the ground changes.
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: titleBarOverlay('light'),
+        }
+      : {}),
     // Mica where Windows has it (04 A14), and nothing pretending to be it
     // where it does not. Never behind figures: it is the window's background
     // and the rail's, and every pane the figures sit on is solid.
@@ -1018,7 +1055,7 @@ async function planShown(
       await window.webContents.executeJavaScript(`(() => {
         const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
         const row = rows.find(one => {
-          const cell = one.querySelector('[data-ayq-cell="category"]');
+          const cell = one.querySelector('[data-ayq-category-name]') || one.querySelector('[data-ayq-cell="category"]');
           return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
         });
         if (!row) return 'no such category on the sheet';
@@ -1051,7 +1088,7 @@ async function planShown(
         await window.webContents.executeJavaScript(`(() => {
           const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
           const row = rows.find(one => {
-            const cell = one.querySelector('[data-ayq-cell="category"]');
+            const cell = one.querySelector('[data-ayq-category-name]') || one.querySelector('[data-ayq-cell="category"]');
             return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
           });
           if (!row) return -1;
@@ -1791,86 +1828,137 @@ async function suggestionsShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
- * Reports, which is not built — and the two things that has to mean.
+ * Reports, and the route from it (04 A32; 03 §7.26).
  *
- * It draws nothing that could be read as an answer, and it says so without
- * inventing a reason. The second half is the one worth a check on the packaged
- * application: a screen that blames a person's data for being empty is a screen
- * that tells them something untrue, and it is the kind of sentence that gets
- * written when somebody fills an empty page.
+ * Two things are checked on the packaged window. Reports draws the engine's
+ * spending answer as a table with one row per category, Uncategorised among
+ * them. And choosing a row opens the Register with the same filter actually
+ * applied: the chip is on the screen and the Register's own count is the count
+ * Reports stated for that row — the real filter, not a claim of one.
  */
 async function reportsShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'reports'))) {
     return 'the Reports destination never opened';
   }
 
+  // The period opens on the last three months; the fixture's statement may
+  // be older than that, so the whole budget is asked for, the way a person
+  // would by choosing it.
+  const periodSet = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(`(() => {
+      const period = document.querySelector('[data-ayq-reports-period]');
+      if (!period) return false;
+      if (period.value !== 'allTime') {
+        period.value = 'allTime';
+        period.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return true;
+    })()`)) === true;
+  const periodBy = Date.now() + 30_000;
+  while (Date.now() < periodBy && !(await periodSet())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
   const drawn = async (): Promise<boolean> =>
     (await window.webContents.executeJavaScript(
-      "!!document.querySelector('[data-ayq-not-built=\"reports\"]')",
+      'document.querySelectorAll(\'[data-ayq-table="reports"] tbody tr\').length > 0',
     )) === true;
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !(await drawn())) {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!(await drawn())) return 'Reports drew nothing at all, not even a reason';
+  if (!(await drawn()))
+    {return 'Reports drew no category rows on a budget that holds transactions';}
 
   const seen = JSON.parse(
     String(
       await window.webContents.executeJavaScript(`(() => {
         const screen = document.querySelector('[data-ayq-screen="reports"]');
+        const rows = [...screen.querySelectorAll('[data-ayq-table="reports"] tbody tr')];
+        const first = rows[0];
         return JSON.stringify({
-          said: screen.innerText.replace(/\\s+/g, ' ').trim(),
           figures: screen.querySelectorAll('[data-ayq-figure]').length,
           tables: screen.querySelectorAll('[data-ayq-table]').length,
           chips: screen.querySelectorAll('[data-ayq-state]').length,
           charts: screen.querySelectorAll('canvas, svg').length,
-          spending: !!screen.querySelector('[data-ayq-reports-spending]'),
+          rows: rows.length,
+          totals: !!screen.querySelector('[data-ayq-reports-totals]'),
+          firstCategory: first.querySelector('[data-ayq-report-category]')?.getAttribute('data-ayq-report-category') ?? null,
+          firstUncategorised: !!first.querySelector('[data-ayq-state="uncategorised"]'),
+          firstCount: Number(first.querySelector('[data-ayq-report-transactions]')?.getAttribute('data-ayq-report-transactions') ?? -1),
         });
       })()`),
     ),
   ) as {
-    said: string;
     figures: number;
     tables: number;
     chips: number;
     charts: number;
-    spending: boolean;
+    rows: number;
+    totals: boolean;
+    firstCategory: string | null;
+    firstUncategorised: boolean;
+    firstCount: number;
   };
 
   process.stdout.write(
     `[ayq-smoke] reports: ${seen.figures} figures, ${seen.tables} tables, ` +
-      `${seen.chips} chips, ${seen.charts} charts\n`,
+      `${seen.chips} chips, ${seen.charts} charts, ${seen.rows} category rows\n`,
   );
+  if (!seen.totals) return 'Reports does not state income, expenses and net';
+  if (seen.firstCount < 0)
+    {return 'a Reports row does not state how many transactions it counts';}
 
-  // Nothing on it can be mistaken for an answer.
-  if (seen.figures + seen.tables + seen.chips + seen.charts > 0) {
-    return 'Reports draws something that could be read as an answer';
+  // The route: the first row opens the Register with that filter applied.
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-table="reports"] tbody tr\').click(); true',
+  );
+  const chip = seen.firstUncategorised ? 'uncategorised' : 'category';
+  const arrived = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      `!!document.querySelector('[data-ayq-screen="register"] [data-ayq-filter="${chip}"]')` +
+        ' && document.body.dataset.ayqLedgerRows !== undefined',
+    )) === true;
+  const until = Date.now() + 30_000;
+  while (Date.now() < until && !(await arrived())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!/not built/i.test(seen.said)) return 'Reports does not say it is not built';
-  if (!/for no other reason/i.test(seen.said)) {
-    return 'Reports does not say that nothing else is the reason';
+  if (!(await arrived())) {
+    return `choosing a category did not open the Register with a ${chip} filter shown`;
   }
-  // And no threshold, invented or implied.
-  for (const invented of [
-    'not enough',
-    'insufficient',
-    'at least',
-    'more data',
-    'come back',
-    'once you have',
-  ]) {
-    if (seen.said.toLowerCase().includes(invented)) {
-      return `Reports blames the budget: "${invented}"`;
-    }
-  }
-  // 04 A20 removed the Spending screen and this is where its question went, so
-  // this is where the removal is readable.
-  if (!seen.spending) {
-    return 'Reports does not record the Spending screen the design removed';
+  const settled = async (): Promise<number> =>
+    Number(
+      await window.webContents.executeJavaScript(
+        'Number(document.body.dataset.ayqLedgerTotal ?? -1)',
+      ),
+    );
+  let total = await settled();
+  const wait = Date.now() + 30_000;
+  while (Date.now() < wait && total < seen.firstCount) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    total = await settled();
   }
   process.stdout.write(
-    '[ayq-smoke] reports: says it is not built, blames nothing, draws nothing\n',
+    `[ayq-smoke] reports: the Register opened on ${chip} with ${total} rows; Reports said ${seen.firstCount}\n`,
   );
+  // Reports counts the expense transactions behind a category (its figures
+  // are magnitudes); the Register's category filter holds every transaction in
+  // it, whichever way the money went. So the Register may hold more, never
+  // fewer: fewer would mean the filter that opened is not the one Reports named.
+  if (total < seen.firstCount) {
+    return 'the Register filter reached from Reports is not the filter Reports stated';
+  }
+  // Leave the Register as it was found: what runs after this reads it whole.
+  await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-action=\"clear-filters\"]')?.click(); true",
+  );
+  const cleared = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!document.querySelector('[data-ayq-screen=\"register\"] [data-ayq-filter]')",
+    )) === true;
+  const clearBy = Date.now() + 30_000;
+  while (Date.now() < clearBy && !(await cleared())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
   return '';
 }
 
@@ -1886,6 +1974,160 @@ async function reportsShown(window: BrowserWindow): Promise<string> {
  * Nothing about the wording decides any of it. A screen that had one control
  * doing both would pass a check that read labels and fail this one.
  */
+/**
+ * Gathering rows in the Register, and what the bar over them says (04 A36).
+ *
+ * Two rows are ticked and the bar is required to state that count, to say
+ * that it is a count of rows shown, and — with no filter on — to offer no
+ * "whole filter" scope at all, which is 03 §4.8 on the window. A category is
+ * then chosen and applied, and what is read back is the *table*, redrawn from
+ * the engine's answer: the two rows carry the category, the bar is gone, and
+ * the outcome names the count that changed. Nothing here presses a control
+ * that could learn a rule, because the bar has none.
+ */
+async function bulkShown(window: BrowserWindow): Promise<string> {
+  await openRegister(window);
+
+  const rows = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rows = [...document.querySelectorAll('[data-ayq-table="register"] tbody tr')];
+        return JSON.stringify(rows.slice(0, 3).map(row => row.getAttribute('data-ayq-row') || ''));
+      })()`),
+    ),
+  ) as string[];
+  if (rows.length < 3) return `the Register shows ${rows.length} rows, and this check needs three`;
+
+  const [first, second] = rows;
+  const tick = async (id: string): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(`(() => {
+      const box = document.querySelector('[data-ayq-select-row="${id}"]');
+      if (!box) return false;
+      box.click();
+      return true;
+    })()`)) === true;
+  if (!(await tick(first)) || !(await tick(second))) {
+    return 'the rows offer nothing to tick';
+  }
+
+  const bar = async (): Promise<{
+    there: boolean;
+    count: string;
+    basis: string;
+    scopeOffered: boolean;
+    detailOpened: boolean;
+  }> =>
+    JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const bar = document.querySelector('[data-ayq-bulk]');
+          return JSON.stringify({
+            there: !!bar,
+            count: bar ? (bar.querySelector('[data-ayq-bulk-count]') || {}).innerText || '' : '',
+            basis: bar ? (bar.querySelector('[data-ayq-bulk-basis]') || {}).getAttribute('data-ayq-bulk-basis') || '' : '',
+            scopeOffered: !!document.querySelector('[data-ayq-action="bulk-scope"]'),
+            detailOpened: !!document.querySelector('[data-ayq-detail]'),
+          });
+        })()`),
+      ),
+    );
+  const stated = await bar();
+  if (!stated.there) return 'two rows are ticked and there is no bar over them';
+  if (!/^2 /.test(stated.count)) return `the bar says "${stated.count}" for two ticked rows`;
+  if (stated.basis !== 'shown') return `the bar claims a "${stated.basis}" scope for a tick`;
+  if (stated.scopeOffered) return 'with no filter on, the bar still offers the whole filter as a scope (03 §4.8)';
+  if (stated.detailOpened) return 'ticking a row opened it';
+
+  // Set category: the scope is stated by the engine first, then applied.
+  const opened = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-ayq-action="bulk-category"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (opened !== true) return 'the bar offers no category action';
+
+  let by = Date.now() + 60_000;
+  let ready = false;
+  while (Date.now() < by && !ready) {
+    ready =
+      (await window.webContents.executeJavaScript(`(() => {
+        const apply = document.querySelector('[data-ayq-action="bulk-category-apply"]');
+        return !!apply && !apply.disabled;
+      })()`)) === true;
+    if (!ready) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!ready) return 'the scope was never stated, so the decision could not be made';
+
+  const chosen = String(
+    await window.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector('[data-ayq-bulk-category-choice]');
+      if (!select) return '';
+      const option = [...select.options].find(one => one.value !== '');
+      if (!option) return '';
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(select), 'value');
+      if (setter && setter.set) setter.set.call(select, option.value);
+      else select.value = option.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return option.textContent || '';
+    })()`),
+  );
+  if (chosen === '') return 'no category to file into';
+
+  const pressed = await window.webContents.executeJavaScript(`(() => {
+    const apply = document.querySelector('[data-ayq-action="bulk-category-apply"]');
+    if (!apply) return false;
+    apply.click();
+    return true;
+  })()`);
+  if (pressed !== true) return 'the apply button went away before it was pressed';
+
+  by = Date.now() + 60_000;
+  let said = '';
+  while (Date.now() < by && said === '') {
+    said = String(
+      await window.webContents.executeJavaScript(
+        "(document.querySelector('[data-ayq-bulk-outcome]') || {}).innerText || ''",
+      ),
+    );
+    if (said === '') await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (said === '') {
+    const problem = await problemShown(window);
+    return `nothing came back${problem === '' ? '' : ` — the screen said: ${problem}`}`;
+  }
+  process.stdout.write(`[ayq-smoke] bulk filed as ${chosen}: ${said}\n`);
+  if (!/^2 filed/.test(said)) return `the outcome says "${said}" for two rows`;
+
+  // The table, redrawn from the engine's answer, and not the control.
+  by = Date.now() + 60_000;
+  let shown: string[] = [];
+  while (Date.now() < by) {
+    shown = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          return JSON.stringify([${JSON.stringify(first)}, ${JSON.stringify(second)}].map(id => {
+            const cell = document.querySelector(
+              '[data-ayq-table="register"] tbody tr[data-ayq-row="' + id + '"] [data-ayq-cell="category"]');
+            return cell ? cell.innerText.trim() : '';
+          }));
+        })()`),
+      ),
+    ) as string[];
+    if (shown.every(one => one === chosen)) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!shown.every(one => one === chosen)) {
+    return `the two rows read ${JSON.stringify(shown)} after filing as ${chosen}`;
+  }
+  const after = await bar();
+  if (after.there) return 'the decision was made and the bar is still claiming a selection';
+
+  // Left ticked on the way out, so the capture at the end shows the bar.
+  await tick(rows[2]);
+  return '';
+}
+
 async function reviewShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'review'))) {
     return 'the Review destination never opened';
@@ -2089,14 +2331,38 @@ async function reviewShown(window: BrowserWindow): Promise<string> {
     `[ayq-smoke] Settings holds the rule for ${afterLearning.join(', ')}\n`,
   );
 
-  // 04 A7: visible, and reversible. Taking it away is offered and works.
-  const forgot = await window.webContents.executeJavaScript(`(() => {
-    const button = document.querySelector('[data-ayq-table="rules"] tbody tr [data-ayq-action]');
+  // 04 A7: visible, and reversible. Taking it away is offered and works —
+  // through the card the rule is inspected on, which states what removal
+  // does and does not do before the button that does it.
+  const opened = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-ayq-table="rules"] tbody tr [data-ayq-action^="rule-inspect-"]');
     if (!button) return false;
     button.click();
     return true;
   })()`);
-  if (forgot !== true) return 'a rule cannot be taken away (04 A7)';
+  if (opened !== true) return 'a rule cannot be inspected where it is listed (04 A7)';
+  const press = async (action: string): Promise<boolean> => {
+    const by = Date.now() + 30_000;
+    while (Date.now() < by) {
+      const pressed = await window.webContents.executeJavaScript(`(() => {
+        const button = document.querySelector('[data-ayq-rule-card] [data-ayq-action="${action}"]');
+        if (!button || button.disabled) return false;
+        button.click();
+        return true;
+      })()`);
+      if (pressed === true) return true;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return false;
+  };
+  if (!(await press('rule-remove'))) return 'the rule card offers no removal (04 A7)';
+  const consequence = await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-rule-remove-consequence]')?.textContent ?? ''",
+  );
+  if (!/nothing is re-filed/.test(String(consequence))) {
+    return 'removal does not say first that what the rule filed stays where it is';
+  }
+  if (!(await press('rule-remove-confirm'))) return 'a rule cannot be taken away (04 A7)';
   const gone = Date.now() + 30_000;
   let left = afterLearning.length;
   while (Date.now() < gone && left >= afterLearning.length) {
@@ -2145,8 +2411,9 @@ async function reviewShown(window: BrowserWindow): Promise<string> {
   if (!/Renaming a category moves its rules/.test(categories.consequence)) {
     return 'Settings does not say what renaming a category does to the rules';
   }
-  if (!/does not archive or delete/.test(categories.archive)) {
-    return 'Settings does not say what it will not do to a category';
+  // 04 A35: removal is counted first and never silent, and the screen says so.
+  if (!/never destroys or refiles anything in silence/.test(categories.archive)) {
+    return 'Settings does not say what removing a category does and does not do';
   }
   process.stdout.write(
     `[ayq-smoke] Settings lists ${categories.rows} categories, and states both consequences\n`,
@@ -2265,7 +2532,6 @@ async function todayShown(window: BrowserWindow): Promise<string> {
     'today-funds',
     'today-lasts',
     'today-movements',
-    'today-movements-detail',
     'today-waiting',
   ];
   if (seen.order.join(',') !== wanted.join(',')) {
@@ -2488,7 +2754,9 @@ async function shellShown(window: BrowserWindow): Promise<string> {
         if (!rail) return JSON.stringify({ rail: null });
         const items = [...rail.querySelectorAll('[data-ayq-tab]')]
           .map(one => one.dataset.ayqTab);
-        const children = [...rail.children];
+        const children = [
+          ...rail.querySelectorAll('[data-ayq-tab], [data-ayq-rail-separator]'),
+        ];
         const separators = children
           .map((one, index) => (one.hasAttribute('data-ayq-rail-separator') ? index : -1))
           .filter(index => index >= 0);
@@ -2509,7 +2777,7 @@ async function shellShown(window: BrowserWindow): Promise<string> {
           review: at('review'),
           plan: at('plan'),
           reports: at('reports'),
-          last: children.length > 0 ? children[children.length - 1].dataset.ayqTab : '',
+          last: items.length > 0 ? items[items.length - 1] : '',
           wordmark: (rail.textContent || '').slice(0, 3),
           keyboard,
           scrollers: scrollers.length,
@@ -2805,12 +3073,18 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
           const node = document.querySelector('[data-ayq-ground]');
           if (!node) return JSON.stringify({ chosen: '', resolved: '' });
           const style = getComputedStyle(node);
+          const bar = document.querySelector('[data-ayq-title-bar]');
+          const rgb = bar ? getComputedStyle(bar).backgroundColor : '';
+          const hex = rgb.startsWith('rgb(')
+            ? '#' + rgb.slice(4, -1).split(',').map(one => Number(one).toString(16).padStart(2, '0')).join('')
+            : rgb;
           return JSON.stringify({
             chosen: node.dataset.ayqGround,
             resolved: node.dataset.ayqGroundResolved,
             pane: style.getPropertyValue('--ayq-pane').trim(),
             accent: style.getPropertyValue('--ayq-accent').trim(),
             painted: style.backgroundColor,
+            titleBar: hex,
           });
         })()`),
       ),
@@ -2820,6 +3094,7 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
       pane?: string;
       accent?: string;
       painted?: string;
+      titleBar?: string;
     };
 
     if (seen.chosen !== ground) {
@@ -2840,6 +3115,13 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
     }
     if (!seen.painted || seen.painted === 'rgba(0, 0, 0, 0)') {
       return `${ground} painted nothing`;
+    }
+    // The bar is the rail's surface, live, and the native controls followed.
+    if (seen.titleBar !== want.surface.rail) {
+      return `${ground} drew the title bar ${seen.titleBar} rather than the rail's ${want.surface.rail}`;
+    }
+    if (titleBarPainted !== seen.resolved) {
+      return `${ground} left the window controls painted for ${titleBarPainted ?? 'nothing'}`;
     }
     process.stdout.write(
       `[ayq-smoke] ground ${ground} -> ${seen.resolved}, panes ${seen.pane}, ` +
@@ -3064,6 +3346,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await openRegister(window);
   }
 
+  // Gathering rows, and the bar that states the scope before acting (04 A36).
+  const bulkAsked = process.env.AYQ_SMOKE_BULK === '1';
+  let bulk = 'not asked';
+  let bulkOk = true;
+  if (bulkAsked) {
+    const wrong = await bulkShown(window);
+    bulk = wrong === '' ? 'held' : wrong;
+    bulkOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] bulk: ${bulkOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // Review and Settings: the two decisions of 03 §4.1, and what Settings owns.
   const reviewAsked = process.env.AYQ_SMOKE_REVIEW === '1';
   let review = 'not asked';
@@ -3219,6 +3514,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     accountsOk &&
     todayOk &&
     reviewOk &&
+    bulkOk &&
     reportsOk &&
     balanceOk &&
     aboutOk &&
@@ -3262,6 +3558,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           todayOk,
           review,
           reviewOk,
+          bulk,
+          bulkOk,
           reports,
           reportsOk,
           balance,

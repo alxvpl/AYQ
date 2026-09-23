@@ -108,25 +108,32 @@ test('the rail carries the destinations of A20, in its order and its groups', as
   );
 
   // Three groups means two hairlines, and they fall between the groups rather
-  // than anywhere that looked tidy.
-  const children = [...rail.children];
-  const separators = children.filter(one =>
+  // than anywhere that looked tidy: the second and third group each carry
+  // the line above them (template r003).
+  const everything = [...rail.querySelectorAll('[data-ayq-tab], [data-ayq-rail-separator]')];
+  const separators = everything.filter(one =>
     one.hasAttribute('data-ayq-rail-separator'),
   );
   assert.equal(separators.length, AYQ_RAIL_GROUPS.length - 1);
 
   const where = (destination: string): number =>
-    children.findIndex(one => one.getAttribute('data-ayq-tab') === destination);
-  const firstSeparator = children.indexOf(separators[0]);
-  const secondSeparator = children.indexOf(separators[1]);
+    everything.findIndex(one => one.getAttribute('data-ayq-tab') === destination);
+  const firstSeparator = everything.indexOf(separators[0]);
+  const secondSeparator = everything.indexOf(separators[1]);
   assert.ok(where('register') < firstSeparator && firstSeparator < where('review'));
   assert.ok(where('plan') < secondSeparator && secondSeparator < where('reports'));
 
-  // Settings sits at the foot, apart: last, and after everything else.
+  // Settings sits at the foot, apart: last, after everything else, and in
+  // its own footer rather than in a group.
+  const tabs = [...rail.querySelectorAll('[data-ayq-tab]')];
   assert.equal(
-    children.at(-1)?.getAttribute('data-ayq-tab'),
+    tabs.at(-1)?.getAttribute('data-ayq-tab'),
     AYQ_RAIL_FOOT,
     'Settings is not at the foot of the rail',
+  );
+  assert.ok(
+    !tabs.at(-1)?.closest('[data-ayq-rail-separator]'),
+    'Settings sits inside a group',
   );
 
   // The wordmark is text (A20), not a tile and not an image.
@@ -207,14 +214,26 @@ test('there is one scroller per screen, and no top panel above it', async () => 
     );
   }
 
-  // No top panel (A20): the window is the rail and one column beside it, and
-  // the system title bar is the system's — there is no banner of AYQ's own.
+  // No top panel (A20): the window is the rail and one column beside it.
+  // The title bar is the one thing across the top (A26 as the owner decided
+  // it): the rail's surface, the mark and the name, and nothing else — no
+  // control of AYQ's own, no path, no version.
   const frame = window.container.querySelector('[data-ayq-window]');
   assert.ok(frame);
   assert.equal(
     frame.querySelectorAll('header').length,
     0,
     'the window has a panel across the top',
+  );
+  const titleBar = frame.querySelector('[data-ayq-title-bar]');
+  assert.ok(titleBar, 'there is no title bar in the rail surface');
+  assert.ok(titleBar.querySelector('[data-ayq-mark]'), 'the bar carries no mark');
+  assert.equal(titleBar.textContent?.trim(), ayqText('app.name'));
+  assert.equal(titleBar.querySelectorAll('button, input, select, a').length, 0);
+  // And the host was told which ground to paint the native controls for.
+  assert.ok(
+    window.asked.some(one => one.kind === 'window.ground'),
+    'the host was never told the ground',
   );
   assert.equal(AYQ_METRIC.railWidth, 64);
 
@@ -354,6 +373,8 @@ test('the rail is the eight destinations of A20, and Accounts is not one', async
     !items.includes('accounts'),
     'Accounts is back in the rail',
   );
+  // Nor is a counterparty (04 A37): a secondary surface, opened from a row.
+  assert.ok(!items.includes('counterparty'), 'Counterparty is in the rail');
   assert.equal(
     window.container.querySelector('[data-ayq-tab="accounts"]'),
     null,

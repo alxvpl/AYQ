@@ -16,7 +16,7 @@
 // editable, and the screen says which it is rather than letting somebody type
 // into a cell that will refuse them.
 
-import { Input, Select, makeStyles } from '@fluentui/react-components';
+import { Input, Select, makeStyles, mergeClasses } from '@fluentui/react-components';
 import {
   useCallback,
   useEffect,
@@ -26,12 +26,15 @@ import {
 
 import { ayqAsk } from '../ayq-bridge.ts';
 import type { AyqPlanSheet, AyqPlanSheetRow } from '../ayq-ipc-contract.ts';
-import { ayqCount, ayqMonthName, ayqText } from '../ayq-strings.ts';
+import { ayqCount, ayqMoney, ayqMonthName, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorder } from '../ayq-ui/ayq-css.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
+import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
+import { AyqScreenActions } from '../ayq-ui/ayq-screen.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
 
 const useStyles = makeStyles({
@@ -48,13 +51,31 @@ const useStyles = makeStyles({
   label: { color: 'var(--ayq-ink-quiet)', fontSize: 'var(--ayq-size-small)' },
   note: { margin: '0', color: 'var(--ayq-ink-quiet)' },
   said: { marginLeft: 'auto', color: 'var(--ayq-ink-quiet)' },
-  cell: { width: '110px' },
+  cell: { width: '88px', minWidth: '88px' },
+  cellInput: { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+  currency: { color: 'var(--ayq-ink-faint)', marginRight: '6px', fontSize: 'var(--ayq-size-small)' },
+  name: { fontWeight: 600 },
   quiet: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
   suggestion: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: '2px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: `${AYQ_METRIC.space.medium}px`,
+    flexWrap: 'wrap',
+  },
+  rowButton: {
+    height: '24px',
+    minHeight: '24px',
+    padding: `0 ${AYQ_METRIC.space.medium}px`,
+    backgroundColor: 'transparent',
+    color: 'var(--ayq-ink-quiet)',
+    fontWeight: 400,
+    ...ayqBorder('transparent'),
+    ':hover': {
+      backgroundColor: 'var(--ayq-row-hover)',
+      color: 'var(--ayq-ink)',
+      ...ayqBorder('var(--ayq-control-edge)'),
+    },
   },
   totals: {
     display: 'flex',
@@ -81,6 +102,7 @@ export function AyqPlanScreen({
   onFailure(message: string): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [sheet, setSheet] = useState<AyqPlanSheet | null>(null);
   const [month, setMonth] = useState<string | undefined>(undefined);
   // What is being typed into one cell, so the figure in the table stays the
@@ -170,8 +192,9 @@ export function AyqPlanScreen({
       header: ayqText('plan.column.category'),
       cell: row => (
         <span data-ayq-cell="category" data-ayq-category={row.categoryId}>
-          {row.categoryName}
-          <br />
+          <span className={styles.name} data-ayq-category-name="">
+            {row.categoryName}
+          </span>{' '}
           <span className={styles.quiet}>{row.groupName}</span>
         </span>
       ),
@@ -183,10 +206,12 @@ export function AyqPlanScreen({
       cell: row => (
         <span data-ayq-cell="plan">
           {sheet.editable ? (
+            <>
+            <span className={styles.currency}>{ayqText('plan.currency')}</span>
             <Input
-              className={styles.cell}
+              className={mergeClasses(fields.field, styles.cell)}
               size="small"
-              appearance="underline"
+              input={{ className: styles.cellInput }}
               aria-label={`${row.categoryName} ${ayqText('plan.column.plan')}`}
               data-ayq-plan-cell={row.categoryId}
               value={
@@ -208,6 +233,7 @@ export function AyqPlanScreen({
                 }
               }}
             />
+            </>
           ) : (
             <AyqFigure cents={row.planCents} />
           )}
@@ -266,15 +292,27 @@ export function AyqPlanScreen({
             data-ayq-suggestion={String(suggestion.suggestedCents)}
             data-ayq-suggestion-months={String(suggestion.monthsUsed)}
           >
-            <AyqFigure cents={suggestion.suggestedCents} />
-            <span className={styles.quiet}>
+            {/* A suggestion that differs from the plan is a chip; one that
+                agrees is a plain figure (template r003). The basis is said
+                once, in the column's heading. */}
+            {suggestion.suggestedCents === row.planCents ? (
+              <span className={styles.quiet}>
+                <AyqFigure cents={suggestion.suggestedCents} />
+              </span>
+            ) : (
+              <AyqStateChip
+                state="suggested"
+                label={ayqMoney(suggestion.suggestedCents)}
+              />
+            )}
+            <span className={styles.quiet} data-ayq-suggestion-basis={String(suggestion.monthsUsed)}>
               {ayqText('plan.suggestion.basis', {
                 months: ayqCount(suggestion.monthsUsed),
               })}
             </span>
             {sheet.editable ? (
               <AyqButton
-                size="small"
+                className={styles.rowButton}
                 mark={`plan-use-${row.categoryId}`}
                 onClick={() => use({ categoryId: row.categoryId })}
               >
@@ -289,9 +327,12 @@ export function AyqPlanScreen({
 
   return (
     <>
-      <div className={styles.bar}>
-        <span className={styles.label}>{ayqText('plan.month')}</span>
+      {/* The month and the one action at the right of the screen's name
+          (template r003's toolbar). */}
+      <AyqScreenActions>
         <Select
+          className={fields.field}
+          aria-label={ayqText('plan.month')}
           value={sheet.month}
           data-ayq-plan-month=""
           onChange={(_event, data) => {
@@ -315,9 +356,9 @@ export function AyqPlanScreen({
         <span className={styles.said} data-ayq-plan-editable={String(sheet.editable)}>
           {sheet.editable ? '' : ayqText('plan.notEditable')}
         </span>
-      </div>
+      </AyqScreenActions>
 
-      <AyqPane mark="plan-sheet" title={ayqMonthName(sheet.month)}>
+      <AyqPane mark="plan-sheet">
         <AyqTable
           mark="plan"
           columns={columns}

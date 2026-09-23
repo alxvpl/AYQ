@@ -17,7 +17,11 @@
 
 import api from '@actual-app/api';
 
-import type { AyqCategoryRule } from '../../ayq-client/src/ayq-ipc-contract.ts';
+import type {
+  AyqCategoryRule,
+  AyqRuleCorrected,
+  AyqRuleImpact,
+} from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqAccounts } from './ayq-ledger.ts';
 import { ayqCanonicalKey } from './ayq-aliases.ts';
@@ -72,6 +76,81 @@ export function ayqForgetRule(
   store.rules = store.rules.filter(rule => rule.id !== ruleId);
   ayqWriteStore(dataDir, store);
   return store.rules;
+}
+
+/**
+ * What a rule has done, and what it may not touch, counted now (04 A7).
+ *
+ * "Filed" is a transaction of this counterparty whose standing decision is
+ * the rule's and whose category is still the one the rule names: what
+ * correcting the rule would re-file, and removing it would leave. "By hand" is
+ * a transaction of the same counterparty a person decided about, which the
+ * rule never reaches. Both are read at the moment of asking.
+ */
+export async function ayqRuleImpact(
+  dataDir: string,
+  ruleId: string,
+): Promise<AyqRuleImpact> {
+  const store = ayqReadStore(dataDir);
+  const rule = store.rules.find(one => one.id === ruleId);
+  if (!rule) throw new Error('no such rule');
+  const category =
+    (await ayqCategories()).find(
+      one => one.name.toLowerCase() === rule.categoryName.toLowerCase(),
+    ) ?? null;
+
+  let filed = 0;
+  let byHand = 0;
+  for (const row of await rowsToConsider()) {
+    const key = ayqRowKey(row);
+    const counterpartyKey = ayqCanonicalKey(
+      store,
+      store.provenance[key]?.counterpartyKey,
+      store.provenance[key]?.counterpartyName,
+    );
+    if (counterpartyKey !== rule.counterpartyKey) continue;
+    const decision = ayqStandingDecision(store, key);
+    if (decision?.source === 'manual') {
+      byHand += 1;
+    } else if (
+      decision?.source === 'rule' &&
+      category !== null &&
+      row.categoryId === category.id
+    ) {
+      filed += 1;
+    }
+  }
+  return { rule, filed, byHand, categoryExists: category !== null };
+}
+
+/**
+ * Corrects where a rule files (04 A7, 03 §4.4).
+ *
+ * The rule keeps its identity and its counterparty; only the category changes.
+ * Then the rules are applied, which re-files what this rule filed and never a
+ * transaction filed by hand — the same bound that applying always has.
+ */
+export async function ayqCorrectRule(
+  dataDir: string,
+  ruleId: string,
+  categoryId: string,
+): Promise<AyqRuleCorrected> {
+  const category = (await ayqCategories()).find(one => one.id === categoryId);
+  if (!category) throw new Error('no such category');
+  const store = ayqReadStore(dataDir);
+  const rule = store.rules.find(one => one.id === ruleId);
+  if (!rule) throw new Error('no such rule');
+  rule.categoryName = category.name;
+  ayqWriteStore(dataDir, store);
+
+  await ayqApplyRules(dataDir);
+  const after = await ayqRuleImpact(dataDir, ruleId);
+  return {
+    rules: ayqRules(dataDir),
+    rule: after.rule,
+    filed: after.filed,
+    byHand: after.byHand,
+  };
 }
 
 /** Records who decided a transaction's category, and what they decided. */

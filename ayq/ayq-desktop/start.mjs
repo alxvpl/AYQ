@@ -111,7 +111,9 @@ if (has('register')) env.AYQ_SMOKE_REGISTER = '1';
 // again on fifty thousand records.
 if (has('import-once')) env.AYQ_SMOKE_IMPORT_ONCE = '1';
 
-// `--reports` opens Reports and requires it to say it is not built, to invent no
+// `--reports` opens Reports, requires a category table, and follows the first
+// row into the Register to check the filter actually applied. It used to
+// require the screen to say it is not built, to invent no
 // reason for being empty, to draw nothing that could be read as an answer, and
 // to record the Spending screen 04 A20 removed — whose question is this one.
 if (has('reports')) env.AYQ_SMOKE_REPORTS = '1';
@@ -123,6 +125,12 @@ if (has('reports')) env.AYQ_SMOKE_REPORTS = '1';
 // takes the rule away again (04 A7) and reads what Settings → Categories says it
 // will and will not do.
 if (has('review')) env.AYQ_SMOKE_REVIEW = '1';
+
+// `--bulk` ticks two Register rows, requires the bar over them to state that
+// count as a count of rows shown and to offer no whole-filter scope while no
+// filter is on (03 §4.8), files them into a category through the bar, and
+// requires the redrawn table to carry it and the bar to be gone (04 A36).
+if (has('bulk')) env.AYQ_SMOKE_BULK = '1';
 
 // `--today` opens Today and requires available funds to be first and the
 // largest figure on the screen — both measured on the drawn window — the

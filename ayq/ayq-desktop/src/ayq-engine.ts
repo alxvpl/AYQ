@@ -28,6 +28,11 @@ import {
 } from './ayq-aliases.ts';
 import { ayqUseSend } from './ayq-batch.ts';
 import {
+  ayqBulkScope,
+  ayqCategoriseScope,
+  ayqCorrectScopeCounterparty,
+} from './ayq-bulk.ts';
+import {
   ayqBudgetMonth,
   ayqBudgetType,
   ayqEnsureTrackingBudget,
@@ -38,7 +43,10 @@ import { ayqAccountsView } from './ayq-coverage.ts';
 import { ayqTodayView } from './ayq-today.ts';
 import {
   ayqCategories,
+  ayqCategoryImpact,
   ayqCreateCategory,
+  ayqMoveCategory,
+  ayqRemoveCategory,
   ayqRenameCategory,
 } from './ayq-categories.ts';
 import { ayqRecoverCounterpartyNames } from './ayq-recover-names.ts';
@@ -82,14 +90,17 @@ import { ayqRecurring } from './ayq-recurring.ts';
 import {
   ayqApplyFiling,
   ayqApplyRules,
+  ayqCorrectRule,
   ayqFileCounterparty,
   ayqForgetRule,
   ayqKeyOfTransaction,
   ayqPendingForCounterparty,
   ayqRecordDecision,
   ayqRememberRule,
+  ayqRuleImpact,
   ayqRules,
 } from './ayq-rules.ts';
+import { ayqMergeCounterparty } from './ayq-merge.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import {
   AYQ_COUNTERPARTY_FOLD,
@@ -636,12 +647,73 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
       };
     }
 
+    case 'transactions.scope':
+      return {
+        id,
+        ok: true,
+        kind: 'transactions.scope',
+        result: await ayqBulkScope(dataDir, request.scope),
+      };
+
+    case 'transactions.categoriseMany':
+      return {
+        id,
+        ok: true,
+        kind: 'transactions.categoriseMany',
+        result: await ayqCategoriseScope(
+          dataDir,
+          request.scope,
+          request.categoryId,
+          request.includeByHand === true,
+        ),
+      };
+
+    case 'transactions.correctCounterparty':
+      return {
+        id,
+        ok: true,
+        kind: 'transactions.correctCounterparty',
+        result: await ayqCorrectScopeCounterparty(
+          dataDir,
+          request.scope,
+          request.counterpartyKey,
+        ),
+      };
+
     case 'categories.create':
       return {
         id,
         ok: true,
         kind: 'categories.create',
         result: await ayqCreateCategory(request.name, request.groupId),
+      };
+
+    case 'categories.move':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.move',
+        result: await ayqMoveCategory(request.categoryId, request.groupId),
+      };
+
+    case 'categories.impact':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.impact',
+        result: await ayqCategoryImpact(dataDir, request.categoryId),
+      };
+
+    case 'categories.remove':
+      return {
+        id,
+        ok: true,
+        kind: 'categories.remove',
+        result: await ayqRemoveCategory(
+          dataDir,
+          request.categoryId,
+          request.destination,
+        ),
       };
 
     case 'categories.rename': {
@@ -675,6 +747,22 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
 
     case 'rules.list':
       return { id, ok: true, kind: 'rules.list', result: ayqRules(dataDir) };
+
+    case 'rules.impact':
+      return {
+        id,
+        ok: true,
+        kind: 'rules.impact',
+        result: await ayqRuleImpact(dataDir, request.ruleId),
+      };
+
+    case 'rules.correct':
+      return {
+        id,
+        ok: true,
+        kind: 'rules.correct',
+        result: await ayqCorrectRule(dataDir, request.ruleId, request.categoryId),
+      };
 
     case 'rules.remove':
       return {
@@ -715,6 +803,18 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         ok: true,
         kind: 'counterparty.detail',
         result: await ayqCounterpartyDetail(dataDir, request.key),
+      };
+
+    case 'counterparty.merge':
+      return {
+        id,
+        ok: true,
+        kind: 'counterparty.merge',
+        result: await ayqMergeCounterparty(
+          dataDir,
+          request.counterpartyKey,
+          request.intoKey,
+        ),
       };
 
     case 'aliases.list':

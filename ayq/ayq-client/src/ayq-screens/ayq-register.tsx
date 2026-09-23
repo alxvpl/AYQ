@@ -12,6 +12,7 @@ import {
   Input,
   Select,
   makeStyles,
+  mergeClasses,
 } from '@fluentui/react-components';
 import {
   useCallback,
@@ -24,35 +25,28 @@ import {
 import { ayqAsk } from '../ayq-bridge.ts';
 import type {
   AyqAccountSummary,
+  AyqBulkScope,
   AyqCategory,
   AyqLedger,
   AyqLedgerFilter,
 } from '../ayq-ipc-contract.ts';
-import { ayqAmount, ayqCount, ayqMoney, ayqText } from '../ayq-strings.ts';
+import { ayqAmount, ayqCount, ayqDate, ayqMoney, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
-import { ayqBorder } from '../ayq-ui/ayq-css.ts';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import {
   AyqFilterChips,
   type AyqAppliedFilter,
 } from '../ayq-ui/ayq-filter-chips.tsx';
 import { AyqLedgerPane } from './ayq-ledger-pane.tsx';
+import { AyqRegisterBulkBar } from './ayq-register-bulk.tsx';
 
 const useStyles = makeStyles({
-  filters: {
-    display: 'flex',
-    gap: `${AYQ_METRIC.space.medium}px`,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    padding: `10px ${AYQ_METRIC.space.wide}px`,
-    backgroundColor: 'var(--ayq-pane)',
-    ...ayqBorder('var(--ayq-line)'),
-    borderRadius: 'var(--ayq-radius-medium)',
-  },
-  search: { flexGrow: 1, minWidth: '220px' },
-  amount: { width: '110px' },
+  search: { minWidth: '165px', width: '165px' },
+  amount: { width: '110px', minWidth: '110px' },
   totals: { color: 'var(--ayq-ink-quiet)' },
   quiet: { color: 'var(--ayq-ink-faint)' },
+  outcome: { margin: '0', color: 'var(--ayq-ink)' },
 });
 
 export type AyqPeriod = 'thisMonth' | 'threeMonths' | 'thisYear' | 'allTime';
@@ -88,6 +82,26 @@ export function ayqPeriodBounds(
     : { from: `${year - 1}-${pad(start + 12)}-01` };
 }
 
+/**
+ * Whether the filter names a scope a bulk decision may be made over.
+ *
+ * The screen's reading of 03 §4.8, so that "select everything in this filter"
+ * is never offered where the engine would refuse it: the amount alone is not a
+ * scope, and neither is no filter at all. The engine holds the same rule and is
+ * the one that refuses.
+ */
+export function ayqFilterIsAScope(filter: AyqLedgerFilter): boolean {
+  return (
+    (filter.search ?? '').trim() !== '' ||
+    filter.accountId !== undefined ||
+    filter.from !== undefined ||
+    filter.to !== undefined ||
+    filter.uncategorised === true ||
+    filter.categoryId !== undefined ||
+    filter.counterpartyKey !== undefined
+  );
+}
+
 /** Cents from what somebody typed, or nothing if it was not a number. */
 function cents(typed: string): number | undefined {
   const value = Number(typed.replace(',', '.'));
@@ -101,6 +115,7 @@ export function AyqRegisterScreen({
   filter,
   onFilter,
   onShowTheRule,
+  onOpenCounterparty,
   onFailure,
   onLoaded,
 }: {
@@ -109,10 +124,12 @@ export function AyqRegisterScreen({
   filter: AyqLedgerFilter;
   onFilter(filter: AyqLedgerFilter): void;
   onShowTheRule(): void;
+  onOpenCounterparty?(counterpartyKey: string): void;
   onFailure(message: string): void;
   onLoaded(ledger: AyqLedger): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [ledger, setLedger] = useState<AyqLedger | null>(null);
   const [categories, setCategories] = useState<readonly AyqCategory[]>([]);
   const [period, setPeriod] = useState<AyqPeriod>('allTime');
@@ -121,6 +138,19 @@ export function AyqRegisterScreen({
   // own rather than the shell's, because it is about this table and not about
   // what is being looked at.
   const [limit, setLimit] = useState<number | undefined>(undefined);
+  // The rows a person has gathered, and whether they asked for the whole
+  // filter instead. Both are the Register's: they are about this table.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [wholeFilter, setWholeFilter] = useState(false);
+  const [outcome, setOutcome] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  // A different question is a different set of rows: nothing gathered under
+  // the old one may be claimed under the new (04 A36 — no stale scope).
+  useEffect(() => {
+    setSelected(new Set());
+    setWholeFilter(false);
+  }, [filter]);
 
   // The categories the filter offers. The pane beside the table reads its own
   // — this one is the filter bar's, and it is asked for once.
@@ -162,6 +192,49 @@ export function AyqRegisterScreen({
     },
     [onLoaded],
   );
+
+  // The ids the decision is about are the ticked rows that are on the screen
+  // now — never a row that was ticked and has since gone — so the count stated
+  // is the count sent.
+  const shownIds = useMemo(
+    () => new Set((ledger?.rows ?? []).map(row => row.id)),
+    [ledger],
+  );
+  const chosenIds = useMemo(
+    () => [...selected].filter(id => shownIds.has(id)),
+    [selected, shownIds],
+  );
+  // The whole filter is the question without its page depth: the page is how
+  // much of the answer is on the screen, and the scope is the whole answer.
+  const scope: AyqBulkScope = useMemo(() => {
+    if (!wholeFilter) return { kind: 'selected', transactionIds: chosenIds };
+    const { limit: _page, ...whole } = asked;
+    return { kind: 'filter', filter: whole };
+  }, [wholeFilter, chosenIds, asked]);
+  const counted = wholeFilter ? (ledger?.total ?? 0) : chosenIds.length;
+
+  const toggle = (id: string, checked: boolean): void => {
+    setWholeFilter(false);
+    setSelected(before => {
+      const next = new Set(before);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+  const toggleShown = (checked: boolean): void => {
+    setWholeFilter(false);
+    setSelected(checked ? new Set(shownIds) : new Set());
+  };
+  const clear = (): void => {
+    setWholeFilter(false);
+    setSelected(new Set());
+  };
+  const done = (said: string): void => {
+    clear();
+    setOutcome(said);
+    setReloadToken(one => one + 1);
+  };
 
   const applied: AyqAppliedFilter[] = [];
   if ((filter.search ?? '') !== '') {
@@ -208,6 +281,28 @@ export function AyqRegisterScreen({
       remove: () => change({ ...filter, uncategorised: undefined }),
     });
   }
+  // Dates the shell handed over — Reports opening the Register on a period
+  // (03 §7.26) — are shown as the filter they are, not silently applied.
+  if (
+    period === 'allTime' &&
+    (filter.from !== undefined || filter.to !== undefined)
+  ) {
+    applied.push({
+      id: 'dates',
+      name: ayqText('register.filter.dates'),
+      value: [
+        filter.from === undefined
+          ? null
+          : ayqText('register.filter.dates.from', { from: ayqDate(filter.from) }),
+        filter.to === undefined
+          ? null
+          : ayqText('register.filter.dates.to', { to: ayqDate(filter.to) }),
+      ]
+        .filter(one => one !== null)
+        .join(' '),
+      remove: () => change({ ...filter, from: undefined, to: undefined }),
+    });
+  }
   if (period !== 'allTime') {
     applied.push({
       id: 'period',
@@ -246,34 +341,11 @@ export function AyqRegisterScreen({
 
   return (
     <>
-      <div className={styles.filters} data-ayq-filter-bar="">
-        <Input
-          className={styles.search}
-          data-ayq-search=""
-          placeholder={ayqText('register.search')}
-          value={filter.search ?? ''}
-          onChange={(_event, data) =>
-            change({ ...filter, search: data.value === '' ? undefined : data.value })
-          }
-        />
+      {/* Template r003's order: account, period, the search, the category. */}
+      <div className={fields.bar} data-ayq-filter-bar="">
+        <span className={fields.label}>{ayqText('register.filter.account')}</span>
         <Select
-          data-ayq-filter-period=""
-          aria-label={ayqText('register.filter.period')}
-          value={period}
-          onChange={(_event, data) => {
-            const next = data.value as AyqPeriod;
-            setPeriod(next);
-            const today = new Date().toISOString().slice(0, 10);
-            change({ ...filter, ...ayqPeriodBounds(next, today), to: undefined });
-          }}
-        >
-          {PERIODS.map(one => (
-            <option key={one} value={one}>
-              {ayqText(PERIOD_LABEL[one])}
-            </option>
-          ))}
-        </Select>
-        <Select
+          className={fields.field}
           data-ayq-filter-account=""
           aria-label={ayqText('register.filter.account')}
           value={filter.accountId ?? ''}
@@ -291,7 +363,36 @@ export function AyqRegisterScreen({
             </option>
           ))}
         </Select>
+        <span className={fields.label}>{ayqText('register.filter.period')}</span>
         <Select
+          className={fields.field}
+          data-ayq-filter-period=""
+          aria-label={ayqText('register.filter.period')}
+          value={period}
+          onChange={(_event, data) => {
+            const next = data.value as AyqPeriod;
+            setPeriod(next);
+            const today = new Date().toISOString().slice(0, 10);
+            change({ ...filter, ...ayqPeriodBounds(next, today), to: undefined });
+          }}
+        >
+          {PERIODS.map(one => (
+            <option key={one} value={one}>
+              {ayqText(PERIOD_LABEL[one])}
+            </option>
+          ))}
+        </Select>
+        <Input
+          className={mergeClasses(fields.field, styles.search)}
+          data-ayq-search=""
+          placeholder={ayqText('register.search')}
+          value={filter.search ?? ''}
+          onChange={(_event, data) =>
+            change({ ...filter, search: data.value === '' ? undefined : data.value })
+          }
+        />
+        <Select
+          className={fields.field}
           data-ayq-filter-category=""
           aria-label={ayqText('register.filter.category')}
           value={filter.categoryId ?? ''}
@@ -310,7 +411,7 @@ export function AyqRegisterScreen({
           ))}
         </Select>
         <Input
-          className={styles.amount}
+          className={mergeClasses(fields.field, styles.amount)}
           data-ayq-filter-amount-from=""
           placeholder={ayqText('register.filter.amountFrom')}
           defaultValue={
@@ -321,7 +422,7 @@ export function AyqRegisterScreen({
           }
         />
         <Input
-          className={styles.amount}
+          className={mergeClasses(fields.field, styles.amount)}
           data-ayq-filter-amount-to=""
           placeholder={ayqText('register.filter.amountTo')}
           defaultValue={
@@ -352,11 +453,46 @@ export function AyqRegisterScreen({
         }}
       />
 
+      {outcome === null ? null : (
+        <p className={styles.outcome} data-ayq-bulk-outcome="">
+          {outcome}
+        </p>
+      )}
+
+      {counted === 0 || ledger === null ? null : (
+        <AyqRegisterBulkBar
+          scope={scope}
+          count={counted}
+          shown={ledger.shown}
+          total={ledger.total}
+          wholeFilter={wholeFilter}
+          canWholeFilter={ayqFilterIsAScope(filter) && ledger.total > ledger.shown}
+          categories={categories}
+          onWholeFilter={on => {
+            setWholeFilter(on);
+            // The whole filter includes every row on the screen; the ticks say so.
+            if (on) setSelected(new Set(shownIds));
+          }}
+          onClear={clear}
+          onDone={done}
+          onFailure={onFailure}
+        />
+      )}
+
       <AyqLedgerPane
         mark="register"
         filter={asked}
+        reloadToken={reloadToken}
+        selection={{
+          selected,
+          onToggle: toggle,
+          onToggleShown: toggleShown,
+          rowLabel: ayqText('register.select.row'),
+          shownLabel: ayqText('register.select.shown'),
+        }}
         onFailure={onFailure}
         onShowTheRule={onShowTheRule}
+        onOpenCounterparty={onOpenCounterparty}
         onLoaded={loaded}
         empty={
           applied.length === 0

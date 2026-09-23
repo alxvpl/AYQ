@@ -21,6 +21,7 @@ import type { AyqStringKey } from './ayq-strings.ts';
 export type AyqDestination =
   | 'today'
   | 'accounts'
+  | 'counterparty'
   | 'register'
   | 'review'
   | 'upcoming'
@@ -69,15 +70,20 @@ export const AYQ_DESTINATIONS: readonly AyqDestination[] = [
  * Routes that exist without being destinations.
  *
  * `accounts` is reachable — Today opens it for one account — and is never a
- * rail entry. Keeping the route is the smallest implementation of "a secondary
+ * rail entry; `counterparty` likewise, opened from a transaction in the
+ * Register or a counterparty on Review (04 A37). Keeping the route is the smallest implementation of "a secondary
  * detail surface"; keeping it out of `AYQ_DESTINATIONS` is what makes that
  * true rather than aspirational.
  */
-export const AYQ_INTERNAL_ROUTES: readonly AyqDestination[] = ['accounts'];
+export const AYQ_INTERNAL_ROUTES: readonly AyqDestination[] = [
+  'accounts',
+  'counterparty',
+];
 
 export const AYQ_DESTINATION_LABEL: Record<AyqDestination, AyqStringKey> = {
   today: 'destination.today',
   accounts: 'destination.accounts',
+  counterparty: 'destination.counterparty',
   register: 'destination.register',
   review: 'destination.review',
   upcoming: 'destination.upcoming',

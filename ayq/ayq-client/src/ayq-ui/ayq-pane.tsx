@@ -22,16 +22,18 @@ const useStyles = makeStyles({
     borderRadius: 'var(--ayq-radius-medium)',
     minWidth: '0',
   },
+  // A39: the pane header is 40 high, 15 semibold, on the pane's 18 of padding.
   head: {
-    padding: `11px ${AYQ_METRIC.space.screen}px`,
+    height: `${AYQ_METRIC.paneHeaderHeight}px`,
+    padding: `0 ${AYQ_METRIC.panePadding}px`,
     ...ayqBorderBottom('var(--ayq-line)'),
     display: 'flex',
     alignItems: 'center',
-    gap: `${AYQ_METRIC.space.wide}px`,
+    gap: `${AYQ_METRIC.space.ten}px`,
   },
   title: {
     margin: '0',
-    fontSize: 'var(--ayq-size-body)',
+    fontSize: 'var(--ayq-size-heading)',
     fontWeight: AYQ_TYPE.weight.semibold,
     color: 'var(--ayq-ink)',
   },
@@ -40,7 +42,7 @@ const useStyles = makeStyles({
   split: {
     display: 'grid',
     gridTemplateColumns: `minmax(0, 1fr) var(--ayq-pane-width)`,
-    gap: `${AYQ_METRIC.space.screen}px`,
+    gap: `${AYQ_METRIC.splitGap}px`,
     alignItems: 'start',
   },
   sticky: { position: 'sticky', top: '0' },
