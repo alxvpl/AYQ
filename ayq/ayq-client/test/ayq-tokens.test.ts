@@ -45,14 +45,21 @@ function hue(colour: string): { chroma: number; angle: number } {
   return { chroma: Math.hypot(a, b), angle: angle < 0 ? angle + 360 : angle };
 }
 
-/** CIE L*, 0–100. */
-function lightness(colour: string): number {
-  return ayqLab(colour)[0];
-}
-
 function apart(one: number, other: number): number {
   const gap = Math.abs(one - other) % 360;
   return gap > 180 ? 360 - gap : gap;
+}
+
+/**
+ * How far a state colour's hue sits from the accent's, in degrees, or
+ * undefined for a tone with almost no chroma, which cannot be confused with
+ * a saturated mint. Under 45° is close enough to read as the accent (A17),
+ * however much paler or darker the state is drawn.
+ */
+function gapFromAccent(colour: string): number | undefined {
+  const theirs = hue(colour);
+  if (theirs.chroma < 8) return undefined;
+  return apart(theirs.angle, hue(AYQ_ACCENT).angle);
 }
 
 test('every filled accent surface carries its foreground at 4.5:1', () => {
@@ -107,26 +114,36 @@ test('the accent and the state scale never share a tone', () => {
         `${ground}: ${tone} is listed as an accent tone but is not one`,
       );
     }
-    // A state near the accent's hue may not be near the accent: template
-    // r003 draws "owner set" in a green, and it is a state rather than the
-    // accent because it is well short of the mint in chroma — a deep ink and
-    // a pale wash, not a saturated fill. That is what is held (A17).
-    const accentLightness = lightness(AYQ_ACCENT);
     for (const colour of states) {
-      const theirs = hue(colour);
-      if (theirs.chroma < 8) continue;
-      const gap = apart(theirs.angle, accent.angle);
-      if (gap >= 45) continue;
-      // Markedly less vivid than the mint (the ink), or a wash far from it
-      // in lightness (the fill): either keeps a state a state.
+      const gap = gapFromAccent(colour);
+      if (gap === undefined) continue;
       assert.ok(
-        theirs.chroma <= accent.chroma * 0.7 &&
-          (theirs.chroma <= accent.chroma * 0.65 ||
-            Math.abs(lightness(colour) - accentLightness) >= 20),
+        gap >= 45,
         `${ground}: the state colour ${colour} is ${gap.toFixed(0)}° from the ` +
-          'accent and as vivid, which is close enough to read as the accent',
+          'accent, which is close enough to read as the accent',
       );
     }
+  }
+});
+
+test('the green "owner set" the template drew is refused as a state', () => {
+  // Template r003 drew confirmed / owner set in a green near the mint, and a
+  // weaker rule was once written so that it would pass. A17 was not revised
+  // (PF-001 EXCHANGE 015–017): the gate above must refuse that chip in both
+  // grounds. The light wash on its own is too grey to be judged; its ink is not.
+  const rejected = {
+    light: { fg: '#1f6b47', bg: '#e1f0e7' },
+    dark: { fg: '#8fd9b0', bg: '#1b3f2c' },
+  };
+  for (const [ground, pair] of Object.entries(rejected)) {
+    const refused = [pair.fg, pair.bg].filter(colour => {
+      const gap = gapFromAccent(colour);
+      return gap !== undefined && gap < 45;
+    });
+    assert.ok(
+      refused.includes(pair.fg),
+      `${ground}: the green owner-set chip ${pair.fg} on ${pair.bg} would pass as a state`,
+    );
   }
 });
 

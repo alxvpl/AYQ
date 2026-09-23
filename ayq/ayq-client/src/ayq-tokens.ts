@@ -309,7 +309,7 @@ const DARK_SURFACE: AyqSurfaceTokens = {
  * any of them.
  */
 const LIGHT_STATE: AyqStateTokens = {
-  confirmed: { fg: '#1f6b47', bg: '#e1f0e7' },
+  confirmed: { fg: '#1b4f8a', bg: '#e4ecf7' },
   rule: { fg: '#5b554d', bg: '#f4f1ea', edge: '#b3ab9b' },
   suggested: { fg: '#7a5610', bg: '#fff3d2', edge: '#d6ae50' },
   overdue: { fg: '#9a2f26', bg: '#fbe9e6' },
@@ -319,7 +319,7 @@ const LIGHT_STATE: AyqStateTokens = {
 };
 
 const DARK_STATE: AyqStateTokens = {
-  confirmed: { fg: '#8fd9b0', bg: '#1b3f2c' },
+  confirmed: { fg: '#9dc4ef', bg: '#16283d' },
   rule: { fg: '#c6c1ba', bg: '#282623', edge: '#665f58' },
   suggested: { fg: '#e9c874', bg: '#43340f', edge: '#8f742e' },
   overdue: { fg: '#f2a59c', bg: '#4a2420' },
