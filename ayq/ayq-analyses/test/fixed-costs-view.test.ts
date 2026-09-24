@@ -204,14 +204,51 @@ test('the row\'s own account coverage is reachable from Missing and Not imported
   for (const key of ['paper', 'stream', 'rent', 'power', 'energy', 'shop']) assert.doesNotMatch(row(html, key), /data-action="row-coverage"/, key);
 });
 
-test('Arrived: paid date, paid amount and account; Expected {amount} only when it differs, with no comment; Show transaction (H9)', () => {
+test('Arrived: paid date, paid amount and account, then Show transaction — no second expected-amount line (H9; DS r007 §16.5, P-2)', () => {
   const html = markup(ALL);
   const equal = text(row(html, 'energy'));
   assert.match(equal, /Arrived Paid Feb 10, 2026 · €120\.00 · Everyday account Show transaction$/);
-  assert.doesNotMatch(equal, /Expected €/);
-  const different = text(row(html, 'shop'));
-  assert.match(different, /Arrived Paid Feb 3, 2026 · €45\.50 · Everyday account Expected €50\.00 Show transaction$/);
-  for (const key of ['energy', 'shop']) assert.match(row(html, key), /data-action="show-transaction"/);
+  // A paid amount different from the expected one is still shown as paid; the
+  // expected amount stays only in the row's own figure column.
+  const different = row(html, 'shop');
+  assert.match(text(different), /^Groceries box €50\.00 Feb 3, 2026 Everyday account Arrived Paid Feb 3, 2026 · €45\.50 · Everyday account Show transaction$/);
+  for (const key of ['energy', 'shop']) {
+    assert.doesNotMatch(text(row(html, key)), /Expected/);
+    assert.equal(spans(row(html, key), 'fc-secondary').length, 0, key);
+    assert.match(row(html, key), /data-action="show-transaction"/);
+  }
+  assert.ok(!Object.hasOwn(JSON.parse(readFileSync(join(process.cwd(), 'src', 'strings', 'en.json'), 'utf8')), 'fixedCosts.arrived.expected'));
+});
+
+test('the row coverage trigger is supporting detail: a plain button in secondary text weight (DS r007 §16.11, P-1)', () => {
+  const html = markup(ALL);
+  for (const key of ['insurance', 'gym', 'phone', 'water']) {
+    const trigger = row(html, key).match(/<(\w+)([^>]*data-action="row-coverage"[^>]*)>([\s\S]*?)<\/\1>/);
+    assert.ok(trigger, key);
+    assert.equal(trigger[1], 'button', `${key}: a plain button, not a Fluent control`);
+    assert.match(trigger[2], /class="fc-coverage-trigger"/);
+    assert.match(trigger[2], /type="button"/);
+    assert.match(text(trigger[3]), /^Data through [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
+  }
+  const css = readFileSync(join(process.cwd(), 'src', 'styles.css'), 'utf8');
+  const rule = css.match(/\n\n\.fc-coverage-trigger \{([^}]*)\}/);
+  assert.ok(rule);
+  assert.match(rule[1], /font-size: var\(--size-secondary\);/);
+  assert.match(rule[1], /color: var\(--secondary\);/);
+});
+
+test('"As of" is a plain button with no control padding, so it starts where the title starts (DS r007 §16.3, P-3)', () => {
+  const html = markup(ALL);
+  const trigger = html.match(/<(\w+)([^>]*data-fixed-costs-as-of=""[^>]*)>/);
+  assert.ok(trigger);
+  assert.equal(trigger[1], 'button');
+  assert.equal(trigger[2].trim().split(/\s+/).filter(a => a.startsWith('class=')).join(), 'class="fc-as-of"');
+  const css = readFileSync(join(process.cwd(), 'src', 'styles.css'), 'utf8');
+  const rule = css.match(/\n\.fc-as-of,\n\.fc-coverage-trigger \{([^}]*)\}/);
+  assert.ok(rule);
+  for (const declaration of ['margin: 0;', 'padding: 0;', 'border: 0;', 'font-weight: 400;', 'text-align: start;']) {
+    assert.ok(rule[1].includes(declaration), declaration);
+  }
 });
 
 test('Show transaction opens the existing detail pane on the matched transaction, with its A1 evidence (H9; r006 §16.11)', () => {

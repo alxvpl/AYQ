@@ -164,7 +164,6 @@
   "fixedCosts.reading.pending": "Pending",
   "fixedCosts.reading.arrived": "Arrived",
   "fixedCosts.arrived.line": "Paid {date} · {amount} · {account}",
-  "fixedCosts.arrived.expected": "Expected {amount}",
   "fixedCosts.arrived.show": "Show transaction",
   "fixedCosts.pending.future": "Expected {date}",
   "fixedCosts.pending.today": "Due today",

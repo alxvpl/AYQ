@@ -514,10 +514,30 @@ table.rows tbody tr.selected {
   margin: 0 0 4px;
 }
 
-.fc-as-of {
+/* The two quiet triggers (DS r007 §16.3, §16.11): plain buttons, no control
+   padding, so "As of" starts exactly where the title does and "Data
+   through" reads as supporting detail. */
+.fc-as-of,
+.fc-coverage-trigger {
+  margin: 0;
   padding: 0;
-  min-width: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   font-weight: 400;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.fc-coverage-trigger {
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.fc-as-of:hover,
+.fc-coverage-trigger:hover {
+  text-decoration: underline;
 }
 
 .fc-explainer {

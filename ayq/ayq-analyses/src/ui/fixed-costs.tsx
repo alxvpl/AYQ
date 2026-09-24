@@ -81,9 +81,11 @@ function AsOf({ date }: { date: string }): JSX.Element {
   return (
     <Popover positioning={{ position: 'below', align: 'start' }} withArrow>
       <PopoverTrigger disableButtonEnhancement>
-        <Button appearance="transparent" className="fc-as-of" data-fixed-costs-as-of="">
+        {/* A plain button, no control padding: its text starts where the
+            title's does (DS r007 §16.3). */}
+        <button type="button" className="fc-as-of" data-fixed-costs-as-of="">
           {t('fixedCosts.asOf', { date: formatDate(date, locale) })}
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverSurface className="fc-explainer">
         <p>{t('fixedCosts.asOf.explainer')}</p>
@@ -147,7 +149,6 @@ function Row({
 
   let line: string;
   let secondary: string | null = null;
-  let expected: string | null = null;
   switch (classification.reading) {
     case 'arrived': {
       const paid = classification.transaction;
@@ -157,12 +158,8 @@ function Row({
         amount: formatMoney(paidMinor, paid.amount.currency, locale),
         account: accounts.get(paid.accountKey)?.name ?? paid.accountKey,
       });
-      // Only when the paid amount differs, and with no comment (r006 §16.5).
-      if (paidMinor !== BigInt(row.expectedAmount.amount) || paid.amount.currency !== row.expectedAmount.currency) {
-        expected = t('fixedCosts.arrived.expected', {
-          amount: formatMoney(row.expectedAmount.amount, row.expectedAmount.currency, locale),
-        });
-      }
+      // The expected amount stays in the row's own figure column; no second
+      // expected-amount line (A2 spec r002 §10.1; DS r007 §16.5).
       break;
     }
     case 'pending':
@@ -216,7 +213,6 @@ function Row({
         <span className={readingClass(classification.reading)}>{t(READING_KEYS[classification.reading])}</span>
         <span className="fc-line">{line}</span>
       </p>
-      {expected !== null && <p className="fc-secondary">{expected}</p>}
       {secondary !== null && <p className="fc-secondary">{secondary}</p>}
       {(classification.reading === 'arrived' || coverageAccount !== undefined) && (
         <div className="fc-actions">
@@ -265,9 +261,10 @@ function AccountCoverage({ account }: { account: Account }): JSX.Element {
   return (
     <Popover positioning={{ position: 'below', align: 'start' }} withArrow>
       <PopoverTrigger disableButtonEnhancement>
-        <Button appearance="subtle" data-action="row-coverage">
+        {/* Supporting detail, in secondary text weight (DS r007 §16.11). */}
+        <button type="button" className="fc-coverage-trigger" data-action="row-coverage">
           {t('coverage.button.full', { date: formatDate(coverage.lastStatementDate, locale) })}
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverSurface className="coverage-flyout">
         <ul className="coverage-accounts">

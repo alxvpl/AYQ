@@ -307,7 +307,6 @@ const NORMATIVE: Sentence[] = [
   { section: '16.1', key: 'fixedCosts.reading.pending', text: "Pending", owner: FIXED_COSTS, reachedThrough: RENDERER },
   { section: '16.1', key: 'fixedCosts.reading.arrived', text: "Arrived", owner: FIXED_COSTS, reachedThrough: RENDERER },
   { section: '16.5', key: 'fixedCosts.arrived.line', text: "Paid {date} · {amount} · {account}", owner: FIXED_COSTS, reachedThrough: RENDERER },
-  { section: '16.5', key: 'fixedCosts.arrived.expected', text: "Expected {amount}", owner: FIXED_COSTS, reachedThrough: RENDERER },
   { section: '16.5', key: 'fixedCosts.arrived.show', text: "Show transaction", owner: FIXED_COSTS, reachedThrough: RENDERER },
   { section: '16.5', key: 'fixedCosts.pending.future', text: "Expected {date}", owner: FIXED_COSTS, reachedThrough: RENDERER },
   { section: '16.5', key: 'fixedCosts.pending.today', text: "Due today", owner: FIXED_COSTS, reachedThrough: RENDERER },
@@ -338,9 +337,10 @@ test('r003 — every normative sentence is in the catalogue character for charac
   }
   // The suite covers every sentence r003 §§3, 6, 7, 8.1, 9 and 11 enumerate:
   // a count, so a sentence dropped from this table is noticed.
-  // r006 §16 adds the 25 Fixed costs sentences to the 62 of §§3–11, and
-  // DS r007 §11.4 the 9 lines of About.
-  assert.equal(NORMATIVE.length, 96);
+  // r006 §16 adds the 25 Fixed costs sentences to the 62 of §§3–11, DS r007
+  // §16.5 takes the Arrived "Expected {amount}" line away again, and §11.4
+  // adds the 9 lines of About.
+  assert.equal(NORMATIVE.length, 95);
 });
 
 test('r003 — every normative sentence is referenced from the module that owns it, and that module reaches the screen', () => {
