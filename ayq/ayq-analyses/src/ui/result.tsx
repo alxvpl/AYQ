@@ -3,7 +3,7 @@ import { ACCENT } from './tokens.js';
 import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { formatDate, formatList } from '../format.js';
-import { CATEGORY_AXIS_LABEL, canvasFitsRaster, canvasWithinSafeBudget, categoryLabelGutter, chartGeometry } from '../geometry.js';
+import { CATEGORY_AXIS_LABEL, canvasFitsRaster, canvasWithinSafeHeight, categoryLabelGutter, chartGeometry, safeHeightLimit } from '../geometry.js';
 import { formatCount, formatMoney, formatSignedMoney } from '../money.js';
 import { nextSortState, sortRows, type SortColumn, type SortState } from '../sort.js';
 import { useLocale, useText } from './text.js';
@@ -26,6 +26,24 @@ function chartHeight(rows: number): number {
   return Math.max(140, rows * 44 + 48);
 }
 
+/**
+ * The GPU's largest texture, as this renderer's WebGL reports it — read once,
+ * with no permission, and released at once. Null when it cannot say.
+ */
+let reportedMaxTexture: number | null | undefined;
+function gpuMaxTexture(): number | null {
+  if (reportedMaxTexture === undefined) {
+    try {
+      const gl = document.createElement('canvas').getContext('webgl');
+      reportedMaxTexture = gl === null ? null : (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number);
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    } catch {
+      reportedMaxTexture = null;
+    }
+  }
+  return reportedMaxTexture;
+}
+
 /** A name's full width in the category label's own font, as the canvas will draw it. */
 function measureCategoryLabel(): (text: string) => number {
   const context = document.createElement('canvas').getContext('2d');
@@ -42,16 +60,17 @@ function Chart({ rows, locale }: { rows: readonly CounterpartyRow[]; locale: str
   // The guard of r005 §8.2: before anything is drawn, the canvas the chart
   // would allocate — the frame's width by the rows' height, at the device
   // pixel ratio — is checked against what the platform will rasterise and
-  // against the lower safe-render budget (T3). A result the chart cannot show,
-  // or cannot show safely, is stated, never left blank. Re-checked on resize,
-  // because the width and the pixel ratio can change with the window and the
-  // display it is on.
+  // against the GPU's largest texture, above which the canvas leaves the GPU
+  // (F1). A result the chart cannot show, or cannot show safely, is stated,
+  // never left blank. Re-checked on resize, because the width and the pixel
+  // ratio can change with the window and the display it is on.
   const [tooLarge, setTooLarge] = useState(false);
   useEffect(() => {
     const decide = (): void => {
       const width = frame.current?.clientWidth ?? 0;
       const dpr = window.devicePixelRatio;
-      setTooLarge(!canvasFitsRaster(width, height, dpr) || !canvasWithinSafeBudget(width, height, dpr));
+      const limit = safeHeightLimit(gpuMaxTexture());
+      setTooLarge(!canvasFitsRaster(width, height, dpr) || !canvasWithinSafeHeight(height, dpr, limit));
     };
     decide();
     window.addEventListener('resize', decide);

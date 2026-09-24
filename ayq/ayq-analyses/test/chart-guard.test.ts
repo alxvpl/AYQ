@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_CANVAS_AREA, MAX_CANVAS_SIDE, SAFE_CANVAS_AREA, canvasFitsRaster, canvasWithinSafeBudget } from '../src/geometry.js';
+import { MAX_CANVAS_AREA, MAX_CANVAS_SIDE, SAFE_CANVAS_HEIGHT, canvasFitsRaster, canvasWithinSafeHeight, safeHeightLimit } from '../src/geometry.js';
 import { translate } from '../src/strings.js';
 import { analyse } from '../src/engine.js';
 import { defaultContext } from '../src/context.js';
@@ -64,47 +64,72 @@ test('the sentence is r004 §8.2, word for word, and the chart component says it
   );
   const result = readFileSync(join(process.cwd(), 'src', 'ui', 'result.tsx'), 'utf8');
   // Decided before drawing, from the frame's width, the rows' height and the pixel ratio — against the
-  // raster limit and the safe-render budget (T3) — and re-decided on resize.
-  assert.match(result, /const dpr = window\.devicePixelRatio;\s*setTooLarge\(!canvasFitsRaster\(width, height, dpr\) \|\| !canvasWithinSafeBudget\(width, height, dpr\)\);/);
+  // raster limit and the GPU's largest texture (F1) — and re-decided on resize.
+  assert.match(result, /const limit = safeHeightLimit\(gpuMaxTexture\(\)\);\s*setTooLarge\(!canvasFitsRaster\(width, height, dpr\) \|\| !canvasWithinSafeHeight\(height, dpr, limit\)\);/);
+  assert.match(result, /getContext\('webgl'\)[\s\S]*MAX_TEXTURE_SIZE/);
   assert.match(result, /window\.addEventListener\('resize', decide\)/);
   // Nothing is drawn when it would not rasterise; the sentence takes the chart's place.
   assert.match(result, /if \(tooLarge \|\| host\.current === null\) return undefined;/);
   assert.match(result, /tooLarge \? \(\s*<p className="chart-too-large">\{t\('chart\.tooLarge'\)\}<\/p>/);
 });
 
-// T3 (directive 004 + 005): a second, lower budget in device-pixel canvas
-// area. Above it the chart is not drawn and the same sentence stands in its
-// place; the hard raster limits above are unchanged.
+// F1 (directive 025 §2, replacing T3's area budget): the canvas's device-pixel
+// height against the GPU's largest texture. Above it the chart is not drawn
+// and the same sentence stands in its place; the raster limits above are
+// unchanged, and there is no area cap beside it.
 const DEFAULT_FRAME = 1220;
-const lastDrawn = (dpr: number, width = DEFAULT_FRAME): number => {
+const lastDrawn = (dpr: number, width = DEFAULT_FRAME, limit = SAFE_CANVAS_HEIGHT): number => {
   let rows = 0;
-  while (canvasFitsRaster(width, chartHeight(rows + 1), dpr) && canvasWithinSafeBudget(width, chartHeight(rows + 1), dpr)) rows += 1;
+  while (
+    canvasFitsRaster(width, chartHeight(rows + 1), dpr) &&
+    canvasWithinSafeHeight(chartHeight(rows + 1), dpr, limit)
+  ) rows += 1;
   return rows;
 };
 
-test('the safe-render budget is 4 096² device pixels, a sixteenth of the raster area', () => {
-  assert.equal(SAFE_CANVAS_AREA, 4_096 * 4_096);
-  assert.equal(SAFE_CANVAS_AREA * 16, MAX_CANVAS_AREA);
-  assert.equal(canvasWithinSafeBudget(4_096, 4_096, 1), true);
-  assert.equal(canvasWithinSafeBudget(4_096, 4_097, 1), false);
-  assert.equal(canvasWithinSafeBudget(0, chartHeight(2000), 1.75), true);
+test('the limit is 16 384 device pixels of height, lowered to a smaller reported texture, never raised', () => {
+  assert.equal(SAFE_CANVAS_HEIGHT, 16_384);
+  assert.equal(safeHeightLimit(16_384), 16_384);
+  assert.equal(safeHeightLimit(32_768), 16_384);
+  assert.equal(safeHeightLimit(8_192), 8_192);
+  for (const unknown of [null, undefined, 0, -1, Number.NaN, '16384']) assert.equal(safeHeightLimit(unknown), 16_384);
 });
 
-test('with the budget the chart draws to 311 rows at 100 %, 100 at 175 %, 77 at 200 % and 33 at 300 %', () => {
-  assert.equal(lastDrawn(1), 311);
-  assert.equal(lastDrawn(1.75), 100);
-  assert.equal(lastDrawn(2), 77);
-  assert.equal(lastDrawn(3), 33);
-  // The budget, not the raster limit, is what stops it now.
-  assert.equal(canvasFitsRaster(DEFAULT_FRAME, chartHeight(101), 1.75), true);
-  assert.equal(canvasWithinSafeBudget(DEFAULT_FRAME, chartHeight(101), 1.75), false);
+test('the height is the backing store as allocated: CSS height times the ratio, truncated', () => {
+  // 14 895 × 1.1 = 16 384.5 → a 16 384-pixel canvas; 14 896 × 1.1 = 16 385.6 → 16 385.
+  assert.equal(canvasWithinSafeHeight(14_895, 1.1, 16_384), true);
+  assert.equal(canvasWithinSafeHeight(14_896, 1.1, 16_384), false);
 });
 
-test('at the default window no canvas the budget admits is taller than 16 384 device pixels, where memory jumped', () => {
-  // Measured: 211 rows at 175 % (16 331 px tall) cost 1.1 GB, 212 rows (16 408 px) 2.4 GB.
+test('at 175 % 211 rows draw (16 331 px) and 212 are refused (16 408 px), where memory jumped', () => {
+  assert.equal(Math.floor(chartHeight(211) * 1.75), 16_331);
+  assert.equal(Math.floor(chartHeight(212) * 1.75), 16_408);
+  assert.equal(canvasWithinSafeHeight(chartHeight(211), 1.75, SAFE_CANVAS_HEIGHT), true);
+  assert.equal(canvasWithinSafeHeight(chartHeight(212), 1.75, SAFE_CANVAS_HEIGHT), false);
+  // The height guard, not the raster limit, is what stops it.
+  assert.equal(canvasFitsRaster(DEFAULT_FRAME, chartHeight(212), 1.75), true);
+});
+
+test('the chart draws to 371 rows at 100 %, 211 at 175 %, 185 at 200 % and 123 at 300 %, at any window width', () => {
+  for (const width of [961, 1209, DEFAULT_FRAME, 2055]) {
+    assert.deepEqual([1, 1.75, 2, 3].map(dpr => lastDrawn(dpr, width)), [371, 211, 185, 123], `width ${width}`);
+  }
+});
+
+test('a smaller GPU limit refuses earlier', () => {
+  assert.equal(lastDrawn(1.75, DEFAULT_FRAME, 8_192), 105);
+  assert.equal(canvasWithinSafeHeight(chartHeight(106), 1.75, 8_192), false);
+  assert.equal(canvasWithinSafeHeight(chartHeight(106), 1.75, SAFE_CANVAS_HEIGHT), true);
+});
+
+test('no admitted canvas is taller than the limit, however narrow the window — the gap T3 left is closed', () => {
+  // T3's area budget admitted up to ~395 rows at 100 % in a 961-pixel frame (17 428 px tall).
   for (const dpr of [1, 1.25, 1.5, 1.75, 2, 2.5, 3]) {
-    const tallest = Math.ceil(chartHeight(lastDrawn(dpr, 1209)) * dpr);
-    assert.ok(tallest <= 16_384, `${dpr}: ${tallest}`);
+    for (const width of [400, 961, 1209, 2055, 4000]) {
+      const rows = lastDrawn(dpr, width);
+      assert.ok(Math.floor(chartHeight(rows) * dpr) <= SAFE_CANVAS_HEIGHT, `${dpr} / ${width}`);
+      assert.ok(Math.floor(chartHeight(rows + 1) * dpr) > SAFE_CANVAS_HEIGHT, `${dpr} / ${width}: stops at the limit`);
+    }
   }
 });
 
@@ -119,7 +144,7 @@ test('the frozen synthetic-input baseline still draws: Period A and Period B, al
   for (const dpr of [1, 1.75]) {
     for (const count of counts) {
       assert.equal(canvasFitsRaster(DEFAULT_FRAME, chartHeight(count), dpr), true);
-      assert.equal(canvasWithinSafeBudget(DEFAULT_FRAME, chartHeight(count), dpr), true);
+      assert.equal(canvasWithinSafeHeight(chartHeight(count), dpr, SAFE_CANVAS_HEIGHT), true);
     }
   }
 });

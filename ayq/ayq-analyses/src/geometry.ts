@@ -78,22 +78,32 @@ export function canvasFitsRaster(cssWidth: number, cssHeight: number, devicePixe
 }
 
 /**
- * The safe-render budget, in device pixels of canvas area (directive 004 T3):
- * 4 096², a sixteenth of the raster limit. Well below that limit a chart still
- * draws, but measured in this Electron on 2026-09-24 (evidence/overnight-t1-t3)
- * a canvas taller than 16 384 device pixels leaves the GPU and the process
- * tree grows by gigabytes: 211 rows at 175 % cost 1.1 GB, 212 rows 2.4 GB. At
- * the default window the first such canvas is 1 209 × 16 384 device pixels, at
- * 100 %; this budget sits below it at every scale. Above it the chart is not
- * drawn and says so, as at the raster limit (r005 §8.2). An implementation
- * safety limit, not Canon, revisable on evidence.
+ * The safe-render limit, in device pixels of canvas height (directive 025 F1,
+ * replacing T3's area budget). Well below the raster limit a chart still
+ * draws, but a canvas taller than the GPU's largest texture leaves the GPU,
+ * and the process tree then grows by gigabytes with every redraw — at every
+ * scale and every window width (evidence/overnight-t1-t3, evidence/f1-height-guard):
+ * 211 rows at 175 % (16 331 px) cost 0.44 GB after driving, 212 rows (16 408 px)
+ * 2.4 GB. 16 384 is that texture limit on the machine measured; the renderer
+ * lowers it to the GPU's own when that is smaller (safeHeightLimit). Above it
+ * the chart is not drawn and says so, as at the raster limit (r005 §8.2). An
+ * implementation safety limit, not Canon, revisable on evidence.
  */
-export const SAFE_CANVAS_AREA = 16_777_216;
+export const SAFE_CANVAS_HEIGHT = 16_384;
 
-/** Whether a chart of this CSS size, at this device pixel ratio, stays within the safe-render budget. */
-export function canvasWithinSafeBudget(cssWidth: number, cssHeight: number, devicePixelRatio: number): boolean {
-  const width = Math.ceil(cssWidth * devicePixelRatio);
-  const height = Math.ceil(cssHeight * devicePixelRatio);
-  if (width <= 0 || height <= 0) return true;
-  return width * height <= SAFE_CANVAS_AREA;
+/** The limit to guard with: 16 384, or the GPU's reported largest texture when that is smaller. */
+export function safeHeightLimit(reportedMaxTexture: unknown): number {
+  return typeof reportedMaxTexture === 'number' && Number.isFinite(reportedMaxTexture) && reportedMaxTexture > 0
+    ? Math.min(SAFE_CANVAS_HEIGHT, Math.floor(reportedMaxTexture))
+    : SAFE_CANVAS_HEIGHT;
+}
+
+/**
+ * Whether a chart this tall in CSS pixels, at this device pixel ratio, stays
+ * within `limit`. The height is the canvas's backing store as it is allocated:
+ * the CSS height times the ratio, truncated to a whole pixel, because the
+ * canvas's size is an integer attribute.
+ */
+export function canvasWithinSafeHeight(cssHeight: number, devicePixelRatio: number, limit: number): boolean {
+  return Math.floor(cssHeight * devicePixelRatio) <= limit;
 }
