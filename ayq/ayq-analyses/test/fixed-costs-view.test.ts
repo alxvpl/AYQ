@@ -230,7 +230,8 @@ test('the row coverage trigger is supporting detail: a plain button in secondary
     assert.match(trigger[2], /type="button"/);
     assert.match(text(trigger[3]), /^Data through [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
   }
-  const css = readFileSync(join(process.cwd(), 'src', 'styles.css'), 'utf8');
+  // A Windows checkout gives the stylesheet CRLF line ends.
+  const css = readFileSync(join(process.cwd(), 'src', 'styles.css'), 'utf8').replace(/\r\n/g, '\n');
   const rule = css.match(/\n\n\.fc-coverage-trigger \{([^}]*)\}/);
   assert.ok(rule);
   assert.match(rule[1], /font-size: var\(--size-secondary\);/);
@@ -243,7 +244,7 @@ test('"As of" is a plain button with no control padding, so it starts where the 
   assert.ok(trigger);
   assert.equal(trigger[1], 'button');
   assert.equal(trigger[2].trim().split(/\s+/).filter(a => a.startsWith('class=')).join(), 'class="fc-as-of"');
-  const css = readFileSync(join(process.cwd(), 'src', 'styles.css'), 'utf8');
+  const css = readFileSync(join(process.cwd(), 'src', 'styles.css'), 'utf8').replace(/\r\n/g, '\n');
   const rule = css.match(/\n\.fc-as-of,\n\.fc-coverage-trigger \{([^}]*)\}/);
   assert.ok(rule);
   for (const declaration of ['margin: 0;', 'padding: 0;', 'border: 0;', 'font-weight: 400;', 'text-align: start;']) {

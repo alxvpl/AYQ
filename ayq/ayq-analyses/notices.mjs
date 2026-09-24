@@ -18,6 +18,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 
 const LICENCE_FILE = /^(licen[cs]e|copying|notice)(\.[a-z]+|-[a-z0-9-]+(\.[a-z]+)?)?$/i;
@@ -169,8 +170,12 @@ export function writeNotices(outDir, { root = '.', bundled = [] } = {}) {
 
   const electronDir = join(root, 'node_modules', 'electron');
   const electronVersion = readJson(join(electronDir, 'package.json')).version;
-  const electronLicence = readFileSync(join(electronDir, 'dist', 'LICENSE'), 'utf8').trim();
-  const chromiumPath = join(electronDir, 'dist', 'LICENSES.chromium.html');
+  // Electron's own distribution — the one electron-builder packs. The package
+  // has no install script; resolving it fetches the binary on first use when
+  // an install has not, and returns its executable in that distribution.
+  const electronDist = dirname(createRequire(resolve(root, 'package.json'))('electron'));
+  const electronLicence = readFileSync(join(electronDist, 'LICENSE'), 'utf8').trim();
+  const chromiumPath = join(electronDist, 'LICENSES.chromium.html');
   if (!existsSync(chromiumPath)) throw new Error('Electron ships no LICENSES.chromium.html: a delivery blocker');
   const chromiumSha = createHash('sha256').update(readFileSync(chromiumPath)).digest('hex');
 
