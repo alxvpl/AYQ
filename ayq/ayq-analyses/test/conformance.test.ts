@@ -513,14 +513,21 @@ const RULES: Rule[] = [
   },
   // r006 §4 / §16.2 (C1): the attention tone on the names of Missing, Not
   // imported yet and Can't tell — the summary line, the group headings and the
-  // row status names. All three sit on the body's own ground; the rows are
-  // plain list items with no hover, pressed or selected surface, and the tone
-  // is never inside a button (the as-of line, Show transaction and the row's
+  // row status names. In the installed window all three sit on the Fluent
+  // provider's white surface (measured, OUTPUT 038); the body ground beneath
+  // it is measured too, the lower of the two governing. The rows are plain
+  // list items with no hover, pressed or selected surface, and the tone is
+  // never inside a button (the as-of line, Show transaction and the row's
   // coverage trigger carry no state colour).
   {
     element: 'attention text (Fixed costs summary names, group headings, row status names)',
     foreground: STATE.attention,
-    surfaces: { 'summary line': SURFACE.ground, 'group heading': SURFACE.ground, 'row status name': SURFACE.ground },
+    surfaces: {
+      'summary line': SURFACE.pane,
+      'group heading': SURFACE.pane,
+      'row status name': SURFACE.pane,
+      'body ground beneath': SURFACE.ground,
+    },
     gate: 4.5,
   },
   // The error tone: the refused title on the ground, the refused line in

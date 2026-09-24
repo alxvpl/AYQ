@@ -5,11 +5,55 @@ r006 §4, §16; `A2_P2_HUMAN_PRODUCT_CHECKLIST` R002; directive
 `A2_P2_IMPLEMENTATION_DIRECTIVE__CHATGPT_R002`. Every snapshot named here is
 synthetic; no real banking data is, or may be, under this directory.
 
-The installed-application results — PASS/FAIL per checklist check with the
-screenshot numbers, the C1 contrast table and the H14 before/after pair —
-are in `038_CLAUDE_CODE_REPORT__A2_P2` (AI_EXCHANGE / ACTIVE /
-future-revision-2026-09-23 / OUTPUT). They are produced from the candidate
-built from the commit that adds this file, so they cannot be inside it.
+The installed-application results are below, with the screenshots in this
+directory; the full record is `038_CLAUDE_CODE_REPORT__A2_P2` (AI_EXCHANGE /
+ACTIVE / future-revision-2026-09-23 / OUTPUT).
+
+## Installed results (checklist R002 §3)
+
+The candidate built from c8766e262, installed per-user, every launch over its
+own scratch `--user-data-dir` seeded with S1–S4, 100 % device scale, the
+application's own locale (en-GB here). The installed `app.asar`
+(SHA-256 2F76246D…A54604A) is byte-identical to the one built from that
+commit. Every check passed.
+
+| check | fixture | result | screenshots |
+|---|---|---|---|
+| R1 — Fixed costs has the available rail treatment, never "Not in this version." | S1 | PASS | 08a, 08b |
+| H1 — one basis date, "As of 15 Sept 2026" = meta.expectationsAsOfDate; no production-day line in the view | S1 | PASS | 01 |
+| H1b — the explainer from the as-of line, word for word | S1 | PASS | 03 |
+| H2 — five counts, fixed order, each equal to its group (3 · 3 · 2 · 6 · 3) | S1 | PASS | 01 |
+| H2 / H3 — zeros shown, empty groups hidden (0 · 0 · 0 · 3 · 2) | S4 | PASS | 07 |
+| H3 — group order; most recent first, Pending soonest first | S1 | PASS | 02a–02e |
+| H4 — "Due today" | S1 | PASS | 02d |
+| H5 — the open-window sentence; no "missing", "late" or promise | S1 | PASS | 02d |
+| H6 — Missing names account and window end, whole period covered, hand-match line; never "not found" / "not paid" (T21 row) | S1 | PASS | 02a |
+| H7a / H7b / H7c — presentation A; presentation B with no gap dates; unknown start is Not imported yet | S1 | PASS | 02b |
+| H8 — the two Can't tell rows identical, no account field, no "No account" | S1 | PASS | 02c |
+| H9 — paid date, amount, account; "Expected €120.00" on the different amount; Show transaction opens the existing pane; Escape closes it; Explore unchanged | S1 | PASS | 04 |
+| H10 — 1.0: only the older-snapshot sentence; Explore works; no refusal | S2 | PASS | 05a, 05b |
+| H11 — the empty sentence | S3 | PASS | 06 |
+| H12 — "Expected income is not shown here." | S1–S4 | PASS | 01, 05a, 06, 07 |
+| H13 — no Paid history anywhere | S1–S4 | PASS | — |
+| H14 — renderer clock three days ahead, after a reload and after a relaunch: every status and the date unchanged | S1 | PASS | 09a, 09b |
+| H15 — the question answered on the view (Gym membership: Missing; Phone plan: Not imported yet) | S1 | PASS | 02a, 02b |
+| H16 — attention only on Missing, Not imported yet, Can't tell; Pending and Arrived uncoloured, not green | S1 | PASS | 01, 02a–02e |
+| V1 / V2 / V3 — old unresolved, latest Arrived and next future only; no income, suggestion or dismissed; the moved date | S1 | PASS | 02a, 02d, 02e |
+| C1 — attention tone contrast on every Fixed costs surface, at rest and hovered | S1 | PASS | — |
+| K1 — no internal reading name or key rendered | S1 | PASS | — |
+
+C1, measured from the computed styles of the installed window: the tone
+`rgb(146, 85, 0)` (#925500) on the surface actually under it, `rgb(255, 255,
+255)` — the Fluent provider's white, not the body ground — for the summary
+names, the group headings and the row status names, each at rest and hovered
+(no Fixed costs element has a hover, pressed or selected surface): 5.96:1 on
+all 28 measurements. The conformance suite measures the same role on the white
+surface and on the body ground (5.56:1 at #f6f7f9), the lowest governing.
+
+A1 regression on the same installed candidate (the existing installed smoke):
+the five A1 states, T1 (250 000 transactions to the headline in 6.0 s), T2
+shared-prefix labels, the F1 boundary (211 rows drawn, 212 refused at 175 %)
+and Periods A and B at 100 % and 175 % — all pass.
 
 ## The acceptance snapshots (checklist R002 §2)
 
