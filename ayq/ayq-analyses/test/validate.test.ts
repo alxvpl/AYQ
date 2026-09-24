@@ -219,3 +219,21 @@ test('every intended valid fixture carries a category state on every transaction
     }
   }
 });
+
+test('contract 1.1: a missing expectation fact is a missing part; a contradicting one is an inconsistency', () => {
+  // The same shared validator, now at minor 1 (A2 P1). A 1.1 file without its
+  // basis date says "parts of it are missing"; one whose basis date is after
+  // its own production day says it is internally inconsistent.
+  const oneOne = (change: (snapshot: any) => void): any => {
+    const raw = mutate(s => {
+      s.meta.contractVersion = '1.1';
+      s.meta.expectationsAsOfDate = s.meta.generatedAt.slice(0, 10);
+      for (const occurrence of s.expectedOccurrences) occurrence.automaticMatchThroughDate = occurrence.expectedDate;
+    });
+    change(raw);
+    return raw;
+  };
+  assert.equal(validateSnapshot(oneOne(() => {})).meta.contractVersion, '1.1');
+  refusedAs(oneOne(s => { delete s.meta.expectationsAsOfDate; }), 'malformed', 'a 1.1 snapshot without its basis date');
+  refusedAs(oneOne(s => { s.meta.expectationsAsOfDate = '2099-01-01'; }), 'invariant', 'a basis date after the production day');
+});

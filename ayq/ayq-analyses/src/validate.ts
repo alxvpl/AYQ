@@ -56,6 +56,8 @@ const SHAPE_CODES = new Set([
   'too_long',
   'line_break',
   'not_masked',
+  // Contract 1.1: a fact the declared minor requires is absent.
+  'missing',
 ]);
 
 /**

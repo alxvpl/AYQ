@@ -116,9 +116,12 @@ test('no punctuation-bearing composition lives in a component (PC5)', () => {
   }
 });
 
-test('A1 carries no adjacent increment', () => {
+test('A1 and A2 Stage 1 carry no adjacent increment', () => {
+  // Fixed costs › Expected now is authorised by A2 P2 and lives in its own
+  // module (fixed-costs.ts); the A1 engine and the renderer still read no
+  // expectation, plan or forecast section, and no later increment exists.
   const names = readdirSync(SOURCE).concat(readdirSync(join(SOURCE, 'ui')));
-  for (const forbidden of ['statements.ts', 'forecast.ts', 'fixed-costs.ts', 'saved.ts']) {
+  for (const forbidden of ['statements.ts', 'forecast.ts', 'saved.ts', 'paid-history.ts']) {
     assert.ok(!names.includes(forbidden), `${forbidden} belongs to a later increment`);
   }
   for (const path of [join(SOURCE, 'engine.ts'), join(SOURCE, 'renderer.tsx')]) {
