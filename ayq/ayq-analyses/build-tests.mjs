@@ -1,5 +1,11 @@
 import { build } from 'esbuild';
 import { mkdir, readdir, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+
+// Electron 43 has no install script: its binary is fetched on first use. Do
+// that once here, before the test files run in parallel, so no two of them
+// race to fetch and extract it (a fresh CI checkout).
+createRequire(import.meta.url)('electron');
 
 await rm('dist-test', { recursive: true, force: true });
 await mkdir('dist-test', { recursive: true });
