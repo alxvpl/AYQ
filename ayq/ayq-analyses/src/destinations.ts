@@ -22,7 +22,7 @@ export const ANALYTICAL_DESTINATIONS: readonly AnalyticalDestination[] = [
   'savedAnalyses',
 ];
 
-const IMPLEMENTED: ReadonlySet<AnalyticalDestination> = new Set<AnalyticalDestination>(['explore']);
+const IMPLEMENTED: ReadonlySet<AnalyticalDestination> = new Set<AnalyticalDestination>(['explore', 'fixedCosts']);
 
 export const DESTINATION_LABEL: Record<Destination, StringKey> = {
   overview: 'rail.overview',

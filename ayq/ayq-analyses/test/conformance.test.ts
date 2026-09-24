@@ -57,6 +57,7 @@ const SETTINGS = 'ui/settings.tsx';
 const EVIDENCE = 'evidence.ts';
 const DESTINATIONS = 'destinations.ts';
 const LOAD_STATE = 'load-state.ts';
+const FIXED_COSTS = 'ui/fixed-costs.tsx';
 
 const NORMATIVE: Sentence[] = [
   // §3.1 — an unbuilt destination answers with exactly this.
@@ -282,6 +283,34 @@ const NORMATIVE: Sentence[] = [
     owner: LOAD_STATE,
     reachedThrough: RENDERER,
   },
+
+  // r006 §16 — Fixed costs › Expected now, every sentence word for word, each
+  // referenced by the view that draws it (A2 P2).
+  { section: '16.3', key: 'fixedCosts.title', text: "Fixed costs", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.3', key: 'fixedCosts.asOf', text: "As of {date}", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.3', key: 'fixedCosts.asOf.explainer', text: "Every status on this page is judged as of this date. It is the date AYQ used when it made this snapshot. It does not change when you open the app later. For newer statuses, export a new snapshot from AYQ.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.4', key: 'fixedCosts.summary', text: "Missing {missing} · Not imported yet {notImported} · Can't tell {cantTell} · Pending {pending} · Arrived {arrived}", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.1', key: 'fixedCosts.reading.missing', text: "Missing", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.1', key: 'fixedCosts.reading.notImported', text: "Not imported yet", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.1', key: 'fixedCosts.reading.cantTell', text: "Can't tell", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.1', key: 'fixedCosts.reading.pending', text: "Pending", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.1', key: 'fixedCosts.reading.arrived', text: "Arrived", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.arrived.line', text: "Paid {date} · {amount} · {account}", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.arrived.expected', text: "Expected {amount}", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.arrived.show', text: "Show transaction", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.pending.future', text: "Expected {date}", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.pending.today', text: "Due today", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.pending.openWindow', text: "No matched payment yet · automatic matching date window runs through {date}", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.missing.line', text: "No matched payment in {account}. The automatic matching date window ended {date}, and imported statements cover that whole period.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.missing.secondary', text: "A payment with a different amount, or one paid late or another way, is not matched automatically. You can match it by hand in AYQ.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.notImported.dataEnds', text: "{account} data runs to {lastStatementDate}. Import statements through {date} to know.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.notImported.gap', text: "{account} has data through {lastStatementDate}, but this payment's matching period is not fully covered by imported statements.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.notImported.gap.secondary', text: "Import the missing statements for this period to know.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.cantTell.line', text: "This snapshot does not say which account this payment is expected on.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.5', key: 'fixedCosts.cantTell.secondary', text: "In AYQ, check that the expected payment has an account and that the account is included in the export.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.8', key: 'fixedCosts.unavailable.olderSnapshot', text: "This snapshot was made by an older version of AYQ. It does not contain what Fixed costs needs. Export a new snapshot from AYQ.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.9', key: 'fixedCosts.empty', text: "This snapshot has no confirmed expected payments. Expected payments appear here after you confirm them in AYQ. Suggestions are not counted.", owner: FIXED_COSTS, reachedThrough: RENDERER },
+  { section: '16.10', key: 'fixedCosts.notShown.income', text: "Expected income is not shown here.", owner: FIXED_COSTS, reachedThrough: RENDERER },
 ];
 
 function formsOf(entry: unknown): Record<string, string> | string {
@@ -298,7 +327,8 @@ test('r003 — every normative sentence is in the catalogue character for charac
   }
   // The suite covers every sentence r003 §§3, 6, 7, 8.1, 9 and 11 enumerate:
   // a count, so a sentence dropped from this table is noticed.
-  assert.equal(NORMATIVE.length, 62);
+  // r006 §16 adds the 25 Fixed costs sentences to the 62 of §§3–11.
+  assert.equal(NORMATIVE.length, 87);
 });
 
 test('r003 — every normative sentence is referenced from the module that owns it, and that module reaches the screen', () => {
@@ -479,6 +509,18 @@ const RULES: Rule[] = [
       'outline button pressed': fluent.colorNeutralBackground1Pressed,
       'outline button selected': fluent.colorNeutralBackground1Selected,
     },
+    gate: 4.5,
+  },
+  // r006 §4 / §16.2 (C1): the attention tone on the names of Missing, Not
+  // imported yet and Can't tell — the summary line, the group headings and the
+  // row status names. All three sit on the body's own ground; the rows are
+  // plain list items with no hover, pressed or selected surface, and the tone
+  // is never inside a button (the as-of line, Show transaction and the row's
+  // coverage trigger carry no state colour).
+  {
+    element: 'attention text (Fixed costs summary names, group headings, row status names)',
+    foreground: STATE.attention,
+    surfaces: { 'summary line': SURFACE.ground, 'group heading': SURFACE.ground, 'row status name': SURFACE.ground },
     gate: 4.5,
   },
   // The error tone: the refused title on the ground, the refused line in

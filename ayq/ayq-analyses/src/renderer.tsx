@@ -1,8 +1,10 @@
 // AYQ Analyses — the renderer.
 //
-// The application opens on Explore, on the snapshot it holds (r003 §6.2). The
-// other five analytical destinations are present, navigable and answer "Not
-// in this version."; Settings is utility navigation at the rail footer. There
+// The application opens on Explore, on the snapshot it holds (r003 §6.2).
+// Fixed costs › Expected now reads the same snapshot (A2 Stage 1, DS r006
+// §16). The other four analytical destinations are present, navigable and
+// answer "Not in this version."; Settings is utility navigation at the rail
+// footer. There
 // is no Search, no Explore preset row, no archive selector, and Metric and
 // Dimension are static text rather than controls.
 //
@@ -53,6 +55,8 @@ import { applyCssVariables } from './ui/tokens.js';
 import { ContextBar } from './ui/context-bar.js';
 import { ResultView } from './ui/result.js';
 import { DetailPane, type DetailSelection } from './ui/detail.js';
+import { FixedCosts } from './ui/fixed-costs.js';
+import { transactionEvidence } from './fixed-costs.js';
 import { SettingsView, type SettingsSnapshot } from './ui/settings.js';
 import type { StringKey } from './strings.js';
 import type { AnalysisContext } from './types.js';
@@ -270,6 +274,9 @@ function App(): JSX.Element {
   const [analytical, setAnalytical] = useState<AnalyticalDestination>('explore');
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [selection, setSelection] = useState<DetailSelection | null>(null);
+  // Fixed costs keeps its own open transaction: opening one there changes
+  // nothing in Explore (checklist H9).
+  const [fixedSelection, setFixedSelection] = useState<{ transactionKey: string; title: string } | null>(null);
 
   const select = (next: Destination): void => {
     setDestination(next);
@@ -287,6 +294,7 @@ function App(): JSX.Element {
       setContext(transition.load.kind === 'loaded' ? defaultContext(transition.load.snapshot) : null);
       setSort(DEFAULT_SORT);
       setSelection(null);
+      setFixedSelection(null);
     }
   };
 
@@ -317,13 +325,16 @@ function App(): JSX.Element {
   const snapshot = load.kind === 'loaded' ? load.snapshot : null;
 
   useEffect(() => {
-    if (selection === null) return;
+    if (selection === null && fixedSelection === null) return;
     const close = (event: globalThis.KeyboardEvent): void => {
-      if (event.key === 'Escape' && !event.defaultPrevented) setSelection(null);
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        setSelection(null);
+        setFixedSelection(null);
+      }
     };
     window.addEventListener('keydown', close);
     return () => window.removeEventListener('keydown', close);
-  }, [selection]);
+  }, [selection, fixedSelection]);
 
   const result = useMemo(
     () => (snapshot !== null && context !== null ? analyse(snapshot, context) : null),
@@ -351,12 +362,29 @@ function App(): JSX.Element {
     body = (
       <SettingsView active={settingsSnapshot} onLoad={() => void openSnapshot()} onRemove={() => void removeSnapshot()} />
     );
-  } else if (destination !== 'explore') {
+  } else if (!isImplemented(destination)) {
     body = <NotInThisVersion destination={destination} />;
   } else if (load.kind === 'none') {
     body = <NoData onLoad={() => void openSnapshot()} />;
   } else if (load.kind === 'candidateRefused' || load.kind === 'activeRefused') {
     body = <InvalidSnapshot reason={load.reason} onLoad={() => void openSnapshot()} />;
+  } else if (destination === 'fixedCosts') {
+    const evidence = fixedSelection !== null ? transactionEvidence(load.snapshot, fixedSelection.transactionKey) : null;
+    body = (
+      <div className="explore-body">
+        <FixedCosts
+          snapshot={load.snapshot}
+          onShowTransaction={shown => setFixedSelection({ transactionKey: shown.transactionKey, title: shown.recordName })}
+        />
+        {fixedSelection !== null && evidence !== null && (
+          <DetailPane
+            result={evidence.result}
+            selection={{ kind: 'transaction', title: fixedSelection.title, contribution: evidence.contribution }}
+            onClose={() => setFixedSelection(null)}
+          />
+        )}
+      </div>
+    );
   } else {
     body = (
       <div className="explore">

@@ -164,5 +164,30 @@
   "exclusion.notIdentified.countOnly": {
     "one": "Counterparty not identified: {n} transaction",
     "other": "Counterparty not identified: {n} transactions"
-  }
+  },
+  "fixedCosts.title": "Fixed costs",
+  "fixedCosts.asOf": "As of {date}",
+  "fixedCosts.asOf.explainer": "Every status on this page is judged as of this date. It is the date AYQ used when it made this snapshot. It does not change when you open the app later. For newer statuses, export a new snapshot from AYQ.",
+  "fixedCosts.summary": "Missing {missing} · Not imported yet {notImported} · Can't tell {cantTell} · Pending {pending} · Arrived {arrived}",
+  "fixedCosts.reading.missing": "Missing",
+  "fixedCosts.reading.notImported": "Not imported yet",
+  "fixedCosts.reading.cantTell": "Can't tell",
+  "fixedCosts.reading.pending": "Pending",
+  "fixedCosts.reading.arrived": "Arrived",
+  "fixedCosts.arrived.line": "Paid {date} · {amount} · {account}",
+  "fixedCosts.arrived.expected": "Expected {amount}",
+  "fixedCosts.arrived.show": "Show transaction",
+  "fixedCosts.pending.future": "Expected {date}",
+  "fixedCosts.pending.today": "Due today",
+  "fixedCosts.pending.openWindow": "No matched payment yet · automatic matching date window runs through {date}",
+  "fixedCosts.missing.line": "No matched payment in {account}. The automatic matching date window ended {date}, and imported statements cover that whole period.",
+  "fixedCosts.missing.secondary": "A payment with a different amount, or one paid late or another way, is not matched automatically. You can match it by hand in AYQ.",
+  "fixedCosts.notImported.dataEnds": "{account} data runs to {lastStatementDate}. Import statements through {date} to know.",
+  "fixedCosts.notImported.gap": "{account} has data through {lastStatementDate}, but this payment's matching period is not fully covered by imported statements.",
+  "fixedCosts.notImported.gap.secondary": "Import the missing statements for this period to know.",
+  "fixedCosts.cantTell.line": "This snapshot does not say which account this payment is expected on.",
+  "fixedCosts.cantTell.secondary": "In AYQ, check that the expected payment has an account and that the account is included in the export.",
+  "fixedCosts.unavailable.olderSnapshot": "This snapshot was made by an older version of AYQ. It does not contain what Fixed costs needs. Export a new snapshot from AYQ.",
+  "fixedCosts.empty": "This snapshot has no confirmed expected payments. Expected payments appear here after you confirm them in AYQ. Suggestions are not counted.",
+  "fixedCosts.notShown.income": "Expected income is not shown here."
 }

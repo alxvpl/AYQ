@@ -18,6 +18,9 @@ await Promise.all(
       external: ['node:*', 'esbuild', 'electron'],
       loader: { '.json': 'json' },
       sourcemap: false,
+      // react-dom/server (the Fixed costs markup tests) is CommonJS and
+      // requires Node built-ins; an ESM bundle needs a real require for that.
+      banner: { js: "import { createRequire as __ayqCreateRequire } from 'node:module'; const require = __ayqCreateRequire(import.meta.url);" },
     }),
   ),
 );

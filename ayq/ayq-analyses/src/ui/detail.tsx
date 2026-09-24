@@ -48,7 +48,13 @@ export const EXCLUSION_COUNT_ONLY_KEYS: Record<ExclusionClass, StringKey> = {
 
 export type DetailSelection =
   | { kind: 'counterparty'; counterpartyKey: string }
-  | { kind: 'exclusion'; exclusion: ExclusionClass };
+  | { kind: 'exclusion'; exclusion: ExclusionClass }
+  /**
+   * One transaction, opened from Fixed costs by Show transaction (DS r006
+   * §16.5, §16.11): the same pane and the same evidence row, headed by the
+   * expected payment it was matched to.
+   */
+  | { kind: 'transaction'; title: string; contribution: Contribution };
 
 interface DetailPaneProps {
   result: AnalysisResult;
@@ -90,6 +96,29 @@ function ContributionRow({ contribution, result }: { contribution: Contribution;
 export function DetailPane({ result, selection, onClose }: DetailPaneProps): JSX.Element | null {
   const t = useText();
   const locale = useLocale();
+
+  if (selection.kind === 'transaction') {
+    return (
+      <aside className="detail-pane">
+        <header>
+          <h2>{selection.title}</h2>
+          <Button appearance="subtle" onClick={onClose}>
+            {t('detail.close')}
+          </Button>
+        </header>
+        <div className="detail-columns">
+          <span>{t('detail.column.date')}</span>
+          <span>{t('detail.column.amount')}</span>
+          <span>{t('detail.column.account')}</span>
+          <span>{t('detail.column.category')}</span>
+          <span>{t('detail.column.class')}</span>
+        </div>
+        <ul className="detail-list">
+          <ContributionRow contribution={selection.contribution} result={result} />
+        </ul>
+      </aside>
+    );
+  }
 
   if (selection.kind === 'counterparty') {
     const row = result.rows.find(x => x.counterpartyKey === selection.counterpartyKey);

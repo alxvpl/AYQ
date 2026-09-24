@@ -13,7 +13,18 @@
 // comparison below is between two dates the snapshot supplies.
 
 import { parseContractVersion } from '../../ayq-analytical-contract/src/index.ts';
-import type { AyqAnalyticalSnapshot, ExpectationRecord, ExpectedOccurrence, IsoDate, Money, Transaction } from './types.js';
+import { allCategoryKeys } from './context.js';
+import { analyse, subjectOf } from './engine.js';
+import type {
+  AnalysisResult,
+  AyqAnalyticalSnapshot,
+  Contribution,
+  ExpectationRecord,
+  ExpectedOccurrence,
+  IsoDate,
+  Money,
+  Transaction,
+} from './types.js';
 
 /** The five readings, in the one order the summary and the groups use (DS r006 §16.1). Never rendered. */
 export type Reading = 'missing' | 'notImported' | 'cantTell' | 'pending' | 'arrived';
@@ -215,4 +226,52 @@ export function fixedCostsView(snapshot: AyqAnalyticalSnapshot): FixedCostsView 
     if (members.length > 0) groups.push({ reading, rows: members });
   }
   return { kind: 'ready', asOf, counts, groups };
+}
+
+/**
+ * The matched transaction as the existing A1 evidence view presents it (DS
+ * r006 §16.5, §16.11: Show transaction opens the §8 detail pane unchanged).
+ *
+ * The A1 engine is asked, unchanged, for that one transaction's own day and
+ * account, so the row carries exactly what Explore would show for it —
+ * provenance, class, evidence text, reversal evidence. A matched transaction
+ * that contributes no money-out to A1 (an internal transfer, a credit) is not
+ * in that population; it is then shown with its own amount's magnitude and
+ * no reversal evidence, the same magnitude the Arrived line prints.
+ */
+export function transactionEvidence(
+  snapshot: AyqAnalyticalSnapshot,
+  transactionKey: string,
+): { result: AnalysisResult; contribution: Contribution } | null {
+  const transaction = snapshot.transactions.find(candidate => candidate.transactionKey === transactionKey);
+  if (transaction === undefined) return null;
+  const result = analyse(snapshot, {
+    fromDate: transaction.bookingDate,
+    toDate: transaction.bookingDate,
+    comparison: 'none',
+    accountKeys: [transaction.accountKey],
+    categoryKeys: allCategoryKeys(snapshot),
+  });
+  const contributed = result.contributions.find(contribution => contribution.transactionKey === transactionKey);
+  if (contributed !== undefined) return { result, contribution: contributed };
+  const categoryId = transaction.category.state === 'categorised' ? transaction.category.categoryId : null;
+  return {
+    result,
+    contribution: {
+      transactionKey,
+      amountMinor: paidMagnitude(transaction),
+      currency: transaction.amount.currency,
+      subject: subjectOf(transaction),
+      transaction,
+      accountName: snapshot.accounts.find(account => account.accountKey === transaction.accountKey)?.name ?? transaction.accountKey,
+      categoryName: categoryId === null ? null : snapshot.categories.find(category => category.categoryId === categoryId)?.name ?? null,
+      original: null,
+    },
+  };
+}
+
+/** The amount a payment moved, as a magnitude, exactly. */
+export function paidMagnitude(transaction: Transaction): bigint {
+  const amount = BigInt(transaction.amount.amount);
+  return amount < 0n ? -amount : amount;
 }

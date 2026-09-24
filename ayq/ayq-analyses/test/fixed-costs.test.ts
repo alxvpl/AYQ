@@ -15,63 +15,10 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { baselineJson, baselineV11Json } from '../../ayq-analytical-contract/fixtures/synthetic.ts';
+import { AS_OF, build, type OccurrenceSpec, type RecordSpec } from './a2-builder.js';
 import { classify, fixedCostsView, hasExpectationFacts, READING_ORDER, type FixedCostRow } from '../src/fixed-costs.js';
 import { validateSnapshot } from '../src/validate.js';
 import type { AyqAnalyticalSnapshot } from '../src/types.js';
-
-const AS_OF = '2026-03-05';
-
-type RecordSpec = {
-  key: string;
-  name?: string;
-  kind?: 'expense' | 'income';
-  state?: 'confirmed' | 'suggested';
-  account?: string;
-  amount?: number;
-  counterpartyKey?: string;
-};
-
-type OccurrenceSpec = {
-  key: string;
-  record: string;
-  expected: string;
-  through: string;
-  covered?: boolean;
-  amount?: number;
-  dismissed?: boolean;
-  matchedTo?: string;
-};
-
-/** A valid 1.1 snapshot with exactly these records and occurrences. */
-function build(records: RecordSpec[], occurrences: OccurrenceSpec[], asOf = AS_OF): AyqAnalyticalSnapshot {
-  const raw = baselineV11Json() as Record<string, any>;
-  raw.meta.expectationsAsOfDate = asOf;
-  const withAccount = new Set(records.filter(r => r.account !== undefined).map(r => r.key));
-  raw.expectationRecords = records.map(r => ({
-    recordKey: r.key,
-    kind: r.kind ?? 'expense',
-    name: r.name ?? r.key,
-    ...(r.counterpartyKey !== undefined ? { counterpartyKey: r.counterpartyKey } : {}),
-    category: { state: 'uncategorised' },
-    amount: { amount: r.amount ?? 5000, currency: 'EUR' },
-    schedule: { type: 'recurring', frequency: 'monthly', interval: 1, anchorDate: '2025-01-10' },
-    state: r.state ?? 'confirmed',
-    stateSince: '2025-01-01',
-    ...(r.account !== undefined ? { expectedAccountKey: r.account } : {}),
-  }));
-  raw.expectedOccurrences = occurrences.map(o => ({
-    occurrenceKey: o.key,
-    recordKey: o.record,
-    expectedDate: o.expected,
-    amount: { amount: o.amount ?? records.find(r => r.key === o.record)?.amount ?? 5000, currency: 'EUR' },
-    state: o.matchedTo !== undefined ? 'matched' : o.dismissed ? 'dismissed' : o.expected < asOf ? 'overdue' : 'expected',
-    ...(o.matchedTo !== undefined ? { match: { transactionKey: o.matchedTo, source: 'automatic', matchedOn: asOf } } : {}),
-    automaticMatchThroughDate: o.through,
-    ...(withAccount.has(o.record) ? { automaticMatchWindowCovered: o.covered ?? false } : {}),
-  }));
-  raw.meta.counts.expectedOccurrences = occurrences.length;
-  return validateSnapshot(raw);
-}
 
 /** The one row of a single-occurrence snapshot. */
 function only(records: RecordSpec[], occurrence: Omit<OccurrenceSpec, 'record' | 'key'> & Partial<OccurrenceSpec>): FixedCostRow {

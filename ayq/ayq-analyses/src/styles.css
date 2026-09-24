@@ -498,3 +498,99 @@ table.rows tbody tr.selected {
 .detail-row-evidence .label {
   font-weight: 600;
 }
+
+/* Fixed costs › Expected now (DS r006 §16). One plain surface, the body's
+   own ground. The attention tone is carried only by .attention-text, on the
+   names of Missing, Not imported yet and Can't tell (§16.2); the conformance
+   suite measures it on the surfaces below. */
+.fixed-costs {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 16px 0 24px;
+}
+
+.fixed-costs h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+}
+
+.fc-as-of {
+  padding: 0;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.fc-explainer {
+  max-width: 420px;
+}
+
+.fc-explainer p {
+  margin: 0;
+}
+
+.fc-summary {
+  font-size: 16px;
+  margin: 12px 0 16px;
+}
+
+.fc-state {
+  margin: 12px 0;
+}
+
+.fc-group h2 {
+  font-size: 16px;
+  margin: 16px 0 4px;
+}
+
+.fc-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fc-row {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0;
+}
+
+.fc-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 8em 8em minmax(0, 2fr);
+  gap: var(--gap);
+  overflow-wrap: break-word;
+}
+
+.fc-amount {
+  text-align: right;
+}
+
+.fc-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.fc-reading {
+  font-weight: 600;
+}
+
+.attention-text {
+  color: var(--attention);
+}
+
+.fc-secondary {
+  margin: 2px 0 0;
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.fc-actions {
+  display: flex;
+  gap: var(--gap);
+  margin-top: 4px;
+}
+
+.fc-not-shown {
+  margin-top: 16px;
+}
