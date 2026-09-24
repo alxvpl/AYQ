@@ -5,6 +5,9 @@
 // one canonical release-metadata source. Nothing here writes a version or a
 // build by hand. After electron-builder has run, the result is checked
 // before anyone may call it a candidate:
+// - it is built into a folder of its own, release/<name>/, that must not
+//   exist yet: one exact build per build number, and older installers are
+//   left where they are;
 // - exactly one installer, named exactly <product>-<semver>-bNNN.exe;
 // - the node_modules packed into app.asar are exactly the set whose notices
 //   dist/notices.json carries (notices.mjs);
@@ -13,7 +16,7 @@
 
 import { Arch, Platform, build } from 'electron-builder';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import manifest from './package.json' with { type: 'json' };
@@ -23,8 +26,14 @@ const require = createRequire(import.meta.url);
 const asar = require('@electron/asar');
 const release = releaseIdentity(manifest);
 
+// A build number is used once (06 §3, one exact build): a second run of the
+// same number would be different bytes under the same name, so it is refused.
+const out = join(process.cwd(), manifest.build.directories.output, release.fileName.replace(/\.exe$/, ''));
+if (existsSync(out)) throw new Error(`${out} exists: ${release.identification} was already packaged; advance ayq.build`);
+
 const config = {
   ...manifest.build,
+  directories: { ...manifest.build.directories, output: out },
   // The one exact release file name (06 §3.5), from the manifest.
   artifactName: release.fileName,
   // The executable's FileVersion: the SemVer with the build as its fourth part.
@@ -34,7 +43,6 @@ const config = {
 
 await build({ targets: Platform.WINDOWS.createTarget(['nsis'], Arch.x64), config, publish: 'never' });
 
-const out = join(process.cwd(), manifest.build.directories.output);
 const installers = readdirSync(out).filter(name => name.endsWith('.exe') && !name.includes('__uninstaller'));
 if (installers.length !== 1 || installers[0] !== release.fileName) {
   throw new Error(`expected exactly ${release.fileName} in ${out}, found ${installers.join(', ') || 'nothing'}`);

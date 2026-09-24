@@ -68,6 +68,9 @@ test('no second source: no version, build or release name is written by hand any
   assert.match(packaging, /artifactName: release\.fileName/);
   assert.match(packaging, /buildVersion: release\.fileVersion/);
   assert.match(packaging, /uninstallDisplayName: release\.identification/);
+  // Its own new folder per build: never a second build under the same number.
+  assert.match(packaging, /output, release\.fileName\.replace\(/);
+  assert.match(packaging, /if \(existsSync\(out\)\) throw new Error/);
 
   const sources: string[] = [];
   const walk = (dir: string): void => {
