@@ -1,12 +1,19 @@
 // The analytical snapshot AYQ produces for AYQ Analyses (03 §13).
 //
 // One read-only export of what AYQ already holds as canonical truth, in the
-// executable contract 1.0 shape, validated by the same validator the consumer
+// executable contract 1.1 shape, validated by the same validator the consumer
 // runs before a byte is written, and written atomically to the local file the
 // owner chose (03 §13.10). Nothing is decided here: every counterparty,
 // category, transfer, reversal, coverage, reconciliation, plan and forecast
 // fact crosses exactly as AYQ resolved it, and what AYQ does not know crosses
 // as absence, never as zero or as a guess (03 §13.5, §8.7).
+//
+// Contract 1.1 adds the expectation facts AYQ Analyses needs to tell a
+// missing payment from a period not yet imported (A2 specification r001 §5):
+// the day the expectations were judged on, the record's own account, and each
+// occurrence's automatic matching window — its end, and whether AYQ's proven
+// coverage spans it. The window comes from the matcher's own helper; nothing
+// here knows its width.
 //
 // Data minimisation (03 §13.8): no IBAN, mandate, end-to-end id, servicer
 // reference, BIC, bank transaction code, raw bank description, Actual id or
@@ -35,13 +42,14 @@ import type {
   TransactionCounterparty,
 } from '../../ayq-analytical-contract/src/index.ts';
 import { validateAnalyticalSnapshot } from '../../ayq-analytical-contract/src/index.ts';
-import type { AyqAbout, AyqPlannedRecord, AyqSnapshotExport } from '../../ayq-client/src/ayq-ipc-contract.ts';
+import type { AyqAbout, AyqPlan, AyqPlannedRecord, AyqSnapshotExport } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
 import { ayqAccountedFor, ayqActiveAnchor } from './ayq-anchors.ts';
-import { ayqBankDataThrough, ayqClosingEvidence, ayqProvenIntervals } from './ayq-evidence.ts';
+import { ayqBankDataThrough, ayqClosingEvidence, ayqCovers, ayqProvenIntervals, type AyqInterval } from './ayq-evidence.ts';
 import { ayqCountsTowardFunds, ayqIsInternalTransfer, ayqOwnAccountNames } from './ayq-funds.ts';
 import { ayqAccounts } from './ayq-ledger.ts';
+import { ayqAutomaticMatchWindow } from './ayq-match.ts';
 import { ayqDisplayName } from './ayq-names.ts';
 import { ayqForecast, ayqPlan } from './ayq-plan.ts';
 import { ayqReadStore, ayqRowKey, ayqStandingDecision, type AyqStore } from './ayq-store.ts';
@@ -49,7 +57,7 @@ import { ayqReadStore, ayqRowKey, ayqStandingDecision, type AyqStore } from './a
 /** AYQ keeps one currency: the euro of the statements it imports. */
 const CURRENCY = 'EUR';
 
-const CONTRACT_VERSION = '1.0';
+const CONTRACT_VERSION = '1.1';
 
 /** The resolver's payment kinds (ayq-camt), as the contract's classes. */
 const CLASS_OF_KIND: Record<string, TransactionClass> = {
@@ -198,6 +206,121 @@ function sourceOf(decision: { source: 'manual' | 'rule' | 'auto' } | null): Cate
   // person. Every category AYQ itself sets records its decision.
   if (decision === null) return 'manual';
   return decision.source === 'rule' ? 'learned_rule' : decision.source === 'auto' ? 'automatic' : 'manual';
+}
+
+/** What the expectation section is assembled from: all of it resolved already. */
+export type AyqSnapshotExpectationInput = {
+  /** The plan exactly as `ayqPlan` built it for `today`. */
+  plan: Pick<AyqPlan, 'records' | 'occurrences'>;
+  /** Read for AYQ's proven coverage intervals, and for nothing else. */
+  store: AyqStore;
+  today: string;
+  /** AYQ account id → accountKey, for the accounts in `accounts[]` and no other. */
+  includedAccountKeys: ReadonlyMap<string, string>;
+  /** The counterparties that crossed. */
+  counterpartyKeys: ReadonlySet<string>;
+  categoryIdByName: ReadonlyMap<string, string>;
+  /** Actual's transaction id → transactionKey, for the transactions that crossed. */
+  transactionKeyById: ReadonlyMap<string, string>;
+};
+
+/**
+ * The expectation records and their occurrences, as contract 1.1 states them.
+ *
+ * Every occurrence the plan holds crosses, from the day its record was decided
+ * (03 §7.14) to the twelve-month horizon, with no age cut-off: the plan window
+ * is exactly that range, and nothing here narrows it but the history before
+ * the decision (A2 specification r001 §6).
+ *
+ * The 1.1 facts are AYQ's own and nothing is inferred:
+ * - the expected account is the record's own `accountId`, and only when that
+ *   account is in the snapshot; a record without one gets none, whatever its
+ *   counterparty, amount or history;
+ * - the automatic matching window is the matcher's, centred on the effective
+ *   date the matcher uses — the moved date of a rescheduled occurrence, which
+ *   is also the expectedDate that crosses;
+ * - whether coverage spans the window is answered from AYQ's proven intervals
+ *   for that account, never from its last statement date: a one-day gap, time
+ *   after the last statement, or evidence whose start is unknown all leave the
+ *   window unproven.
+ */
+export function ayqSnapshotExpectations(input: AyqSnapshotExpectationInput): {
+  expectationRecords: ExpectationRecord[];
+  expectedOccurrences: ExpectedOccurrence[];
+} {
+  const { plan, store, today, includedAccountKeys, counterpartyKeys, categoryIdByName, transactionKeyById } = input;
+  const accountIdByKey = new Map([...includedAccountKeys].map(([accountId, accountKey]) => [accountKey, accountId]));
+
+  const expectationRecords: ExpectationRecord[] = [];
+  const recordStateSince = new Map<string, string>();
+  const recordAccountKey = new Map<string, string>();
+  for (const record of plan.records) {
+    if (record.state !== 'confirmed' && record.state !== 'suggested') continue;
+    const stateSince = (record.state === 'confirmed' ? record.confirmedAt : record.suggestedAt) ?? record.createdAt.slice(0, 10);
+    const categoryId = record.categoryName !== null ? categoryIdByName.get(record.categoryName) : undefined;
+    const counterpartyKey = record.counterpartyKey !== null && counterpartyKeys.has(record.counterpartyKey) ? record.counterpartyKey : undefined;
+    const expectedAccountKey = record.accountId !== null ? includedAccountKeys.get(record.accountId) : undefined;
+    recordStateSince.set(record.id, stateSince);
+    if (expectedAccountKey !== undefined) recordAccountKey.set(record.id, expectedAccountKey);
+    expectationRecords.push({
+      recordKey: `rec-${record.id}`,
+      kind: record.kind,
+      name: record.name,
+      ...(counterpartyKey !== undefined ? { counterpartyKey } : {}),
+      category: categoryId !== undefined ? { state: 'categorised', categoryId } : { state: 'uncategorised' },
+      amount: money(Math.abs(record.amountCents)),
+      schedule: scheduleOf(record),
+      state: record.state,
+      stateSince,
+      ...(expectedAccountKey !== undefined ? { expectedAccountKey } : {}),
+    });
+  }
+
+  // Each expected account's proven intervals, read once rather than per occurrence.
+  const provenByAccount = new Map<string, AyqInterval[]>();
+  const expectedOccurrences: ExpectedOccurrence[] = [];
+  for (const occurrence of plan.occurrences) {
+    const stateSince = recordStateSince.get(occurrence.recordId);
+    if (stateSince === undefined) continue;
+    // An occurrence dated before the day its record was decided is history,
+    // not an expectation (03 §7.14); it does not cross.
+    if (occurrence.effectiveDate < stateSince) continue;
+    let state: ExpectedOccurrence['state'];
+    let match: ExpectedOccurrence['match'];
+    if (occurrence.state === 'matched' && occurrence.matchedTransactionId !== null) {
+      const transactionKey = transactionKeyById.get(occurrence.matchedTransactionId);
+      if (transactionKey === undefined) continue;
+      state = 'matched';
+      match = { transactionKey, source: occurrence.matchProvenance ?? 'automatic', matchedOn: today };
+    } else if (occurrence.state === 'dismissed') state = 'dismissed';
+    else if (occurrence.state === 'overdue' && occurrence.effectiveDate < today) state = 'overdue';
+    else state = 'expected';
+
+    const window = ayqAutomaticMatchWindow(occurrence.effectiveDate);
+    let automaticMatchWindowCovered: boolean | undefined;
+    const expectedAccountKey = recordAccountKey.get(occurrence.recordId);
+    const accountId = expectedAccountKey !== undefined ? accountIdByKey.get(expectedAccountKey) : undefined;
+    if (accountId !== undefined) {
+      let proven = provenByAccount.get(accountId);
+      if (proven === undefined) {
+        proven = ayqProvenIntervals(store, accountId);
+        provenByAccount.set(accountId, proven);
+      }
+      automaticMatchWindowCovered = ayqCovers(proven, window.from, window.through);
+    }
+
+    expectedOccurrences.push({
+      occurrenceKey: `occ-${occurrence.recordId}-${occurrence.dueDate}`,
+      recordKey: `rec-${occurrence.recordId}`,
+      expectedDate: occurrence.effectiveDate,
+      amount: money(Math.abs(occurrence.amountCents)),
+      state,
+      ...(match !== undefined ? { match } : {}),
+      automaticMatchThroughDate: window.through,
+      ...(automaticMatchWindowCovered !== undefined ? { automaticMatchWindowCovered } : {}),
+    });
+  }
+  return { expectationRecords, expectedOccurrences };
 }
 
 async function allRows(): Promise<QueriedRow[]> {
@@ -423,52 +546,15 @@ export async function ayqBuildAnalyticalSnapshot(
 
   // ---- expectations ---------------------------------------------------------
   const plan = ayqPlan(dataDir, today);
-  const expectationRecords: ExpectationRecord[] = [];
-  const recordStateSince = new Map<string, string>();
-  for (const record of plan.records) {
-    if (record.state !== 'confirmed' && record.state !== 'suggested') continue;
-    const stateSince = (record.state === 'confirmed' ? record.confirmedAt : record.suggestedAt) ?? record.createdAt.slice(0, 10);
-    const categoryId = record.categoryName !== null ? categoryIdByName.get(record.categoryName) : undefined;
-    const counterpartyKey = record.counterpartyKey !== null && counterpartyNames.has(record.counterpartyKey) ? record.counterpartyKey : undefined;
-    recordStateSince.set(record.id, stateSince);
-    expectationRecords.push({
-      recordKey: `rec-${record.id}`,
-      kind: record.kind,
-      name: record.name,
-      ...(counterpartyKey !== undefined ? { counterpartyKey } : {}),
-      category: categoryId !== undefined ? { state: 'categorised', categoryId } : { state: 'uncategorised' },
-      amount: money(Math.abs(record.amountCents)),
-      schedule: scheduleOf(record),
-      state: record.state,
-      stateSince,
-    });
-  }
-  const expectedOccurrences: ExpectedOccurrence[] = [];
-  for (const occurrence of plan.occurrences) {
-    const stateSince = recordStateSince.get(occurrence.recordId);
-    if (stateSince === undefined) continue;
-    // An occurrence dated before the day its record was decided is history,
-    // not an expectation (03 §7.14); it does not cross.
-    if (occurrence.effectiveDate < stateSince) continue;
-    let state: ExpectedOccurrence['state'];
-    let match: ExpectedOccurrence['match'];
-    if (occurrence.state === 'matched' && occurrence.matchedTransactionId !== null) {
-      const transactionKey = keyByActualId.get(occurrence.matchedTransactionId);
-      if (transactionKey === undefined) continue;
-      state = 'matched';
-      match = { transactionKey, source: occurrence.matchProvenance ?? 'automatic', matchedOn: today };
-    } else if (occurrence.state === 'dismissed') state = 'dismissed';
-    else if (occurrence.state === 'overdue' && occurrence.effectiveDate < today) state = 'overdue';
-    else state = 'expected';
-    expectedOccurrences.push({
-      occurrenceKey: `occ-${occurrence.recordId}-${occurrence.dueDate}`,
-      recordKey: `rec-${occurrence.recordId}`,
-      expectedDate: occurrence.effectiveDate,
-      amount: money(Math.abs(occurrence.amountCents)),
-      state,
-      ...(match !== undefined ? { match } : {}),
-    });
-  }
+  const { expectationRecords, expectedOccurrences } = ayqSnapshotExpectations({
+    plan,
+    store,
+    today,
+    includedAccountKeys: new Map(summaries.filter(one => includedAccountIds.has(one.id)).map(one => [one.id, accountKeyOf(one.id)])),
+    counterpartyKeys: new Set(counterpartyNames.keys()),
+    categoryIdByName,
+    transactionKeyById: keyByActualId,
+  });
 
   // ---- forecast ------------------------------------------------------------
   const forecastView = await ayqForecast(dataDir, today);
@@ -512,6 +598,9 @@ export async function ayqBuildAnalyticalSnapshot(
       contractVersion: CONTRACT_VERSION,
       snapshotId: `snap-${createHash('sha256').update(`${budgetId}|${generatedAt}`).digest('hex').slice(0, 24)}`,
       generatedAt,
+      // The very `today` the plan above was built with; generatedAt stays the
+      // production instant beside it (A2 specification r001 §5.2).
+      expectationsAsOfDate: today,
       budgetKey: `budget-${createHash('sha256').update(budgetId, 'utf8').digest('hex').slice(0, 16)}`,
       producer: {
         productVersion: about.productVersion,

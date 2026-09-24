@@ -1017,7 +1017,7 @@ export type AyqPickedFile = { paths: string[] };
 /* ------------------------------------------------------- analytical snapshot
 
    The one file AYQ writes for AYQ Analyses (03 §13): an explicit local export
-   of what the budget already holds, in the executable contract 1.0 shape, to a
+   of what the budget already holds, in the executable contract 1.1 shape, to a
    file the owner chooses. Local only; nothing is uploaded anywhere.         */
 
 /** Where the owner chose to write the snapshot; null when the dialog was dismissed. */

@@ -7,22 +7,25 @@
 // or figure enters this repository, CI or any artifact.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
   CONTRACT_MAJOR,
+  CONTRACT_MINOR,
   ContractValidationError,
   FORBIDDEN_KEYS,
   validateAnalyticalSnapshot,
   type AnalyticalSnapshotV1,
 } from '../../ayq-analytical-contract/src/index.ts';
-import type { AyqSnapshotExport } from '../../ayq-client/src/ayq-ipc-contract.ts';
-import { ayqProvenIntervals } from '../src/ayq-evidence.ts';
-import { ayqSnapshotEvidence } from '../src/ayq-snapshot.ts';
-import { ayqReadStore } from '../src/ayq-store.ts';
+import type { AyqPlannedRecord, AyqSnapshotExport } from '../../ayq-client/src/ayq-ipc-contract.ts';
+import { ayqCovers, ayqProvenIntervals } from '../src/ayq-evidence.ts';
+import { ayqAutomaticMatchWindow, ayqProposeMatches } from '../src/ayq-match.ts';
+import { ayqOccurrenceDates, ayqOccurrencesBetween, ayqPlanWindow } from '../src/ayq-plan-series.ts';
+import { ayqSnapshotEvidence, ayqSnapshotExpectations } from '../src/ayq-snapshot.ts';
+import { ayqMigrate, ayqReadStore, type AyqCoverageEvidence, type AyqPlanOccurrenceRecord } from '../src/ayq-store.ts';
 import { ask, budget, fixture, ownAccountFixture, send } from './ayq-engine-harness.ts';
 
 const TODAY = '2026-09-15';
@@ -45,7 +48,8 @@ test('the export writes one file that the contract validator accepts, and answer
 
   const { summary, snapshot, text } = await exported(dataDir);
 
-  assert.equal(snapshot.meta.contractVersion, `${CONTRACT_MAJOR}.0`);
+  assert.equal(snapshot.meta.contractVersion, `${CONTRACT_MAJOR}.${CONTRACT_MINOR}`);
+  assert.equal(snapshot.meta.contractVersion, '1.1');
   assert.equal(summary.accounts, snapshot.accounts.length);
   assert.equal(summary.transactions, snapshot.transactions.length);
   assert.equal(summary.counterparties, snapshot.counterparties.length);
@@ -338,4 +342,331 @@ test('success is claimed only for a file that is there at the size written; the 
   assert.ok(!answer.ok && answer.detail.length > 0, 'the failure says why');
   assert.deepEqual(await readdir(blocked), ['snapshot.json'], 'no temporary file beside the target');
   assert.ok(statSync(asDirectory).isDirectory(), 'the obstacle is untouched');
+});
+
+// ---- contract 1.1: the expectation facts (A2 P1 R002 §5–§8, §11–§12) --------
+//
+// The expectation section is assembled by one function from the plan, the
+// store and the accounts that crossed, so the cases below are invented data run
+// through the very code the export runs. The plan is built the way ayqPlan
+// builds it — ayqPlanWindow, then ayqOccurrencesBetween — never written out by
+// hand. The last test then asks the real engine for a real export.
+
+const AS_OF = '2026-09-15';
+
+function planned(over: Partial<AyqPlannedRecord> & { id: string }): AyqPlannedRecord {
+  return {
+    name: 'Invented payment',
+    kind: 'expense',
+    amountCents: 5_000,
+    categoryName: null,
+    counterpartyKey: null,
+    accountId: 'acct-a',
+    startDate: '2026-01-10',
+    recurrence: { frequency: 'monthly', interval: 1 },
+    endDate: null,
+    state: 'confirmed',
+    provenance: 'manual',
+    mandateId: null,
+    confirmedAt: '2026-01-05',
+    suggestedAt: '2026-01-05',
+    createdAt: '2026-01-05T09:00:00.000Z',
+    updatedAt: '2026-01-05T09:00:00.000Z',
+    ...over,
+  };
+}
+
+function decided(recordId: string, dueDate: string, over: Partial<AyqPlanOccurrenceRecord>): AyqPlanOccurrenceRecord {
+  return {
+    recordId,
+    dueDate,
+    rescheduledTo: null,
+    matchedTransactionId: null,
+    matchedAt: null,
+    matchProvenance: null,
+    dismissed: false,
+    rejected: [],
+    ...over,
+  };
+}
+
+function proven(accountId: string, fromDate: string | null, toDate: string): AyqCoverageEvidence {
+  return {
+    accountId,
+    importId: `imp-${accountId}-${toDate}`,
+    fromDate,
+    toDate,
+    closingBalanceCents: null,
+    file: `invented-${toDate}.xml`,
+    readAt: `${toDate}T10:00:00.000Z`,
+  };
+}
+
+function expectations(
+  records: AyqPlannedRecord[],
+  options: {
+    decisions?: AyqPlanOccurrenceRecord[];
+    evidence?: AyqCoverageEvidence[];
+    transactions?: Map<string, string>;
+    counterparties?: string[];
+  } = {},
+) {
+  const store = ayqMigrate({ version: 8 });
+  store.evidence = options.evidence ?? [];
+  const { from, to } = ayqPlanWindow(AS_OF, records);
+  const plan = { records, occurrences: ayqOccurrencesBetween(records, options.decisions ?? [], from, to, AS_OF) };
+  const assembled = ayqSnapshotExpectations({
+    plan,
+    store,
+    today: AS_OF,
+    // `acct-a` has imported coverage and is in the snapshot; nothing else is.
+    includedAccountKeys: new Map([['acct-a', 'acc-a']]),
+    counterpartyKeys: new Set(options.counterparties ?? []),
+    categoryIdByName: new Map(),
+    transactionKeyById: options.transactions ?? new Map(),
+  });
+  return { store, plan, ...assembled };
+}
+
+test('the expected account crosses only from the record’s own account, and only when that account is in the snapshot (P4, P5, T17, T23)', () => {
+  const { expectationRecords, expectedOccurrences } = expectations(
+    [
+      planned({ id: 'own', counterpartyKey: 'cp-invented' }),
+      // The same counterparty and the same amount as `own`, whose payments are
+      // in `acct-a` — but no account of its own. Nothing stands in for one.
+      planned({ id: 'none', counterpartyKey: 'cp-invented', accountId: null }),
+      // Its own account has nothing imported, so it is not in accounts[].
+      planned({ id: 'outside', accountId: 'acct-no-import' }),
+    ],
+    { counterparties: ['cp-invented'] },
+  );
+  const key = (id: string) => expectationRecords.find(r => r.recordKey === `rec-${id}`)?.expectedAccountKey;
+  assert.equal(key('own'), 'acc-a');
+  assert.equal(key('none'), undefined);
+  assert.equal(key('outside'), undefined);
+  assert.ok(expectedOccurrences.some(o => o.recordKey === 'rec-none'));
+  for (const occurrence of expectedOccurrences) {
+    assert.ok(occurrence.automaticMatchThroughDate, occurrence.occurrenceKey);
+    // The coverage fact exists exactly for the record with an expected account.
+    assert.equal('automaticMatchWindowCovered' in occurrence, occurrence.recordKey === 'rec-own', occurrence.occurrenceKey);
+  }
+});
+
+test('whether the window is covered is AYQ’s proven intervals over every day of it: a one-day gap, an unknown start or time after the data leave it unproven (P7, T16)', () => {
+  const { store, expectedOccurrences } = expectations(
+    [
+      planned({ id: 'rent' }),
+      planned({ id: 'edge', startDate: '2026-02-28', recurrence: { frequency: 'once', interval: 1 } }),
+    ],
+    {
+      evidence: [
+        proven('acct-a', '2026-01-01', '2026-02-28'),
+        // Adjacent to the first: no gap between them.
+        proven('acct-a', '2026-03-01', '2026-03-11'),
+        // 12 March is in no statement: a gap of one day.
+        proven('acct-a', '2026-03-13', '2026-05-31'),
+        // June, from a file that did not say where it starts: it proves nothing.
+        proven('acct-a', null, '2026-06-30'),
+      ],
+    },
+  );
+  assert.deepEqual(
+    expectedOccurrences
+      .filter(o => o.expectedDate <= '2026-07-10')
+      .map(o => [o.expectedDate, o.automaticMatchThroughDate, o.automaticMatchWindowCovered]),
+    [
+      ['2026-01-10', '2026-01-17', true],
+      ['2026-02-10', '2026-02-17', true],
+      ['2026-02-28', '2026-03-07', true], // across the adjacent join
+      ['2026-03-10', '2026-03-17', false], // across the one-day gap
+      ['2026-04-10', '2026-04-17', true],
+      ['2026-05-10', '2026-05-17', true],
+      ['2026-06-10', '2026-06-17', false], // only evidence of unknown start
+      ['2026-07-10', '2026-07-17', false], // after all the data
+    ],
+  );
+  // The bank's data reaches 30 June, past June's window: the last statement
+  // date is not what proves a window.
+  assert.equal(
+    store.evidence.map(e => e.toDate).sort().at(-1),
+    '2026-06-30',
+  );
+  const intervals = ayqProvenIntervals(store, 'acct-a');
+  for (const occurrence of expectedOccurrences) {
+    const window = ayqAutomaticMatchWindow(occurrence.expectedDate);
+    assert.equal(occurrence.automaticMatchWindowCovered, ayqCovers(intervals, window.from, window.through), occurrence.occurrenceKey);
+  }
+});
+
+test('every occurrence carries the end of the matcher’s own window around its effective date — matched, dismissed and rescheduled ones too (P6, P1-C1, T15)', () => {
+  const { plan, expectedOccurrences } = expectations([planned({ id: 'rent', counterpartyKey: 'cp-invented' })], {
+    decisions: [
+      decided('rent', '2026-02-10', { matchedTransactionId: 'txn-feb', matchedAt: '2026-02-11T08:00:00.000Z', matchProvenance: 'manual' }),
+      decided('rent', '2026-03-10', { dismissed: true }),
+      decided('rent', '2026-04-10', { rescheduledTo: '2026-04-20' }),
+    ],
+    evidence: [proven('acct-a', '2026-01-01', '2026-05-31')],
+    transactions: new Map([['txn-feb', 'tx-feb']]),
+  });
+  const occurrence = (dueDate: string) => {
+    const found = expectedOccurrences.find(o => o.occurrenceKey === `occ-rent-${dueDate}`);
+    assert.ok(found, dueDate);
+    return found;
+  };
+  assert.deepEqual(
+    ['2026-02-10', '2026-03-10', '2026-04-10'].map(dueDate => {
+      const one = occurrence(dueDate);
+      return [one.state, one.expectedDate, one.automaticMatchThroughDate, one.automaticMatchWindowCovered];
+    }),
+    [
+      ['matched', '2026-02-10', '2026-02-17', true],
+      ['dismissed', '2026-03-10', '2026-03-17', true],
+      // Rescheduled: the moved date crosses, and the window is centred on it.
+      ['overdue', '2026-04-20', '2026-04-27', true],
+    ],
+  );
+  for (const one of expectedOccurrences) {
+    assert.equal(one.automaticMatchThroughDate, ayqAutomaticMatchWindow(one.expectedDate).through, one.occurrenceKey);
+    assert.ok(one.automaticMatchThroughDate >= one.expectedDate);
+  }
+
+  // The matcher, handed the same occurrence from the same plan, applies
+  // exactly the boundary the snapshot states.
+  const moved = plan.occurrences.find(o => o.dueDate === '2026-04-10');
+  assert.ok(moved);
+  assert.equal(moved.effectiveDate, occurrence('2026-04-10').expectedDate);
+  const matchesOn = (date: string) =>
+    ayqProposeMatches({
+      occurrences: [moved],
+      recordKeys: new Map([['rent', { key: 'cp-invented', mandateId: null }]]),
+      candidates: [{ transactionId: 'txn-x', date, amountCents: -5_000, payee: 'Invented', counterpartyKey: 'cp-invented', mandateId: null }],
+      taken: new Set(),
+      refused: new Map(),
+    })[0]?.confident ?? false;
+  assert.equal(matchesOn('2026-04-27'), true, 'on the exported through date');
+  assert.equal(matchesOn('2026-04-28'), false, 'the day after it');
+  assert.equal(matchesOn('2026-04-11'), false, 'the day after the due date, before the moved window');
+});
+
+test('every occurrence of the plan crosses, from the decision to the twelve-month horizon: an old unresolved one, a recent matched one, the next future one; no age cut-off (P8, T19, T20)', () => {
+  // Decided in March 2025; its start date is two months earlier.
+  const rent = planned({ id: 'rent', startDate: '2025-01-10', confirmedAt: '2025-03-05', suggestedAt: '2025-03-05' });
+  // A rhythm that lands on the horizon itself.
+  const onHorizon = planned({ id: 'yearly', startDate: '2026-09-15', confirmedAt: '2026-09-01', suggestedAt: '2026-09-01', recurrence: { frequency: 'yearly', interval: 1 } });
+  const { expectedOccurrences } = expectations([rent, onHorizon], {
+    decisions: [decided('rent', '2026-08-10', { matchedTransactionId: 'txn-aug', matchedAt: '2026-08-11T08:00:00.000Z', matchProvenance: 'automatic' })],
+    transactions: new Map([['txn-aug', 'tx-aug']]),
+  });
+  const { from, to } = ayqPlanWindow(AS_OF, [rent, onHorizon]);
+  assert.equal(to, '2027-09-15');
+
+  const rentDates = expectedOccurrences.filter(o => o.recordKey === 'rec-rent').map(o => o.expectedDate);
+  assert.deepEqual(rentDates, ayqOccurrenceDates(rent, from, to));
+  assert.equal(rentDates[0], '2025-03-10', 'the first after the decision; January and February 2025 are history');
+  assert.equal(rentDates.at(-1), '2027-09-10');
+  assert.equal(rentDates.length, 31);
+  const state = (date: string) => expectedOccurrences.find(o => o.recordKey === 'rec-rent' && o.expectedDate === date)?.state;
+  assert.equal(state('2025-03-10'), 'overdue', 'unmatched for eighteen months, and still an expectation');
+  assert.equal(state('2026-08-10'), 'matched');
+  assert.equal(state('2026-10-10'), 'expected');
+
+  assert.deepEqual(
+    expectedOccurrences.filter(o => o.recordKey === 'rec-yearly').map(o => [o.expectedDate, o.state]),
+    [
+      ['2026-09-15', 'expected'], // due on the as-of date: not overdue
+      ['2027-09-15', 'expected'], // the horizon, inclusive
+    ],
+  );
+});
+
+test('a snapshot the shared validator refuses is never written, and the previous file stays exactly as it was (P9)', async () => {
+  const dataDir = await budget();
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const { summary, text } = await exported(dataDir);
+
+  // Judged as of tomorrow but produced today: V2 refuses it, and the refusal
+  // comes from the validator the producer runs before writing.
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const answer = await send({ id: 'snapshot-tomorrow', kind: 'snapshot.export', path: summary.path, today: tomorrow }, dataDir);
+  assert.equal(answer.ok, false);
+  assert.match(!answer.ok ? answer.detail : '', /as_of_after_generated/);
+  assert.equal(await readFile(summary.path, 'utf8'), text, 'the previous snapshot is untouched');
+  assert.deepEqual(await readdir(join(dataDir, 'out')), ['snapshot.json'], 'no temporary file is left');
+});
+
+test('the snapshot repeats no matching width: its window is the matcher’s own helper (P6)', () => {
+  const source = readFileSync(new URL('../src/ayq-snapshot.ts', import.meta.url), 'utf8');
+  assert.match(source, /ayqAutomaticMatchWindow\(occurrence\.effectiveDate\)/);
+  assert.doesNotMatch(source, /AYQ_MATCH_WINDOW_DAYS|AYQ_MATCH_OFFER_DAYS|ayqAddDays|ayqDaysBetween/);
+});
+
+test('the export is contract 1.1: judged as of the stated today, with the record’s own account, the matcher’s window and proven coverage (P1–P9)', async () => {
+  const dataDir = await budget();
+  // One account, its statement proving 1–30 June 2026.
+  await ask(dataDir, { kind: 'import.camt', paths: [fixture] });
+  const view = await ask(dataDir, { kind: 'accounts.view' });
+  const accountId = view.coverage[0].accountId;
+
+  // Decided on 1 May, due on the 15th, on the imported account.
+  const saved = await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-05-01',
+    record: { name: 'Invented rent', kind: 'expense', amountCents: 50_000, categoryName: null, accountId, startDate: '2026-05-15', recurrence: { frequency: 'monthly', interval: 1 } },
+  });
+  const rent = saved.records.find(r => r.name === 'Invented rent');
+  assert.ok(rent);
+
+  // June matched by hand to a June payment; July dismissed; August moved.
+  const ledger = await ask(dataDir, { kind: 'transactions.list', filter: { limit: 1000 } });
+  const june = ledger.rows.find(row => row.date === '2026-06-11');
+  assert.ok(june);
+  await ask(dataDir, { kind: 'match.apply', recordId: rent.id, dueDate: '2026-06-15', transactionId: june.id, today: TODAY });
+  await ask(dataDir, { kind: 'plan.dismissOccurrence', recordId: rent.id, dueDate: '2026-07-15', dismissed: true, today: TODAY });
+  await ask(dataDir, { kind: 'plan.reschedule', recordId: rent.id, dueDate: '2026-08-15', to: '2026-08-20', today: TODAY });
+
+  // The same counterparty and amount as that June payment, which is in the
+  // imported account — and no account of its own.
+  const learned = (await ask(dataDir, { kind: 'plan.list', today: TODAY })).records.find(r => r.id === rent.id)?.counterpartyKey ?? null;
+  await ask(dataDir, {
+    kind: 'plan.save',
+    today: '2026-06-01',
+    record: { name: 'Invented gym', kind: 'expense', amountCents: Math.abs(june.amountCents), categoryName: null, counterpartyKey: learned, startDate: '2026-06-11', recurrence: { frequency: 'monthly', interval: 1 } },
+  });
+
+  const { snapshot } = await exported(dataDir);
+  assert.equal(snapshot.meta.contractVersion, '1.1');
+  assert.equal(snapshot.meta.expectationsAsOfDate, TODAY);
+  assert.ok(TODAY <= snapshot.meta.generatedAt.slice(0, 10), 'generatedAt stays the production instant');
+
+  const [account] = snapshot.accounts;
+  const rentRecord = snapshot.expectationRecords.find(r => r.name === 'Invented rent');
+  const gymRecord = snapshot.expectationRecords.find(r => r.name === 'Invented gym');
+  assert.ok(rentRecord && gymRecord);
+  assert.equal(rentRecord.expectedAccountKey, account.accountKey);
+  assert.equal(gymRecord.expectedAccountKey, undefined, 'no account is inferred from a counterparty, an amount or history');
+
+  const rentOccurrences = snapshot.expectedOccurrences.filter(o => o.recordKey === rentRecord.recordKey);
+  assert.deepEqual(
+    rentOccurrences.slice(0, 6).map(o => [o.occurrenceKey.slice(-10), o.expectedDate, o.state, o.automaticMatchThroughDate, o.automaticMatchWindowCovered]),
+    [
+      ['2026-05-15', '2026-05-15', 'overdue', '2026-05-22', false], // before the statement begins
+      ['2026-06-15', '2026-06-15', 'matched', '2026-06-22', true], // inside 1–30 June
+      ['2026-07-15', '2026-07-15', 'dismissed', '2026-07-22', false], // after it
+      ['2026-08-15', '2026-08-20', 'overdue', '2026-08-27', false], // moved; centred on the moved date
+      ['2026-09-15', '2026-09-15', 'expected', '2026-09-22', false], // due on the as-of date
+      ['2026-10-15', '2026-10-15', 'expected', '2026-10-22', false], // the next one
+    ],
+  );
+  assert.equal(rentOccurrences.at(-1)?.expectedDate, '2027-09-15', 'to the twelve-month horizon, inclusive');
+
+  const intervals = ayqProvenIntervals(ayqReadStore(dataDir), accountId);
+  for (const occurrence of snapshot.expectedOccurrences) {
+    const window = ayqAutomaticMatchWindow(occurrence.expectedDate);
+    assert.equal(occurrence.automaticMatchThroughDate, window.through, occurrence.occurrenceKey);
+    if (occurrence.recordKey === rentRecord.recordKey) {
+      assert.equal(occurrence.automaticMatchWindowCovered, ayqCovers(intervals, window.from, window.through), occurrence.occurrenceKey);
+    } else {
+      assert.equal('automaticMatchWindowCovered' in occurrence, false, occurrence.occurrenceKey);
+    }
+  }
 });
