@@ -14,7 +14,7 @@ import {
   parseContractVersion,
   validateAnalyticalSnapshot,
 } from '../src/index.ts';
-import { baseline, baselineJson, clone, setAt } from '../fixtures/synthetic.ts';
+import { baseline, baselineJson, baselineV11, baselineV11Json, clone, setAt, TODAY } from '../fixtures/synthetic.ts';
 
 function refused(input: unknown, code: string, pathPart?: string): ContractValidationError {
   let error: unknown = null;
@@ -252,7 +252,8 @@ test('F18 — forecast unavailable: a bounded reason and no result', () => {
 });
 
 test('F19 — a higher minor with an additive unknown field is accepted and the field ignored', () => {
-  const later = baselineJson();
+  // A later 1.x is additive to 1.1, so it carries the 1.1 facts as well.
+  const later = baselineV11Json();
   setAt(later, 'meta.contractVersion', '1.3');
   setAt(later, 'meta.laterField', { anything: true });
   setAt(later, 'transactions.0.laterHint', 'ignored');
@@ -260,6 +261,7 @@ test('F19 — a higher minor with an additive unknown field is accepted and the 
   assert.equal(snapshot.meta.contractVersion, '1.3');
   assert.equal('laterField' in snapshot.meta, false);
   assert.equal('laterHint' in snapshot.transactions[0], false);
+  assert.equal(snapshot.meta.expectationsAsOfDate, TODAY);
 });
 
 test('F20 — a higher major is refused; a lower major is refused; a malformed version is refused', () => {
@@ -277,7 +279,7 @@ test('F20 — a higher major is refused; a lower major is refused; a malformed v
   assert.deepEqual(parseContractVersion('1.0'), { major: 1, minor: 0 });
   assert.equal(parseContractVersion('1.0.0'), null);
   assert.equal(CONTRACT_MAJOR, 1);
-  assert.equal(CONTRACT_MINOR, 0);
+  assert.equal(CONTRACT_MINOR, 1);
 });
 
 test('F21 — forbidden raw-identifier fields are refused at any depth, even under unknown additive content', () => {
@@ -296,7 +298,7 @@ test('F21 — forbidden raw-identifier fields are refused at any depth, even und
     ['IBAN', 'meta.extra.nested.IBAN'],
   ];
   for (const [key, path] of samples) {
-    const leaking = baselineJson();
+    const leaking = path.startsWith('meta.extra') ? baselineV11Json() : baselineJson();
     if (path.startsWith('meta.extra')) {
       setAt(leaking, 'meta.contractVersion', '1.4');
       setAt(leaking, 'meta.extra', { nested: { IBAN: 'NL00' } });
@@ -449,7 +451,7 @@ test('the package surface is what 016 §8 names, and nothing from the fixtures i
   assert.equal(typeof api.validateAnalyticalSnapshot, 'function');
   assert.equal(typeof api.ContractValidationError, 'function');
   assert.equal(api.CONTRACT_MAJOR, 1);
-  assert.equal(api.CONTRACT_MINOR, 0);
+  assert.equal(api.CONTRACT_MINOR, 1);
   assert.equal('baseline' in api, false);
 });
 
@@ -490,4 +492,235 @@ test('validation time grows linearly: four times the transactions takes well und
   }
   const ratio = largeMs / smallMs;
   assert.ok(ratio < 8, `4× the transactions took ${ratio.toFixed(1)}× as long; linear is ≈ 4×, the quadratic scan measured ≈ 11× at this size`);
+});
+
+// ---- contract 1.1 (AYQ_ANALYSES_A2_SPECIFICATION r001 §5, §14 V1–V12, §15) ----
+//
+// The four additive expectation facts. Each case is a deterministic mutation
+// of the synthetic 1.1 baseline; every value is invented. The contract carries
+// the end of the automatic matching window, never its width: nothing below
+// knows how many days AYQ matches within.
+
+/** Every issue of a refusal, as `code@path`, for exact-set assertions. */
+function issuesOf(input: unknown): string[] {
+  try {
+    validateAnalyticalSnapshot(input);
+  } catch (caught) {
+    assert.ok(caught instanceof ContractValidationError);
+    return caught.issues.map(issue => `${issue.code}@${issue.path}`);
+  }
+  return [];
+}
+
+test('1.1 — the synthetic 1.1 baseline is valid and round-trips with its four facts', () => {
+  const snapshot = validateAnalyticalSnapshot(baselineV11Json());
+  assert.deepEqual(snapshot, baselineV11());
+  assert.equal(snapshot.meta.expectationsAsOfDate, TODAY);
+  assert.equal(snapshot.expectationRecords[0].expectedAccountKey, 'acc-everyday');
+  assert.equal('expectedAccountKey' in snapshot.expectationRecords[1], false);
+  assert.deepEqual(
+    snapshot.expectedOccurrences.map(o => [o.state, o.automaticMatchThroughDate, o.automaticMatchWindowCovered]),
+    [
+      ['matched', '2026-02-17', true],
+      ['overdue', '2026-03-08', false],
+      ['expected', '2026-04-17', false],
+      ['dismissed', '2026-04-08', undefined],
+    ],
+  );
+});
+
+test('V1 — from minor 1 the expectation basis date is required and is a real calendar date', () => {
+  for (const version of ['1.1', '1.2']) {
+    const missing = baselineV11Json();
+    setAt(missing, 'meta.contractVersion', version);
+    setAt(missing, 'meta.expectationsAsOfDate', undefined);
+    assert.deepEqual(issuesOf(missing), ['missing@meta.expectationsAsOfDate']);
+  }
+  const cases: Array<[unknown, string]> = [['2026-02-30', 'not_date'], ['20260305', 'not_date'], ['', 'empty_string'], [null, 'not_string']];
+  for (const [bad, code] of cases) {
+    const wrong = baselineV11Json();
+    setAt(wrong, 'meta.expectationsAsOfDate', bad);
+    refused(wrong, code, 'meta.expectationsAsOfDate');
+  }
+});
+
+test('V2 / T12 — the basis date is never later than the UTC calendar date of generatedAt', () => {
+  const later = baselineV11Json();
+  setAt(later, 'meta.expectationsAsOfDate', '2026-03-06');
+  assert.deepEqual(issuesOf(later), ['as_of_after_generated@meta.expectationsAsOfDate']);
+  // The same UTC day is the boundary, however late in it the snapshot was
+  // produced, and in either UTC spelling.
+  for (const generatedAt of ['2026-03-05T00:00:00Z', '2026-03-05T23:59:59Z', '2026-03-05T23:59:59.999+00:00']) {
+    const same = baselineV11Json();
+    setAt(same, 'meta.generatedAt', generatedAt);
+    assert.equal(validateAnalyticalSnapshot(same).meta.expectationsAsOfDate, TODAY);
+    setAt(same, 'meta.expectationsAsOfDate', '2026-03-06');
+    refused(same, 'as_of_after_generated');
+  }
+  // An earlier basis date is the producer's to choose.
+  const earlier = baselineV11Json();
+  setAt(earlier, 'meta.expectationsAsOfDate', '2026-03-04');
+  assert.equal(validateAnalyticalSnapshot(earlier).meta.expectationsAsOfDate, '2026-03-04');
+});
+
+test('V3 — every occurrence carries automaticMatchThroughDate, matched and dismissed included', () => {
+  for (const index of [0, 1, 2, 3]) {
+    const missing = baselineV11Json();
+    setAt(missing, `expectedOccurrences.${index}.automaticMatchThroughDate`, undefined);
+    assert.deepEqual(issuesOf(missing), [`missing@expectedOccurrences[${index}].automaticMatchThroughDate`]);
+  }
+  const wrong = baselineV11Json();
+  setAt(wrong, 'expectedOccurrences.3.automaticMatchThroughDate', '2026-04-31');
+  refused(wrong, 'not_date', 'expectedOccurrences[3].automaticMatchThroughDate');
+});
+
+test('V4 / T11 — the automatic matching window never ends before the expected date', () => {
+  const before = baselineV11Json();
+  setAt(before, 'expectedOccurrences.2.automaticMatchThroughDate', '2026-04-09');
+  assert.deepEqual(issuesOf(before), ['through_before_expected@expectedOccurrences[2].automaticMatchThroughDate']);
+  const same = baselineV11Json();
+  setAt(same, 'expectedOccurrences.2.automaticMatchThroughDate', '2026-04-10');
+  assert.equal(validateAnalyticalSnapshot(same).expectedOccurrences[2].automaticMatchThroughDate, '2026-04-10');
+});
+
+test('V5 / T10 — expectedAccountKey resolves to an included account; the 1.0 spelling stays refused', () => {
+  const broken = baselineV11Json();
+  setAt(broken, 'expectationRecords.0.expectedAccountKey', 'acc-nowhere');
+  assert.deepEqual(issuesOf(broken), ['unresolved_reference@expectationRecords[0].expectedAccountKey']);
+  const empty = baselineV11Json();
+  setAt(empty, 'expectationRecords.0.expectedAccountKey', '');
+  refused(empty, 'empty_string', 'expectationRecords[0].expectedAccountKey');
+  const spelled = baselineV11Json();
+  setAt(spelled, 'expectationRecords.0.accountKey', 'acc-everyday');
+  refused(spelled, 'not_in_contract', 'expectationRecords[0].accountKey');
+  // Any included account is a valid target, including one whose coverage
+  // start is unknown: what its coverage proves is the producer's statement.
+  const unknownStart = baselineV11Json();
+  setAt(unknownStart, 'expectationRecords.0.expectedAccountKey', 'acc-card');
+  assert.equal(validateAnalyticalSnapshot(unknownStart).expectationRecords[0].expectedAccountKey, 'acc-card');
+});
+
+test('V6 — automaticMatchWindowCovered exists exactly when the record names an expected account, and is a boolean', () => {
+  const missing = baselineV11Json();
+  setAt(missing, 'expectedOccurrences.1.automaticMatchWindowCovered', undefined);
+  assert.deepEqual(issuesOf(missing), ['missing@expectedOccurrences[1].automaticMatchWindowCovered']);
+  const notBoolean = baselineV11Json();
+  setAt(notBoolean, 'expectedOccurrences.1.automaticMatchWindowCovered', 'no');
+  assert.deepEqual(issuesOf(notBoolean), ['not_boolean@expectedOccurrences[1].automaticMatchWindowCovered']);
+  const withoutAccount = baselineV11Json();
+  setAt(withoutAccount, 'expectedOccurrences.3.automaticMatchWindowCovered', false);
+  assert.deepEqual(issuesOf(withoutAccount), ['unexpected@expectedOccurrences[3].automaticMatchWindowCovered']);
+  // A record that stops naming its account takes the fact off all its occurrences.
+  const accountRemoved = baselineV11Json();
+  setAt(accountRemoved, 'expectationRecords.0.expectedAccountKey', undefined);
+  assert.deepEqual(issuesOf(accountRemoved), [0, 1, 2].map(i => `unexpected@expectedOccurrences[${i}].automaticMatchWindowCovered`));
+  // A broken account key is reported once, on the record, not again on every occurrence.
+  const broken = baselineV11Json();
+  setAt(broken, 'expectationRecords.0.expectedAccountKey', 'acc-nowhere');
+  assert.equal(issuesOf(broken).length, 1);
+});
+
+test('V7 — overdue is judged as of expectationsAsOfDate, never generatedAt', () => {
+  // generatedAt is 2026-03-05. An occurrence of 2026-03-01 cannot be overdue
+  // as of 2026-03-01, although the production day is later.
+  const sameDay = baselineV11Json();
+  setAt(sameDay, 'meta.expectationsAsOfDate', '2026-03-01');
+  assert.deepEqual(issuesOf(sameDay), ['overdue_not_past@expectedOccurrences[1].state']);
+  const dayAfter = baselineV11Json();
+  setAt(dayAfter, 'meta.expectationsAsOfDate', '2026-03-02');
+  assert.equal(validateAnalyticalSnapshot(dayAfter).expectedOccurrences[1].state, 'overdue');
+  // A 1.0 snapshot keeps the 1.0 rule against its production day (F27).
+  const oneZero = baselineJson();
+  setAt(oneZero, 'expectedOccurrences.1.expectedDate', '2026-03-04');
+  assert.equal(validateAnalyticalSnapshot(oneZero).expectedOccurrences[1].state, 'overdue');
+});
+
+test('V8 / T14 — a valid 1.0 snapshot is valid to the 1.1 reader and carries no 1.1 fact', () => {
+  const snapshot = validateAnalyticalSnapshot(baselineJson());
+  assert.deepEqual(snapshot, baseline());
+  assert.deepEqual(parseContractVersion(snapshot.meta.contractVersion), { major: 1, minor: 0 });
+  assert.equal('expectationsAsOfDate' in snapshot.meta, false);
+  assert.equal(snapshot.expectationRecords.some(r => 'expectedAccountKey' in r), false);
+  assert.equal(snapshot.expectedOccurrences.some(o => 'automaticMatchThroughDate' in o || 'automaticMatchWindowCovered' in o), false);
+  // A 1.0 snapshot that happens to carry the 1.1 field names is still a 1.0
+  // snapshot: the names are unknown to its contract, ignored as the 1.0 reader
+  // ignores them, and never returned as facts it was not made with.
+  const stray = baselineV11Json();
+  setAt(stray, 'meta.contractVersion', '1.0');
+  const read = validateAnalyticalSnapshot(stray);
+  assert.equal('expectationsAsOfDate' in read.meta, false);
+  assert.equal(read.expectationRecords.some(r => 'expectedAccountKey' in r), false);
+  assert.equal(read.expectedOccurrences.some(o => 'automaticMatchThroughDate' in o || 'automaticMatchWindowCovered' in o), false);
+});
+
+test('V9 / T13 — the 1.1 content passes every 1.0 rule, so the 1.0 reader keeps reading it', () => {
+  // The pre-P1 reader was run over a 1.1-shaped snapshot at P1_BASE_SHA
+  // before this reader changed, and accepted it (P1 report, compatibility
+  // evidence). What keeps that true is permanent: the 1.1 names are new,
+  // none of them is a name the 1.0 rules refuse, and the minor-0 path of this
+  // reader is exactly the 1.0 rule set.
+  const names = ['expectationsAsOfDate', 'expectedAccountKey', 'automaticMatchThroughDate', 'automaticMatchWindowCovered'];
+  for (const name of names) assert.equal(FORBIDDEN_KEYS.includes(name.toLowerCase()), false, `${name} is not a forbidden key`);
+  const underOneZero = baselineV11Json();
+  setAt(underOneZero, 'meta.contractVersion', '1.0');
+  assert.deepEqual(issuesOf(underOneZero), []);
+});
+
+test('V10 — the minimisation scan still reaches inside the additive 1.1 fields', () => {
+  const inRecord = baselineV11Json();
+  setAt(inRecord, 'expectationRecords.0.expectedAccountKey', { iban: 'NL00' });
+  refused(inRecord, 'forbidden_key', 'expectationRecords[0].expectedAccountKey.iban');
+  const inOccurrence = baselineV11Json();
+  setAt(inOccurrence, 'expectedOccurrences.0.automaticMatchWindowCovered', { mandateId: 'M-1' });
+  refused(inOccurrence, 'forbidden_key', 'expectedOccurrences[0].automaticMatchWindowCovered.mandateId');
+  const inMeta = baselineV11Json();
+  setAt(inMeta, 'meta.expectationsAsOfDate', { endToEndId: 'E2E' });
+  refused(inMeta, 'forbidden_key', 'meta.expectationsAsOfDate.endToEndId');
+});
+
+test('V11 / T19 / T20 — an old unresolved, a recent matched and the next future occurrence all cross; no age cutoff', () => {
+  // The record was decided in January 2025. Its June 2025 occurrence is still
+  // unmatched nine months later and is still a valid expectation.
+  const range = baselineV11Json();
+  setAt(range, 'expectationRecords.0.stateSince', '2025-01-05');
+  (range.expectedOccurrences as unknown[]).unshift({
+    occurrenceKey: 'occ-energy-2025-06',
+    recordKey: 'rec-energy',
+    expectedDate: '2025-06-10',
+    amount: { amount: 12000, currency: 'EUR' },
+    state: 'overdue',
+    automaticMatchThroughDate: '2025-06-17',
+    automaticMatchWindowCovered: true,
+  });
+  setAt(range, 'meta.counts.expectedOccurrences', 5);
+  const snapshot = validateAnalyticalSnapshot(range);
+  const energy = snapshot.expectedOccurrences.filter(o => o.recordKey === 'rec-energy');
+  assert.deepEqual(energy.map(o => [o.expectedDate, o.state]), [
+    ['2025-06-10', 'overdue'],
+    ['2026-02-10', 'matched'],
+    ['2026-03-01', 'overdue'],
+    ['2026-04-10', 'expected'],
+  ]);
+  // The only lower bound is the record's own decision (03 §7.14).
+  setAt(range, 'expectedOccurrences.0.expectedDate', '2025-01-04');
+  setAt(range, 'expectedOccurrences.0.automaticMatchThroughDate', '2025-01-11');
+  refused(range, 'before_state_since', 'expectedOccurrences[0].expectedDate');
+});
+
+test('V12 / T23 — every included account carries a valid lastStatementDate', () => {
+  for (const index of [0, 1]) {
+    const missing = baselineV11Json();
+    setAt(missing, `accounts.${index}.statementCoverage.lastStatementDate`, undefined);
+    refused(missing, 'not_string', `accounts[${index}].statementCoverage.lastStatementDate`);
+    const wrong = baselineV11Json();
+    setAt(wrong, `accounts.${index}.statementCoverage.lastStatementDate`, '2026-02-29');
+    refused(wrong, 'not_date', `accounts[${index}].statementCoverage.lastStatementDate`);
+  }
+  // So an expected account, which is always an included one, always has one.
+  const snapshot = validateAnalyticalSnapshot(baselineV11Json());
+  for (const record of snapshot.expectationRecords) {
+    if (record.expectedAccountKey === undefined) continue;
+    const account = snapshot.accounts.find(a => a.accountKey === record.expectedAccountKey);
+    assert.ok(account?.statementCoverage.lastStatementDate);
+  }
 });

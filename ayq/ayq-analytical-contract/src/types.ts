@@ -1,5 +1,6 @@
-// @ayq/analytical-contract — the executable 1.0 shape of the AYQ → AYQ Analyses
-// analytical snapshot.
+// @ayq/analytical-contract — the executable 1.1 shape of the AYQ → AYQ Analyses
+// analytical snapshot: the 1.0 shape plus the four additive expectation facts
+// of AYQ_ANALYSES_A2_SPECIFICATION r001 §5.
 //
 // This module is the system of record for exact field names, structure,
 // cardinality and nullability (A2 exchange 016 §4, as corrected by 017). It is
@@ -7,6 +8,10 @@
 // owns the snapshot's financial content and semantics, and 03 §3, §4, §7, §8,
 // §9, §10 and §11 own the domain meanings that cross. The types encode those
 // rules; they do not reinterpret or extend them.
+//
+// The 1.1 fields are optional in the types because a valid 1.0 snapshot has
+// none of them; the validator requires them wherever the snapshot declares
+// minor ≥ 1, and returns none of them for a 1.0 snapshot.
 
 /** ISO 4217 alpha-3, upper case. */
 export type Currency = string;
@@ -70,6 +75,14 @@ export interface SnapshotMeta {
   snapshotId: string;
   /** RFC 3339, UTC (`Z` or `+00:00`). */
   generatedAt: string;
+  /**
+   * 1.1 (required for minor ≥ 1): the one AYQ calendar date against which the
+   * expectation state in this snapshot is judged — the same "today" AYQ built
+   * its plan and occurrence state with. Not later than the UTC calendar date
+   * of `generatedAt`, which stays the production timestamp and is never a
+   * substitute. A consumer never derives it from its own clock.
+   */
+  expectationsAsOfDate?: IsoDate;
   budgetKey: string;
   producer: ProducerInfo;
   /** The unique currency inventory of the accounts. */
@@ -212,7 +225,11 @@ export type Schedule =
 
 export type ExpectationState = 'confirmed' | 'suggested';
 
-/** No `accountKey` exists on a record in 1.0 (DQ1 deferred, 016 §5.8). */
+/**
+ * No `accountKey` exists on a record (DQ1 deferred, 016 §5.8; still refused in
+ * 1.1). The 1.1 account association is `expectedAccountKey`, deliberately
+ * spelled differently so that the 1.0 reader keeps accepting a 1.1 snapshot.
+ */
 export interface ExpectationRecord {
   recordKey: string;
   kind: ExpectationKind;
@@ -223,6 +240,14 @@ export interface ExpectationRecord {
   schedule: Schedule;
   state: ExpectationState;
   stateSince: IsoDate;
+  /**
+   * 1.1, optional: the included account on which AYQ canonically expects the
+   * record to occur. Present only when AYQ's own record names an account and
+   * that account is in `accounts[]`; resolves to `accounts[].accountKey`.
+   * Absent otherwise — never inferred from a counterparty, an amount or
+   * history.
+   */
+  expectedAccountKey?: string;
 }
 
 export type OccurrenceState = 'expected' | 'matched' | 'overdue' | 'dismissed';
@@ -243,6 +268,24 @@ export interface ExpectedOccurrence {
   state: OccurrenceState;
   /** Present exactly when `state` is `matched`. */
   match?: OccurrenceMatch;
+  /**
+   * 1.1 (required on every occurrence for minor ≥ 1, matched and dismissed
+   * included): the last transaction date still inside AYQ's canonical
+   * automatic matching date window for this occurrence; never before
+   * `expectedDate`. It bounds automatic matching only — it does not say a
+   * later match by hand is impossible. The window's width is AYQ's; this
+   * contract carries the date, never the duration.
+   */
+  automaticMatchThroughDate?: IsoDate;
+  /**
+   * 1.1, present exactly when the occurrence's record carries
+   * `expectedAccountKey`: whether AYQ proves that its imported bank-movement
+   * coverage of that account is continuous over every day of the full
+   * automatic matching window. False on trailing uncovered time, on an
+   * internal gap of any length, and when the start of coverage is not proven.
+   * Never derivable from `lastStatementDate` alone.
+   */
+  automaticMatchWindowCovered?: boolean;
 }
 
 // ---- forecast -----------------------------------------------------------------

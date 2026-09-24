@@ -1,9 +1,10 @@
 // @ayq/analytical-contract — public API.
 //
 // One type model and one runtime validator for the AYQ → AYQ Analyses
-// analytical snapshot, contract 1.0 (A2 exchange 016 as corrected by 017;
-// 03_DATA r017 §13). Synthetic fixture helpers live under `fixtures/` and are
-// not part of this production surface.
+// analytical snapshot, contract 1.1 (A2 exchange 016 as corrected by 017;
+// 03_DATA r017 §13; the additive 1.1 expectation facts of
+// AYQ_ANALYSES_A2_SPECIFICATION r001 §5). Synthetic fixture helpers live under
+// `fixtures/` and are not part of this production surface.
 
 export * from './types.ts';
 export {

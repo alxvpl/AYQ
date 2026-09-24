@@ -259,6 +259,44 @@ export function baselineJson(): Deep {
   return clone(baseline()) as unknown as Deep;
 }
 
+/**
+ * The valid 1.1 baseline: F01 plus the four expectation facts of A2
+ * specification r001 §5, as a producer would state them on TODAY.
+ *
+ * - `rec-energy` is expected on `acc-everyday` (proven coverage 2025-01-01 to
+ *   2026-03-04); `rec-insurance` names no expected account, so its occurrence
+ *   carries no coverage fact.
+ * - Every occurrence, matched and dismissed included, carries the end of its
+ *   automatic matching window. The dates are invented producer output; the
+ *   contract never knows the window's width.
+ * - February's window (to 2026-02-17) lies inside the proven coverage: true.
+ *   March's (to 2026-03-08) runs past the last statement: false. April's lies
+ *   wholly after it: false.
+ */
+export function baselineV11(): AnalyticalSnapshotV1 {
+  const snapshot = baseline();
+  snapshot.meta.contractVersion = '1.1';
+  snapshot.meta.expectationsAsOfDate = TODAY;
+  snapshot.expectationRecords[0].expectedAccountKey = 'acc-everyday';
+  const facts: Record<string, { through: string; covered?: boolean }> = {
+    'occ-energy-02': { through: '2026-02-17', covered: true },
+    'occ-energy-03': { through: '2026-03-08', covered: false },
+    'occ-energy-04': { through: '2026-04-17', covered: false },
+    'occ-insurance': { through: '2026-04-08' },
+  };
+  for (const occurrence of snapshot.expectedOccurrences) {
+    const fact = facts[occurrence.occurrenceKey];
+    occurrence.automaticMatchThroughDate = fact.through;
+    if (fact.covered !== undefined) occurrence.automaticMatchWindowCovered = fact.covered;
+  }
+  return snapshot;
+}
+
+/** The 1.1 baseline as untyped JSON. */
+export function baselineV11Json(): Deep {
+  return clone(baselineV11()) as unknown as Deep;
+}
+
 /** Sets a dotted path on an untyped object; arrays are indexed by number. */
 export function setAt(target: Deep, path: string, value: unknown): void {
   const parts = path.split('.');

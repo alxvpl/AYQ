@@ -1,9 +1,9 @@
 # @ayq/analytical-contract
 
-The executable AYQ → AYQ Analyses analytical snapshot contract, **1.0**: one
+The executable AYQ → AYQ Analyses analytical snapshot contract, **1.1**: one
 TypeScript type model (`src/types.ts`), one runtime validator
 (`src/validate.ts`), synthetic fixtures (`fixtures/synthetic.ts`, test-only)
-and the contract tests F01–F27 (`test/contract.test.ts`).
+and the contract tests F01–F27 and V1–V12 (`test/contract.test.ts`).
 
 It is the system of record for exact field names, structure, cardinality,
 nullability and validation mechanics (A2 exchange 016 §4, as corrected by 017
@@ -34,6 +34,24 @@ result omits; the recursive forbidden-key scan still runs over every field,
 known or unknown. Major ≠ 1, or a malformed version, is refused before content
 is read. No capability is ever inferred from `producer.productVersion` or
 `buildNumber`.
+
+## Contract 1.1: four additive expectation facts
+
+`AYQ_ANALYSES_A2_SPECIFICATION` r001 §5 adds, and §14 V1–V12 validates:
+
+| field | presence | meaning |
+|---|---|---|
+| `meta.expectationsAsOfDate` | required for minor ≥ 1 | the AYQ "today" the plan and occurrence state were built with; not later than the UTC day of `generatedAt` |
+| `expectationRecords[].expectedAccountKey` | optional | the included account AYQ's own record names; never inferred; the 1.0 spelling `accountKey` stays refused |
+| `expectedOccurrences[].automaticMatchThroughDate` | required on every occurrence for minor ≥ 1 | the last day of AYQ's automatic matching date window; not before `expectedDate` |
+| `expectedOccurrences[].automaticMatchWindowCovered` | exactly when the record has `expectedAccountKey` | whether AYQ's proven coverage of that account spans the whole window |
+
+The facts are read, and required, only where the snapshot declares minor ≥ 1.
+A 1.0 snapshot is checked exactly as the 1.0 reader checked it and its typed
+result carries none of them, so a consumer can tell a 1.0 snapshot from one
+that has the facts. From minor 1, "overdue" is judged as of
+`expectationsAsOfDate` rather than the production day. The contract carries
+the end of the matching window, never its width: the width is AYQ's.
 
 ## Two mappings the consumer inherits rather than infers (017 PC2, §3)
 

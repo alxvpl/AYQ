@@ -1,9 +1,15 @@
-// The one runtime validator of the analytical snapshot contract 1.0.
+// The one runtime validator of the analytical snapshot contract 1.x.
 //
 // Every rule of 016 §5–§7 as corrected by 017 PC1–PC3 is a check here, with a
 // stable machine-readable issue code and path. There is no second schema: a
 // JSON Schema, if one is ever wanted, is generated from this or proven
 // equivalent, never maintained beside it (016 §8).
+//
+// Contract 1.1 (AYQ_ANALYSES_A2_SPECIFICATION r001 §5, §14 V1–V12) adds four
+// expectation facts. They are read, and required, only where the snapshot
+// declares minor ≥ 1: a 1.0 snapshot is checked exactly as the 1.0 reader
+// checked it, and its typed result carries none of them — so a 1.0 snapshot
+// can never look as if it had facts it was not made with.
 //
 // What this validator can and cannot prove about minimisation (016 §5.6): it
 // refuses every forbidden raw-identifier field name anywhere in the object,
@@ -37,7 +43,7 @@ import type {
 } from './types.ts';
 
 export const CONTRACT_MAJOR = 1;
-export const CONTRACT_MINOR = 0;
+export const CONTRACT_MINOR = 1;
 
 /** One violation: where, which rule, and a sentence for a log — never for a screen. */
 export interface ContractIssue {
@@ -241,14 +247,29 @@ export function parseContractVersion(text: unknown): { major: number; minor: num
 
 // ---- sections --------------------------------------------------------------------
 
-function validateMeta(raw: unknown, c: Checker): SnapshotMeta | null {
+function validateMeta(raw: unknown, c: Checker, minor: number): SnapshotMeta | null {
   const meta = c.record(raw, 'meta');
   if (meta === null) return null;
   const contractVersion = c.string(meta.contractVersion, 'meta.contractVersion');
   const snapshotId = c.string(meta.snapshotId, 'meta.snapshotId');
   const generatedAt = c.string(meta.generatedAt, 'meta.generatedAt');
-  if (generatedAt !== null && (!RFC3339_UTC.test(generatedAt) || Number.isNaN(Date.parse(generatedAt)))) {
+  const generatedValid = generatedAt !== null && RFC3339_UTC.test(generatedAt) && !Number.isNaN(Date.parse(generatedAt));
+  if (generatedAt !== null && !generatedValid) {
     c.fail('meta.generatedAt', 'not_rfc3339_utc', 'expected an RFC 3339 UTC timestamp');
+  }
+  // 1.1 V1–V2: the expectation basis date, required from minor 1, and never
+  // later than the UTC calendar day the snapshot was produced on (generatedAt
+  // is UTC, so its first ten characters are that day).
+  let expectationsAsOfDate: IsoDate | undefined;
+  if (minor >= 1) {
+    if (meta.expectationsAsOfDate === undefined) {
+      c.fail('meta.expectationsAsOfDate', 'missing', 'contract 1.1 requires the expectation basis date');
+    } else {
+      expectationsAsOfDate = c.date(meta.expectationsAsOfDate, 'meta.expectationsAsOfDate') ?? undefined;
+      if (expectationsAsOfDate !== undefined && generatedAt !== null && generatedValid && expectationsAsOfDate > generatedAt.slice(0, 10)) {
+        c.fail('meta.expectationsAsOfDate', 'as_of_after_generated', 'expectationsAsOfDate must not be later than the UTC calendar date of generatedAt');
+      }
+    }
   }
   const budgetKey = c.string(meta.budgetKey, 'meta.budgetKey');
   const producer = c.record(meta.producer, 'meta.producer');
@@ -323,6 +344,7 @@ function validateMeta(raw: unknown, c: Checker): SnapshotMeta | null {
     contractVersion,
     snapshotId,
     generatedAt,
+    ...(expectationsAsOfDate !== undefined ? { expectationsAsOfDate } : {}),
     budgetKey,
     producer: producerInfo,
     currencies: currencyList,
@@ -628,7 +650,9 @@ function validateForecast(raw: unknown, c: Checker, accounts: Map<string, Accoun
 
 /**
  * Validates an unknown value as a contract 1.x snapshot and returns the typed
- * 1.0 result, or throws ContractValidationError with every issue found.
+ * result — with the 1.1 expectation facts when the snapshot declares minor ≥ 1,
+ * without them for a 1.0 snapshot — or throws ContractValidationError with
+ * every issue found.
  */
 export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1 {
   const c = new Checker();
@@ -652,7 +676,10 @@ export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1
   // cannot smuggle an excluded identifier through an unknown field (016 §6–§7).
   scanForbiddenKeys(root, '$', c);
 
-  const snapshotMeta = validateMeta(root.meta, c);
+  // The 1.1 facts are read from minor 1 on; below it they are not this
+  // snapshot's contract and are ignored, exactly as the 1.0 reader ignores them.
+  const withExpectationFacts = version.minor >= 1;
+  const snapshotMeta = validateMeta(root.meta, c, version.minor);
 
   const accountList = c.array(root.accounts, 'accounts') ?? [];
   const accounts = new Map<string, Account>();
@@ -764,11 +791,23 @@ export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1
 
   const recordList = c.array(root.expectationRecords, 'expectationRecords') ?? [];
   const records = new Map<string, ExpectationRecord>();
+  // The records that declare an expected account, by recordKey — whether or
+  // not the key resolved — so that V6 asks the occurrence the question its
+  // own record raised, and a broken key is reported once, where it is.
+  const declaringAccount = new Set<string>();
   recordList.forEach((raw, index) => {
     const path = `expectationRecords[${index}]`;
     const rec = c.record(raw, path);
     if (rec === null) return;
     if (rec.accountKey !== undefined) c.fail(`${path}.accountKey`, 'not_in_contract', 'no accountKey exists on an expectation record in 1.0');
+    // 1.1 V5: the expected account, when present, is an included account.
+    let expectedAccountKey: string | undefined;
+    if (withExpectationFacts && rec.expectedAccountKey !== undefined) {
+      expectedAccountKey = c.string(rec.expectedAccountKey, `${path}.expectedAccountKey`) ?? undefined;
+      if (expectedAccountKey !== undefined && !accounts.has(expectedAccountKey)) {
+        c.fail(`${path}.expectedAccountKey`, 'unresolved_reference', 'expectedAccountKey does not resolve to an included account');
+      }
+    }
     const recordKey = c.string(rec.recordKey, `${path}.recordKey`);
     const kind = c.oneOf<ExpectationRecord['kind']>(rec.kind, `${path}.kind`, new Set(['income', 'expense']));
     const name = c.string(rec.name, `${path}.name`);
@@ -784,10 +823,16 @@ export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1
     const stateSince = c.date(rec.stateSince, `${path}.stateSince`);
     if (recordKey === null || kind === null || name === null || category === null || amount === null || schedule === null || state === null || stateSince === null) return;
     if (records.has(recordKey)) c.fail(`${path}.recordKey`, 'duplicate', 'recordKey must be unique');
-    else records.set(recordKey, { recordKey, kind, name, ...(counterpartyKey !== undefined ? { counterpartyKey } : {}), category, amount, schedule, state, stateSince });
+    else {
+      records.set(recordKey, { recordKey, kind, name, ...(counterpartyKey !== undefined ? { counterpartyKey } : {}), category, amount, schedule, state, stateSince, ...(expectedAccountKey !== undefined ? { expectedAccountKey } : {}) });
+      if (withExpectationFacts && rec.expectedAccountKey !== undefined) declaringAccount.add(recordKey);
+    }
   });
 
+  // 1.1 V7: day state is judged as of the expectation basis date. A 1.0
+  // snapshot has none, and keeps the 1.0 rule against its production day.
   const generatedDate = snapshotMeta?.generatedAt.slice(0, 10) ?? null;
+  const dayStateDate = withExpectationFacts ? (snapshotMeta?.expectationsAsOfDate ?? null) : generatedDate;
   const occurrenceList = c.array(root.expectedOccurrences, 'expectedOccurrences') ?? [];
   const occurrences = new Map<string, ExpectedOccurrence>();
   occurrenceList.forEach((raw, index) => {
@@ -808,8 +853,9 @@ export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1
     if (rec.categoryOverride !== undefined) categoryOverride = validateExpectationCategory(rec.categoryOverride, `${path}.categoryOverride`, c, categoryIds) ?? undefined;
     const state = c.oneOf<ExpectedOccurrence['state']>(rec.state, `${path}.state`, OCCURRENCE_STATES);
     // 03 §7.26 as 017 PC3 asks it to be enforced: day-based. An occurrence
-    // dated on the snapshot's own day, or later, is never overdue.
-    if (state === 'overdue' && expectedDate !== null && generatedDate !== null && expectedDate >= generatedDate) {
+    // dated on the snapshot's own day, or later, is never overdue — the
+    // snapshot's day being its expectation basis date from 1.1 on (V7).
+    if (state === 'overdue' && expectedDate !== null && dayStateDate !== null && expectedDate >= dayStateDate) {
       c.fail(`${path}.state`, 'overdue_not_past', 'overdue begins only after the expected calendar date has passed (03 §7.26)');
     }
     let match: ExpectedOccurrence['match'];
@@ -827,9 +873,47 @@ export function validateAnalyticalSnapshot(input: unknown): AnalyticalSnapshotV1
     } else if (state === 'matched') {
       c.fail(`${path}.match`, 'matched_without_match', 'a matched occurrence names its transaction');
     }
+    // 1.1 V3–V4: every occurrence, whatever its state, carries the end of its
+    // automatic matching date window, and the window does not end before the
+    // expected date. The window's width is AYQ's; nothing here knows it.
+    let automaticMatchThroughDate: IsoDate | undefined;
+    let automaticMatchWindowCovered: boolean | undefined;
+    if (withExpectationFacts) {
+      if (rec.automaticMatchThroughDate === undefined) {
+        c.fail(`${path}.automaticMatchThroughDate`, 'missing', 'contract 1.1 requires the end of the automatic matching date window on every occurrence');
+      } else {
+        automaticMatchThroughDate = c.date(rec.automaticMatchThroughDate, `${path}.automaticMatchThroughDate`) ?? undefined;
+        if (automaticMatchThroughDate !== undefined && expectedDate !== null && automaticMatchThroughDate < expectedDate) {
+          c.fail(`${path}.automaticMatchThroughDate`, 'through_before_expected', 'the automatic matching date window cannot end before the expected date');
+        }
+      }
+      // V6: the coverage fact exists exactly when the record names an expected
+      // account, and is a boolean. An unresolved record is already reported.
+      if (recordKey !== null && declaringAccount.has(recordKey)) {
+        if (rec.automaticMatchWindowCovered === undefined) {
+          c.fail(`${path}.automaticMatchWindowCovered`, 'missing', 'an occurrence of a record with expectedAccountKey states whether its matching window is covered');
+        } else {
+          automaticMatchWindowCovered = c.boolean(rec.automaticMatchWindowCovered, `${path}.automaticMatchWindowCovered`) ?? undefined;
+        }
+      } else if (record !== undefined && rec.automaticMatchWindowCovered !== undefined) {
+        c.fail(`${path}.automaticMatchWindowCovered`, 'unexpected', 'only an occurrence of a record with expectedAccountKey carries automaticMatchWindowCovered');
+      }
+    }
     if (occurrenceKey === null || recordKey === null || expectedDate === null || amount === null || state === null) return;
     if (occurrences.has(occurrenceKey)) c.fail(`${path}.occurrenceKey`, 'duplicate', 'occurrenceKey must be unique');
-    else occurrences.set(occurrenceKey, { occurrenceKey, recordKey, expectedDate, amount, ...(categoryOverride !== undefined ? { categoryOverride } : {}), state, ...(match !== undefined ? { match } : {}) });
+    else {
+      occurrences.set(occurrenceKey, {
+        occurrenceKey,
+        recordKey,
+        expectedDate,
+        amount,
+        ...(categoryOverride !== undefined ? { categoryOverride } : {}),
+        state,
+        ...(match !== undefined ? { match } : {}),
+        ...(automaticMatchThroughDate !== undefined ? { automaticMatchThroughDate } : {}),
+        ...(automaticMatchWindowCovered !== undefined ? { automaticMatchWindowCovered } : {}),
+      });
+    }
   });
 
   const forecast = validateForecast(root.forecast, c, accounts);
