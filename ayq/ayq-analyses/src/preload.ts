@@ -24,6 +24,8 @@ export interface AyqAnalysesBridge {
   /** Deletes the active copy and its retained name together (r002 §11.6). */
   removeSnapshot(): Promise<{ removed: boolean }>;
   presentationContext(): Promise<PresentationContext>;
+  /** Opens the read-only Third-party licenses / Notices window (DS r007 §11.4). Nothing crosses back. */
+  openNotices(): Promise<void>;
 }
 
 const api: AyqAnalysesBridge = {
@@ -31,6 +33,7 @@ const api: AyqAnalysesBridge = {
   openSnapshot: () => ipcRenderer.invoke('analyses:open-snapshot'),
   removeSnapshot: () => ipcRenderer.invoke('analyses:remove-snapshot'),
   presentationContext: () => ipcRenderer.invoke('analyses:presentation-context'),
+  openNotices: () => ipcRenderer.invoke('analyses:open-notices'),
 };
 
 contextBridge.exposeInMainWorld('ayqAnalyses', api);

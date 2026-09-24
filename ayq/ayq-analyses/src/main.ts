@@ -21,6 +21,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readActiveSnapshot, removeActiveSnapshot, replaceActiveSnapshot } from './active-snapshot.js';
+import { translate } from './strings.js';
 import { METRIC, SURFACE } from './ui/tokens.js';
 import type { SnapshotLoadResult } from './preload.js';
 
@@ -30,6 +31,47 @@ const CHANNEL_ACTIVE = 'analyses:active-snapshot';
 const CHANNEL_OPEN = 'analyses:open-snapshot';
 const CHANNEL_REMOVE = 'analyses:remove-snapshot';
 const CHANNEL_PRESENTATION = 'analyses:presentation-context';
+const CHANNEL_NOTICES = 'analyses:open-notices';
+
+/**
+ * Third-party licenses / Notices (06_RELEASE r004 §3.11; DS r007 §11.4): a
+ * read-only window over the notices generated at build time from the
+ * delivered set. Sandboxed, no preload, no script: it can show the notices
+ * and, by its one link, the Chromium notices Electron installs beside the
+ * executable — and navigate nowhere else.
+ */
+let noticesWindow: BrowserWindow | null = null;
+
+function openNotices(): void {
+  if (noticesWindow !== null && !noticesWindow.isDestroyed()) {
+    noticesWindow.show();
+    noticesWindow.focus();
+    return;
+  }
+  const window = new BrowserWindow({
+    title: translate('settings.about.notices'),
+    width: METRIC.window.minWidth,
+    height: METRIC.window.minHeight,
+    backgroundColor: SURFACE.pane,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      javascript: false,
+    },
+  });
+  const chromium = join(dirname(process.execPath), 'LICENSES.chromium.html');
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (url.endsWith('/chromium-notices.html')) void window.loadFile(chromium);
+  });
+  window.on('closed', () => {
+    noticesWindow = null;
+  });
+  void window.loadFile(join(here, 'notices.html'));
+  noticesWindow = window;
+}
 
 /** Read once, at start, as presentation context and nothing more. */
 let interfaceLocale = 'en';
@@ -75,6 +117,9 @@ function registerIpc(): void {
     }
   });
   ipcMain.handle(CHANNEL_PRESENTATION, () => ({ locale: interfaceLocale }));
+  ipcMain.handle(CHANNEL_NOTICES, () => {
+    openNotices();
+  });
 }
 
 function createWindow(): BrowserWindow {
@@ -105,7 +150,7 @@ function createWindow(): BrowserWindow {
 
 /** The running window, brought forward for a second launch. */
 function bringForward(): void {
-  const window = BrowserWindow.getAllWindows()[0];
+  const window = BrowserWindow.getAllWindows().find(candidate => candidate !== noticesWindow);
   if (window === undefined) return;
   if (window.isMinimized()) window.restore();
   window.show();

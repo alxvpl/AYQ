@@ -25,10 +25,11 @@ test('the Electron security baseline is intact', () => {
   assert.match(main, /will-navigate/);
 });
 
-test('the preload surface is four bounded capabilities and nothing else', () => {
+test('the preload surface is five bounded capabilities and nothing else', () => {
   const exposed = [...preload.matchAll(/ipcRenderer\.invoke\('([^']+)'\)/g)].map(match => match[1]);
   assert.deepEqual(exposed.sort(), [
     'analyses:active-snapshot',
+    'analyses:open-notices',
     'analyses:open-snapshot',
     'analyses:presentation-context',
     'analyses:remove-snapshot',
@@ -37,6 +38,25 @@ test('the preload surface is four bounded capabilities and nothing else', () => 
   assert.ok(!preload.includes('require('));
   // What crosses is the validated snapshot and a display name — never a path.
   assert.ok(!/path/i.test(withoutComments(preload)), 'no path crosses the preload boundary');
+});
+
+test('the notices window is read-only: sandboxed, no preload, no script, no way out but the Chromium notices', () => {
+  const start = mainCode.indexOf('function openNotices(');
+  const body = mainCode.slice(start, mainCode.indexOf('\n}\n', start));
+  assert.ok(start > 0, 'openNotices exists');
+  assert.match(body, /contextIsolation: true/);
+  assert.match(body, /nodeIntegration: false/);
+  assert.match(body, /sandbox: true/);
+  assert.match(body, /javascript: false/);
+  assert.doesNotMatch(body, /preload/);
+  assert.match(body, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
+  // Every navigation is stopped; the one link opens Electron's own Chromium notices file.
+  assert.match(body, /'will-navigate', \(event, url\) => \{\s*event\.preventDefault\(\);/);
+  assert.match(body, /LICENSES\.chromium\.html/);
+  assert.match(body, /loadFile\(join\(here, 'notices\.html'\)\)/);
+  assert.doesNotMatch(body, /loadURL|shell\.openExternal/);
+  // The notices window takes no argument from the renderer: the channel only opens it.
+  assert.match(mainCode, /ipcMain\.handle\(CHANNEL_NOTICES, \(\) => \{\s*openNotices\(\);\s*\}\)/);
 });
 
 test('the renderer reaches no filesystem and no path', () => {

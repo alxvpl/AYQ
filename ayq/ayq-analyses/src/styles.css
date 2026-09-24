@@ -594,3 +594,14 @@ table.rows tbody tr.selected {
 .fc-not-shown {
   margin-top: 16px;
 }
+
+/* Settings → About (DS r007 §11.2, §11.4): the second section, plain text. */
+.settings-about {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.settings-about p {
+  margin: 4px 0;
+}

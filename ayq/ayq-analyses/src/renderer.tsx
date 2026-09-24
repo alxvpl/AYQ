@@ -360,7 +360,12 @@ function App(): JSX.Element {
     body = null;
   } else if (destination === 'settings') {
     body = (
-      <SettingsView active={settingsSnapshot} onLoad={() => void openSnapshot()} onRemove={() => void removeSnapshot()} />
+      <SettingsView
+        active={settingsSnapshot}
+        onLoad={() => void openSnapshot()}
+        onRemove={() => void removeSnapshot()}
+        onOpenNotices={() => void window.ayqAnalyses.openNotices()}
+      />
     );
   } else if (!isImplemented(destination)) {
     body = <NotInThisVersion destination={destination} />;

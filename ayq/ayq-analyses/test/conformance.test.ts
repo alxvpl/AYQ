@@ -284,6 +284,17 @@ const NORMATIVE: Sentence[] = [
     reachedThrough: RENDERER,
   },
 
+  // DS r007 §11.2, §11.4; 06_RELEASE r004 §3.11 — Settings › About, after Snapshot.
+  { section: 'DS 11.4', key: 'settings.about.heading', text: 'About', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.product', text: 'Product: {product}', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.version', text: 'Version: {version}', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.build', text: 'Build: {build}', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.identification', text: 'Identification: {identification}', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.author', text: 'Author: {author}', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.copyright', text: '© 2026 Plamen Alexandrov. All rights reserved.', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.licence', text: 'Licence: Proprietary / closed-source', owner: SETTINGS },
+  { section: 'DS 11.4', key: 'settings.about.notices', text: 'Third-party licenses / Notices', owner: SETTINGS },
+
   // r006 §16 — Fixed costs › Expected now, every sentence word for word, each
   // referenced by the view that draws it (A2 P2).
   { section: '16.3', key: 'fixedCosts.title', text: "Fixed costs", owner: FIXED_COSTS, reachedThrough: RENDERER },
@@ -327,8 +338,9 @@ test('r003 — every normative sentence is in the catalogue character for charac
   }
   // The suite covers every sentence r003 §§3, 6, 7, 8.1, 9 and 11 enumerate:
   // a count, so a sentence dropped from this table is noticed.
-  // r006 §16 adds the 25 Fixed costs sentences to the 62 of §§3–11.
-  assert.equal(NORMATIVE.length, 87);
+  // r006 §16 adds the 25 Fixed costs sentences to the 62 of §§3–11, and
+  // DS r007 §11.4 the 9 lines of About.
+  assert.equal(NORMATIVE.length, 96);
 });
 
 test('r003 — every normative sentence is referenced from the module that owns it, and that module reaches the screen', () => {

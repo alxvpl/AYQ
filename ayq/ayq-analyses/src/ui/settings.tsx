@@ -1,9 +1,12 @@
-// AYQ Analyses — the Settings utility surface (r002 §11).
+// AYQ Analyses — the Settings utility surface (DS r007 §11).
 //
-// One section, about the active snapshot: which one, when it was taken, how
-// much it holds — by name, age and counts, never by a path, a snapshot
-// identifier, a budget key, an account key or a producer commit. The two
-// acts the owner can perform on it live here: load another, remove this one.
+// Two sections. Snapshot: which one is held, when it was taken, how much it
+// holds — by name, age and counts, never by a path, a snapshot identifier, a
+// budget key, an account key or a producer commit — and the two acts the
+// owner can perform on it: load another, remove this one. About: the product,
+// release and legal identity of this build (06_RELEASE r004 §3.11), its
+// version and build read from the one release-metadata source (release.ts),
+// and the way to the third-party notices.
 
 import type { JSX } from 'react';
 import { useState } from 'react';
@@ -17,6 +20,7 @@ import {
   DialogTitle,
 } from '@fluentui/react-components';
 import { formatDateTime, formatRelative } from '../format.js';
+import { RELEASE, type ReleaseIdentity } from '../release.js';
 import { useLocale, useText } from './text.js';
 import type { SnapshotIdentity } from '../preload.js';
 import type { AyqAnalyticalSnapshot } from '../types.js';
@@ -30,9 +34,35 @@ type SettingsViewProps = {
   active: SettingsSnapshot;
   onLoad(): void;
   onRemove(): void;
+  onOpenNotices(): void;
+  /** The identity shown in About; the build's own unless a test supplies another. */
+  release?: ReleaseIdentity;
 };
 
-export function SettingsView({ active, onLoad, onRemove }: SettingsViewProps): JSX.Element {
+/** The About section: product, release and legal identity, nothing about the owner or the machine. */
+function About({ release, onOpenNotices }: { release: ReleaseIdentity; onOpenNotices(): void }): JSX.Element {
+  const t = useText();
+  return (
+    <section className="settings-about" aria-labelledby="settings-about-heading">
+      <h2 id="settings-about-heading">{t('settings.about.heading')}</h2>
+      <p>{t('settings.about.product', { product: release.product })}</p>
+      <p>{t('settings.about.version', { version: release.version })}</p>
+      <p>{t('settings.about.build', { build: release.build })}</p>
+      <p>{t('settings.about.identification', { identification: release.identification })}</p>
+      <p>{t('settings.about.author', { author: release.author })}</p>
+      <p>{t('settings.about.copyright')}</p>
+      <p>{t('settings.about.licence')}</p>
+      <p>{t('settings.about.thirdParty')}</p>
+      <div className="settings-actions">
+        <Button appearance="secondary" data-action="open-notices" onClick={onOpenNotices}>
+          {t('settings.about.notices')}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+export function SettingsView({ active, onLoad, onRemove, onOpenNotices, release = RELEASE }: SettingsViewProps): JSX.Element {
   const t = useText();
   const locale = useLocale();
   const [confirming, setConfirming] = useState(false);
@@ -104,6 +134,7 @@ export function SettingsView({ active, onLoad, onRemove }: SettingsViewProps): J
           </DialogBody>
         </DialogSurface>
       </Dialog>
+      <About release={release} onOpenNotices={onOpenNotices} />
     </section>
   );
 }

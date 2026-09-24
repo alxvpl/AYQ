@@ -1,16 +1,21 @@
 {
   "name": "ayq-analyses",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "ayq": {
+    "build": "001"
+  },
   "private": true,
   "type": "module",
   "description": "Read-only analytical companion for AYQ Personal Finances.",
+  "author": "Plamen Alexandrov",
+  "license": "UNLICENSED",
   "main": "dist/main.js",
   "scripts": {
     "build": "node build.mjs",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit",
     "test": "node build-tests.mjs && node --test --test-reporter=spec \"dist-test/*.test.mjs\"",
-    "package": "npm run build && electron-builder --win nsis --x64 --publish=never",
+    "package": "npm run build && node package.mjs",
     "scale": "node scale/run.mjs",
     "scale:app": "node scale/measure-app.mjs"
   },
@@ -54,8 +59,7 @@
             "x64"
           ]
         }
-      ],
-      "artifactName": "${productName}-${version}-windows-${arch}-setup.${ext}"
+      ]
     },
     "nsis": {
       "oneClick": true,
