@@ -1,6 +1,6 @@
 {
   "name": "ayq-desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "AYQ Personal Finances \u2014 a local-first personal finance application for Windows.",
   "main": "dist/ayq-main.js",
   "scripts": {
@@ -38,7 +38,7 @@
   },
   "productName": "AYQ",
   "ayq": {
-    "build": "011"
+    "build": "012"
   },
   "build": {
     "appId": "eu.ayq.desktop",
@@ -75,7 +75,7 @@
         }
       ],
       "icon": "build/icon.png",
-      "artifactName": "${productName}-build-011-windows-${arch}-setup.${ext}"
+      "artifactName": "${productName}-build-012-windows-${arch}-setup.${ext}"
     },
     "nsis": {
       "oneClick": true,
