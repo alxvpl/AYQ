@@ -13,7 +13,14 @@
 // two halves meet.
 
 import { fork } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { release } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,18 +28,30 @@ import { fileURLToPath } from 'node:url';
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
+  screen,
   utilityProcess,
 } from 'electron';
 
+import type { AyqRect } from './ayq-window-bounds.ts';
+import {
+  AYQ_WINDOW_MIN_HEIGHT,
+  AYQ_WINDOW_MIN_WIDTH,
+  ayqOpeningBounds,
+  ayqReadWindowBounds,
+  ayqWriteWindowBounds,
+} from './ayq-window-bounds.ts';
 import {
   AYQ_IPC_CHANNEL,
   type AyqImportSummary,
   type AyqPickedFile,
   type AyqRequest,
+  type AyqRequestBody,
   type AyqResponse,
+  type AyqResults,
   type AyqSnapshotTarget,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 // The token module itself, so that the acceptance run compares the screen
@@ -53,6 +72,8 @@ import {
 // above: the acceptance run compares the screen against the product's own
 // declared values rather than against a second copy written into a check.
 import { ayqCompiledIdentity } from './ayq-about.ts';
+import { ayqBackupsDir, ayqManifestDigest } from './ayq-backup.ts';
+import type { AyqBackupManifest } from './ayq-backup.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -187,7 +208,8 @@ function startEngine(): EngineHandle {
         id,
         ok: false,
         kind: 'error',
-        message: `the AYQ engine stopped (${why}). Close the window and open AYQ again.`,
+        code: 'engine-stopped',
+        detail: `the AYQ engine stopped (${why})`,
       });
     }
   };
@@ -285,9 +307,37 @@ async function pickSnapshotTarget(suggestedName: string): Promise<AyqSnapshotTar
   return { path: chosen.canceled || !chosen.filePath ? null : chosen.filePath };
 }
 
+/** The native controls' colours for a ground: the rail's surface and ink. */
+function titleBarOverlay(resolved: 'light' | 'dark'): {
+  color: string;
+  symbolColor: string;
+  height: number;
+} {
+  const surface = AYQ_TOKENS[resolved].surface;
+  return {
+    color: surface.rail,
+    symbolColor: surface.railInkOn,
+    height: AYQ_METRIC.titleBarHeight,
+  };
+}
+
+/** What the controls were last painted for; read by the acceptance run. */
+let titleBarPainted: 'light' | 'dark' | null = null;
+
 async function ask(request: AyqRequest): Promise<AyqResponse> {
-  // The two requests the host answers itself, because they are about this
+  // The three requests the host answers itself, because they are about this
   // window and not about the budget. Everything else is relayed untouched.
+  if (request?.kind === 'window.ground') {
+    const resolved = request.resolved === 'dark' ? 'dark' : 'light';
+    let applied = false;
+    if (process.platform === 'win32' && mainWindow !== null) {
+      const { color, symbolColor } = titleBarOverlay(resolved);
+      mainWindow.setTitleBarOverlay({ color, symbolColor });
+      titleBarPainted = resolved;
+      applied = true;
+    }
+    return { id: request.id, ok: true, kind: 'window.ground', result: { applied } };
+  }
   if (request?.kind === 'snapshot.pickTarget') {
     try {
       return {
@@ -301,7 +351,8 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
         id: request.id,
         ok: false,
         kind: 'error',
-        message: error instanceof Error ? error.message : String(error),
+        code: 'picker-failed',
+        detail: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -319,7 +370,8 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
         id: request.id,
         ok: false,
         kind: 'error',
-        message: error instanceof Error ? error.message : String(error),
+        code: 'picker-failed',
+        detail: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -329,7 +381,8 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
       id: request.id,
       ok: false,
       kind: 'error',
-      message: 'the AYQ engine is not running',
+      code: 'engine-not-running',
+      detail: 'the AYQ engine is not running',
     });
   }
 
@@ -341,7 +394,9 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
           id: request.id,
           ok: false,
           kind: 'error',
-          message: `the AYQ engine did not answer within ${
+          code: 'engine-timeout',
+          params: { minutes: AYQ_ENGINE_PATIENCE / 60_000 },
+          detail: `the AYQ engine did not answer within ${
             AYQ_ENGINE_PATIENCE / 60_000
           } minutes`,
         });
@@ -404,22 +459,41 @@ function createWindow(): BrowserWindow {
   // four words that lead nowhere, and on Windows it sits above the content.
   Menu.setApplicationMenu(null);
 
-  // A desktop window, sized for the shell it holds: a navigation column and a
-  // ledger with six columns beside it. 900x700 was the size of a page, and it
-  // left the transactions table narrower than the window it was drawn in.
+  // Where it opens (04 A25): 1600 px wide the first time, fitted to the work
+  // area; after that, where the person last left it — unless that is no longer
+  // on any screen this machine has.
+  const opening = ayqOpeningBounds(
+    ayqReadWindowBounds(dataDir),
+    screen.getAllDisplays().map(display => display.workArea),
+    screen.getPrimaryDisplay().workArea,
+  );
+  windowOpenedFrom = opening.restored ? 'restored' : 'default';
+  process.stdout.write(
+    `[ayq] window opens at ${opening.bounds.width}x${opening.bounds.height}` +
+      `+${opening.bounds.x}+${opening.bounds.y} (${windowOpenedFrom})\n`,
+  );
+
   const material = windowMaterial();
   process.stdout.write(
     `[ayq] window material: ${material.material} (${material.why})\n`,
   );
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 640,
-    minHeight: 480,
+    ...opening.bounds,
+    minWidth: AYQ_WINDOW_MIN_WIDTH,
+    minHeight: AYQ_WINDOW_MIN_HEIGHT,
     title: 'AYQ',
     // The ground the token module defines, so that the frame a person sees
     // before the first paint is the one the application then paints.
     backgroundColor: AYQ_TOKENS.light.surface.ground,
+    // The title bar is drawn by the renderer in the rail's surface, and the
+    // window controls stay Windows' own, painted over it in the rail's ink
+    // (04 A20 as the owner decided it). Repainted whenever the ground changes.
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: titleBarOverlay('light'),
+        }
+      : {}),
     // Mica where Windows has it (04 A14), and nothing pretending to be it
     // where it does not. Never behind figures: it is the window's background
     // and the rail's, and every pane the figures sit on is solid.
@@ -436,9 +510,54 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  // What Windows reports back is not always what was asked for: with the
+  // title bar hidden and the display scaled, the frame reads a few pixels
+  // larger than the size it was created at (measured: 1600x820 reads back as
+  // 1607x827 at 175 %). Saved as read, the window would grow by that much on
+  // every launch. So the difference is measured once, here, and taken off
+  // again when the size is saved — as long as it is a frame's worth and not a
+  // window the system resized for its own reasons.
+  const created = window.getBounds();
+  const frame = (asked: number, got: number): number =>
+    Math.abs(got - asked) <= FRAME_SLACK ? got - asked : 0;
+  windowFrame = {
+    width: frame(opening.bounds.width, created.width),
+    height: frame(opening.bounds.height, created.height),
+  };
+
   window.once('ready-to-show', () => window.show());
+  // The normal bounds, whatever state it is closed in: a window closed while
+  // maximised or minimised reopens at the size it had before that.
+  window.on('close', () => rememberWindow(window));
   void window.loadFile(join(here, 'client', 'ayq-client.html'));
   return window;
+}
+
+/** Whether the window opened at the default or where it was left (A25). */
+let windowOpenedFrom: 'default' | 'restored' = 'default';
+
+/** How much larger the system reports the window than it was created (A25). */
+let windowFrame = { width: 0, height: 0 };
+
+/** The most a frame is allowed to account for; more is a real resize. */
+const FRAME_SLACK = 16;
+
+/** Writes the window's normal bounds for the next launch (04 A25). */
+function rememberWindow(window: BrowserWindow): void {
+  if (window.isDestroyed()) return;
+  try {
+    const normal: AyqRect = window.getNormalBounds();
+    ayqWriteWindowBounds(dataDir, {
+      ...normal,
+      width: normal.width - windowFrame.width,
+      height: normal.height - windowFrame.height,
+    });
+  } catch (error) {
+    // Losing a window position is not worth failing a close over.
+    process.stdout.write(
+      `[ayq] could not remember the window: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
 }
 
 /**
@@ -1071,7 +1190,7 @@ async function planShown(
       await window.webContents.executeJavaScript(`(() => {
         const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
         const row = rows.find(one => {
-          const cell = one.querySelector('[data-ayq-cell="category"]');
+          const cell = one.querySelector('[data-ayq-category-name]') || one.querySelector('[data-ayq-cell="category"]');
           return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
         });
         if (!row) return 'no such category on the sheet';
@@ -1104,7 +1223,7 @@ async function planShown(
         await window.webContents.executeJavaScript(`(() => {
           const rows = [...document.querySelectorAll('[data-ayq-table="plan"] tbody tr')];
           const row = rows.find(one => {
-            const cell = one.querySelector('[data-ayq-cell="category"]');
+            const cell = one.querySelector('[data-ayq-category-name]') || one.querySelector('[data-ayq-cell="category"]');
             return cell && cell.innerText.split('\\n')[0].trim() === ${JSON.stringify(category)};
           });
           if (!row) return -1;
@@ -1628,13 +1747,15 @@ async function balanceShown(window: BrowserWindow): Promise<string> {
  *
  * The packaged build is the only place the build stamp is real, so this is the
  * only place it can be checked. What is read is the drawn screen: the version,
- * the build number, the author, the copyright, a forty-character revision that
- * is not a placeholder, and a technical-information block that carries the safe
+ * the build number, the author, the copyright, a shortened revision and a
+ * human-readable date on the screen (04 A35), no technical-information dump on
+ * the screen (06 §3.7), and — through the real button and the real clipboard —
+ * copied text that carries the full revision, the ISO timestamp and the safe
  * fields and none of the forbidden ones (§12.4).
  */
 /**
- * Exports the analytical snapshot through the screen (03 §13): Settings › Data,
- * the button, and the renderer's own reported outcome — then the file itself,
+ * Exports the analytical snapshot through the screen (03 §13): Settings › Data &
+ * Backup, the snapshot pane's button, and the renderer's own reported outcome — then the file itself,
  * read back and validated by the contract, with no figure of it printed.
  * Returns '' when it held, otherwise what went wrong.
  */
@@ -1647,7 +1768,7 @@ async function snapshotExported(window: BrowserWindow, target: string): Promise<
   while (Date.now() < deadline) {
     const pressed = await window.webContents.executeJavaScript(
       `(() => {
-        const tab = document.querySelector('[data-ayq-screen-tab="data"]');
+        const tab = document.querySelector('[data-ayq-screen-tab="backup"]');
         if (!tab) return false;
         tab.click();
         return true;
@@ -1724,8 +1845,11 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
           for (const one of document.querySelectorAll('[data-ayq-about]')) {
             said[one.dataset.ayqAbout] = one.innerText.trim();
           }
-          const technical = document.querySelector('[data-ayq-technical]');
-          said.technical = technical ? technical.innerText : '';
+          said.dumps = String(
+            document.querySelectorAll(
+              '[data-ayq-about-screen] pre, [data-ayq-technical]',
+            ).length,
+          );
           said.screen = (
             document.querySelector('[data-ayq-about-screen]') || { innerText: '' }
           ).innerText;
@@ -1756,7 +1880,7 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
     return `About says build ${seen.build}, expected ${expectedBuild}`;
   }
   if (seen.author !== 'Plamen Alexandrov') return `About says author ${seen.author}`;
-  if (seen.copyright !== '\u00a9 2026 Plamen Alexandrov.') {
+  if (seen.copyright !== '\u00a9 2026 Plamen Alexandrov. All rights reserved.') {
     return `About says copyright ${seen.copyright}`;
   }
   if (seen.engine !== 'Actual Budget 26.9.0') return `About says engine ${seen.engine}`;
@@ -1764,25 +1888,72 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
   if (!/^Windows x64$/.test(seen.architecture ?? '')) {
     return `About says architecture ${seen.architecture}`;
   }
-  // A real revision, from git, in a packaged build (§12.2).
-  if (!/^[0-9a-f]{40}$/.test(seen.revision ?? '')) {
+  // A real revision, from git, in a packaged build (§12.2), shortened on the
+  // screen (04 A35).
+  if (!/^[0-9a-f]{7,12}$/.test(seen.revision ?? '')) {
     return `About says revision ${seen.revision || '(nothing)'}`;
   }
-  // And a real date, not a placeholder.
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(seen['build-date'] ?? '')) {
+  // And a real date, not a placeholder, in the form a person reads.
+  if (!/\d{4}/.test(seen['build-date'] ?? '') || /T\d{2}:\d{2}/.test(seen['build-date'] ?? '')) {
     return `About says build date ${seen['build-date'] || '(nothing)'}`;
   }
   if (seen.development !== undefined) {
     return 'a packaged build reports itself as a development build';
   }
+  // AYQ proprietary, Actual Budget under MIT, and never AYQ under MIT (06 §9).
+  if (!/proprietary/.test(seen.licence ?? '')) return `About says licence ${seen.licence}`;
+  if (!/Actual Budget.*MIT/.test(seen.upstream ?? '')) {
+    return `About says of Actual Budget ${seen.upstream}`;
+  }
+  if (/AYQ is (released|licensed) under the MIT/i.test(seen.screen ?? '')) {
+    return 'About says AYQ is MIT-licensed';
+  }
+  // 06 §3.7: the copied text is not also a permanent block on the screen.
+  if (seen.dumps !== '0') return 'About prints the technical information on the screen';
 
-  const technical = seen.technical ?? '';
+  // The copy, through the button a person presses and the clipboard they paste
+  // from. What is read back is what they would paste.
+  clipboard.writeText('');
+  const copiedAt = await window.webContents.executeJavaScript(
+    `(() => {
+      const button = document.querySelector('[data-ayq-action="about-copy"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`,
+  );
+  if (copiedAt !== true) return 'About has no Copy technical information';
+  let technical = '';
+  let confirmed = '';
+  const copyDeadline = Date.now() + 10_000;
+  while (Date.now() < copyDeadline) {
+    technical = clipboard.readText();
+    confirmed = String(
+      await window.webContents.executeJavaScript(
+        `(document.querySelector('[data-ayq-about-copied]') || { innerText: '' }).innerText`,
+      ),
+    ).trim();
+    if (technical !== '' && confirmed !== '') break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (technical === '') return 'Copy technical information put nothing on the clipboard';
+  if (confirmed === '') return 'copying said nothing';
+  if ((seen.screen ?? '').includes(technical.split('\n')[0])) {
+    return 'the copied text is also on the screen';
+  }
+  const fullRevision = /^AYQ revision\s*: ([0-9a-f]{40})$/m.exec(technical)?.[1] ?? '';
+  if (!fullRevision.startsWith(seen.revision ?? '-')) {
+    return `the copy carries revision ${fullRevision || '(none)'} for ${seen.revision}`;
+  }
+  if (!/^Build date\s*: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/m.test(technical)) {
+    return 'the copy leaves out the ISO build timestamp';
+  }
   for (const wanted of [
     expectedVersion,
     expectedBuild,
     'db1b0ea9',
     'Actual Budget 26.9.0',
-    seen.revision,
+    fullRevision,
   ]) {
     if (!technical.includes(wanted)) {
       return `the technical information leaves out ${wanted}`;
@@ -1790,6 +1961,7 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
   }
   // §12.4: nothing about the money, and nothing about the machine.
   for (const forbidden of [
+    dataDir,
     'AppData',
     'C:\\\\Users',
     'ayq-budget',
@@ -1805,9 +1977,294 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
 
   process.stdout.write(
     `[ayq-smoke] about: ${seen.version} build ${seen.build}, ${seen.revision}, ` +
-      `${seen['build-date']}, ${seen.architecture}\n`,
+      `${seen['build-date']}, ${seen.architecture}; copied ${fullRevision}\n`,
   );
   return '';
+}
+
+/**
+ * Settings → Data & Backup, end to end (04 A38; 03 §12; 030 §5).
+ *
+ * Both halves of the state are given a value a person could see — a
+ * counterparty's name in the AYQ store, a category's plan in the Actual budget
+ * — and a backup is made through the window's own button. Both are changed.
+ * Then two sets that must never be restored are offered through the same
+ * request the window sends: one mixing a store from another backup, and one
+ * sealed correctly but written by a newer AYQ. Each has to be refused with the
+ * state exactly as it was. Last, the real backup is restored through the
+ * window, confirmation and all, and both halves have to be back.
+ *
+ * The two refused sets are built here, in the host, beside the real ones. That
+ * is the acceptance run standing in for somebody who copied files around by
+ * hand; the application itself never writes a set anywhere but through the
+ * engine.
+ */
+async function backupShown(window: BrowserWindow): Promise<string> {
+  let counter = 0;
+  const engineAsk = async <K extends keyof AyqResults>(
+    body: AyqRequestBody & { kind: K },
+  ): Promise<AyqResults[K]> => {
+    counter += 1;
+    const answer = await ask({ ...body, id: `smoke-backup-${counter}` } as AyqRequest);
+    if (!answer.ok) {
+      throw new Error(`${body.kind}: ${answer.code} (${answer.detail})`);
+    }
+    return answer.result as AyqResults[K];
+  };
+  const storeHash = (): string =>
+    createHash('sha256')
+      .update(readFileSync(join(dataDir, 'ayq-store.json')))
+      .digest('hex');
+
+  const listed = await engineAsk({ kind: 'counterparties.list' });
+  const key = listed.rows[0]?.key;
+  if (key === undefined) return 'the budget has no counterparty to name';
+  const category = (await engineAsk({ kind: 'categories.list' })).find(
+    one => !one.isIncome,
+  );
+  if (category === undefined) return 'the budget has no expense category';
+  const month = new Date().toISOString().slice(0, 7);
+
+  const facts = async (): Promise<string> => {
+    const summary = await engineAsk({ kind: 'summary' });
+    const names = await engineAsk({ kind: 'counterparties.list' });
+    const plan = await engineAsk({ kind: 'budget.month', month });
+    return JSON.stringify({
+      transactions: summary.transactionCount,
+      name: names.rows.find(one => one.key === key)?.name,
+      plan: plan.categories.find(one => one.categoryId === category.id)?.planCents,
+    });
+  };
+
+  await engineAsk({
+    kind: 'counterparty.setName',
+    counterpartyKey: key,
+    displayName: 'Backed-up name',
+  });
+  await engineAsk({
+    kind: 'budget.setPlan',
+    month,
+    categoryId: category.id,
+    cents: 12_300,
+  });
+  const before = await facts();
+
+  // Create backup now, pressed on the screen.
+  if (!(await openDestination(window, 'settings'))) return 'Settings never opened';
+  const openTab = async (): Promise<boolean> => {
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      const there = await window.webContents.executeJavaScript(`(() => {
+        const tab = document.querySelector('[data-ayq-screen-tab="backup"]');
+        if (tab) tab.click();
+        return !!document.querySelector('[data-ayq-backup-screen]');
+      })()`);
+      if (there === true) return true;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return false;
+  };
+  if (!(await openTab())) return 'the Data & Backup tab never drew';
+
+  const waitFor = async (selector: string): Promise<string | null> => {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      const said = await window.webContents.executeJavaScript(
+        `(document.querySelector('${selector}') || {}).textContent ?? null`,
+      );
+      if (typeof said === 'string') return said;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return null;
+  };
+
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-action="backup-now"]')?.click(); true`,
+  );
+  if ((await waitFor('[data-ayq-backup-said="done"]')) === null) {
+    return 'Create backup now said nothing, or said it failed';
+  }
+  const made = await engineAsk({ kind: 'backup.overview' });
+  const backupId = made.latestBackupId;
+  const first = made.backups.find(one => one.backupId === backupId);
+  if (backupId === null || first?.trigger !== 'manual') {
+    return 'the button made no backup of its own';
+  }
+  if (made.lastAttempt?.outcome !== 'succeeded') return 'the last attempt is not recorded';
+
+  // Both halves change.
+  await engineAsk({
+    kind: 'counterparty.setName',
+    counterpartyKey: key,
+    displayName: 'Changed name',
+  });
+  await engineAsk({
+    kind: 'budget.setPlan',
+    month,
+    categoryId: category.id,
+    cents: 45_600,
+  });
+  const after = await facts();
+  if (after === before) return 'changing the state changed nothing';
+
+  // A second backup, of the changed state, to take parts from.
+  const second = await engineAsk({ kind: 'backup.create' });
+  if (second.outcome !== 'created') return 'a second backup could not be made';
+  const backups = ayqBackupsDir(dataDir);
+  const manifestOf = (id: string): AyqBackupManifest =>
+    JSON.parse(readFileSync(join(backups, id, 'manifest.json'), 'utf8')) as AyqBackupManifest;
+  const hash = (file: string): { bytes: number; sha256: string } => {
+    const bytes = readFileSync(file);
+    return { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+  };
+
+  // Mixed: the second backup, carrying the first backup's store.
+  const mixedId = second.backupId.replace(/-[a-z0-9]{6}$/, '-mixed1');
+  cpSync(join(backups, second.backupId), join(backups, mixedId), { recursive: true });
+  cpSync(join(backups, backupId, 'ayq-store.json'), join(backups, mixedId, 'ayq-store.json'));
+  const mixed = manifestOf(second.backupId);
+  mixed.backupId = mixedId;
+  mixed.digest = ayqManifestDigest(mixedId, mixed.createdAt, mixed.files);
+  writeFileSync(join(backups, mixedId, 'manifest.json'), JSON.stringify(mixed, null, 2));
+
+  // Newer: sealed correctly in every respect except that a newer AYQ wrote it.
+  const newerId = second.backupId.replace(/-[a-z0-9]{6}$/, '-newer1');
+  cpSync(join(backups, second.backupId), join(backups, newerId), { recursive: true });
+  const newerStore = JSON.parse(
+    readFileSync(join(backups, newerId, 'ayq-store.json'), 'utf8'),
+  ) as { version: number };
+  newerStore.version += 1;
+  writeFileSync(join(backups, newerId, 'ayq-store.json'), JSON.stringify(newerStore, null, 2));
+  const newer = manifestOf(second.backupId);
+  newer.backupId = newerId;
+  newer.storeVersion = newerStore.version;
+  newer.files = newer.files.map(one => ({
+    path: one.path,
+    ...hash(join(backups, newerId, ...one.path.split('/'))),
+  }));
+  newer.digest = ayqManifestDigest(newerId, newer.createdAt, newer.files);
+  writeFileSync(join(backups, newerId, 'manifest.json'), JSON.stringify(newer, null, 2));
+
+  for (const [id, expected] of [
+    [mixedId, 'mismatch'],
+    [newerId, 'newer-store'],
+  ] as const) {
+    const storeBefore = storeHash();
+    const refused = await engineAsk({ kind: 'backup.restore', backupId: id });
+    if (refused.outcome !== 'refused' || refused.refusal !== expected) {
+      return `the ${expected} set was not refused as ${expected}: ${JSON.stringify(refused.outcome === 'refused' ? refused.refusal : refused.outcome)}`;
+    }
+    if ((await facts()) !== after) return `refusing the ${expected} set changed the state`;
+    if (storeHash() !== storeBefore) return `refusing the ${expected} set rewrote the store`;
+    if (existsSync(join(dataDir, '.ayq-restore'))) return `refusing the ${expected} set began a restore`;
+  }
+
+  // Restore the first backup through the window, confirmed.
+  await openDestination(window, 'today');
+  await openDestination(window, 'settings');
+  if (!(await openTab())) return 'the Data & Backup tab never drew again';
+  const pressed = await window.webContents.executeJavaScript(`(() => {
+    const row = document.querySelector('[data-ayq-row="${backupId}"]');
+    const restore = row && row.querySelector('[data-ayq-action="backup-restore"]');
+    if (!restore) return false;
+    restore.click();
+    return true;
+  })()`);
+  if (pressed !== true) return 'the first backup offers no restore';
+  if ((await waitFor('[data-ayq-backup-confirm]')) === null) {
+    return 'restoring did not ask first';
+  }
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-action="backup-restore-go"]')?.click(); true`,
+  );
+  if ((await waitFor('[data-ayq-backup-said="done"]')) === null) {
+    return 'the restore said nothing, or said it did not happen';
+  }
+  const restored = await facts();
+  if (restored !== before) {
+    return `the restore brought back ${restored}, expected ${before}`;
+  }
+  const kept = (await engineAsk({ kind: 'backup.overview' })).backups.some(
+    one => one.trigger === 'before-restore',
+  );
+  if (!kept) return 'what the restore replaced was not kept';
+
+  process.stdout.write(
+    `[ayq-smoke] backup: made ${backupId}; refused mixed and newer with the state ` +
+      `intact; restored ${before}\n`,
+  );
+  return '';
+}
+
+/**
+ * Needs attention on the drawn window (010 §6; 013 §4, §5).
+ *
+ * After the smoke's import the engine holds counterparties nobody has filed, so
+ * Review's group must hold. The window has to draw exactly the groups the
+ * engine answers, in its order; the rail's Today badge has to be the number of
+ * groups; no row may show an engine identifier; and the review row's action
+ * has to open Review.
+ */
+async function attentionShown(window: BrowserWindow): Promise<string> {
+  const answered = await ask({ id: 'smoke-attention', kind: 'attention' } as AyqRequest);
+  if (!answered.ok || answered.kind !== 'attention') {
+    return `the engine did not answer attention: ${answered.ok ? answered.kind : answered.code}`;
+  }
+  const expected = answered.result.groups.map(one => one.kind);
+  if (!expected.includes('review')) return 'the imported statement left nothing to review';
+
+  if (!(await openDestination(window, 'today'))) return 'Today never opened';
+  const deadline = Date.now() + 60_000;
+  let seen: { kinds: string[]; badge: string | null; text: string } = {
+    kinds: [],
+    badge: null,
+    text: '',
+  };
+  while (Date.now() < deadline) {
+    seen = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => JSON.stringify({
+          kinds: [...document.querySelectorAll('[data-ayq-attention]')]
+            .map(one => one.getAttribute('data-ayq-attention')),
+          badge: (document.querySelector('[data-ayq-tab="today"] [data-ayq-waiting]') || { getAttribute: () => null })
+            .getAttribute('data-ayq-waiting'),
+          text: (document.querySelector('[data-ayq-pane="today-attention"]') || { innerText: '' }).innerText,
+        }))()`),
+      ),
+    ) as typeof seen;
+    if (seen.kinds.length === expected.length && seen.badge !== null) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (JSON.stringify(seen.kinds) !== JSON.stringify(expected)) {
+    return `the window drew ${JSON.stringify(seen.kinds)}, the engine answered ${JSON.stringify(expected)}`;
+  }
+  if (seen.badge !== String(expected.length)) {
+    return `the rail counts ${seen.badge ?? 'nothing'}, there are ${expected.length} groups`;
+  }
+  // Hyphenated identifiers only: 'review' is a kind and also an English word.
+  for (const raw of [...expected, 'no-entries', 'not-camt', 'write-failed'].filter(
+    one => one.includes('-'),
+  )) {
+    if (seen.text.includes(raw)) return `the pane shows the identifier ${raw}`;
+  }
+
+  await window.webContents.executeJavaScript(
+    `document.querySelector('[data-ayq-action="attention-review"]')?.click(); true`,
+  );
+  const opened = Date.now() + 30_000;
+  while (Date.now() < opened) {
+    const there = await window.webContents.executeJavaScript(
+      `!!document.querySelector('[data-ayq-screen="review"]')`,
+    );
+    if (there === true) {
+      process.stdout.write(
+        `[ayq-smoke] attention: ${expected.join(', ')}; badge ${seen.badge}; review opened\n`,
+      );
+      return '';
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  return 'the review row did not open Review';
 }
 
 /**
@@ -1908,86 +2365,137 @@ async function suggestionsShown(window: BrowserWindow): Promise<string> {
 }
 
 /**
- * Reports, which is not built — and the two things that has to mean.
+ * Reports, and the route from it (04 A32; 03 §7.26).
  *
- * It draws nothing that could be read as an answer, and it says so without
- * inventing a reason. The second half is the one worth a check on the packaged
- * application: a screen that blames a person's data for being empty is a screen
- * that tells them something untrue, and it is the kind of sentence that gets
- * written when somebody fills an empty page.
+ * Two things are checked on the packaged window. Reports draws the engine's
+ * spending answer as a table with one row per category, Uncategorised among
+ * them. And choosing a row opens the Register with the same filter actually
+ * applied: the chip is on the screen and the Register's own count is the count
+ * Reports stated for that row — the real filter, not a claim of one.
  */
 async function reportsShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'reports'))) {
     return 'the Reports destination never opened';
   }
 
+  // The period opens on the last three months; the fixture's statement may
+  // be older than that, so the whole budget is asked for, the way a person
+  // would by choosing it.
+  const periodSet = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(`(() => {
+      const period = document.querySelector('[data-ayq-reports-period]');
+      if (!period) return false;
+      if (period.value !== 'allTime') {
+        period.value = 'allTime';
+        period.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return true;
+    })()`)) === true;
+  const periodBy = Date.now() + 30_000;
+  while (Date.now() < periodBy && !(await periodSet())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
   const drawn = async (): Promise<boolean> =>
     (await window.webContents.executeJavaScript(
-      "!!document.querySelector('[data-ayq-not-built=\"reports\"]')",
+      'document.querySelectorAll(\'[data-ayq-table="reports"] tbody tr\').length > 0',
     )) === true;
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline && !(await drawn())) {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!(await drawn())) return 'Reports drew nothing at all, not even a reason';
+  if (!(await drawn()))
+    {return 'Reports drew no category rows on a budget that holds transactions';}
 
   const seen = JSON.parse(
     String(
       await window.webContents.executeJavaScript(`(() => {
         const screen = document.querySelector('[data-ayq-screen="reports"]');
+        const rows = [...screen.querySelectorAll('[data-ayq-table="reports"] tbody tr')];
+        const first = rows[0];
         return JSON.stringify({
-          said: screen.innerText.replace(/\\s+/g, ' ').trim(),
           figures: screen.querySelectorAll('[data-ayq-figure]').length,
           tables: screen.querySelectorAll('[data-ayq-table]').length,
           chips: screen.querySelectorAll('[data-ayq-state]').length,
           charts: screen.querySelectorAll('canvas, svg').length,
-          spending: !!screen.querySelector('[data-ayq-reports-spending]'),
+          rows: rows.length,
+          totals: !!screen.querySelector('[data-ayq-reports-totals]'),
+          firstCategory: first.querySelector('[data-ayq-report-category]')?.getAttribute('data-ayq-report-category') ?? null,
+          firstUncategorised: !!first.querySelector('[data-ayq-state="uncategorised"]'),
+          firstCount: Number(first.querySelector('[data-ayq-report-transactions]')?.getAttribute('data-ayq-report-transactions') ?? -1),
         });
       })()`),
     ),
   ) as {
-    said: string;
     figures: number;
     tables: number;
     chips: number;
     charts: number;
-    spending: boolean;
+    rows: number;
+    totals: boolean;
+    firstCategory: string | null;
+    firstUncategorised: boolean;
+    firstCount: number;
   };
 
   process.stdout.write(
     `[ayq-smoke] reports: ${seen.figures} figures, ${seen.tables} tables, ` +
-      `${seen.chips} chips, ${seen.charts} charts\n`,
+      `${seen.chips} chips, ${seen.charts} charts, ${seen.rows} category rows\n`,
   );
+  if (!seen.totals) return 'Reports does not state income, expenses and net';
+  if (seen.firstCount < 0)
+    {return 'a Reports row does not state how many transactions it counts';}
 
-  // Nothing on it can be mistaken for an answer.
-  if (seen.figures + seen.tables + seen.chips + seen.charts > 0) {
-    return 'Reports draws something that could be read as an answer';
+  // The route: the first row opens the Register with that filter applied.
+  await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-ayq-table="reports"] tbody tr\').click(); true',
+  );
+  const chip = seen.firstUncategorised ? 'uncategorised' : 'category';
+  const arrived = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      `!!document.querySelector('[data-ayq-screen="register"] [data-ayq-filter="${chip}"]')` +
+        ' && document.body.dataset.ayqLedgerRows !== undefined',
+    )) === true;
+  const until = Date.now() + 30_000;
+  while (Date.now() < until && !(await arrived())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!/not built/i.test(seen.said)) return 'Reports does not say it is not built';
-  if (!/for no other reason/i.test(seen.said)) {
-    return 'Reports does not say that nothing else is the reason';
+  if (!(await arrived())) {
+    return `choosing a category did not open the Register with a ${chip} filter shown`;
   }
-  // And no threshold, invented or implied.
-  for (const invented of [
-    'not enough',
-    'insufficient',
-    'at least',
-    'more data',
-    'come back',
-    'once you have',
-  ]) {
-    if (seen.said.toLowerCase().includes(invented)) {
-      return `Reports blames the budget: "${invented}"`;
-    }
-  }
-  // 04 A20 removed the Spending screen and this is where its question went, so
-  // this is where the removal is readable.
-  if (!seen.spending) {
-    return 'Reports does not record the Spending screen the design removed';
+  const settled = async (): Promise<number> =>
+    Number(
+      await window.webContents.executeJavaScript(
+        'Number(document.body.dataset.ayqLedgerTotal ?? -1)',
+      ),
+    );
+  let total = await settled();
+  const wait = Date.now() + 30_000;
+  while (Date.now() < wait && total < seen.firstCount) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    total = await settled();
   }
   process.stdout.write(
-    '[ayq-smoke] reports: says it is not built, blames nothing, draws nothing\n',
+    `[ayq-smoke] reports: the Register opened on ${chip} with ${total} rows; Reports said ${seen.firstCount}\n`,
   );
+  // Reports counts the expense transactions behind a category (its figures
+  // are magnitudes); the Register's category filter holds every transaction in
+  // it, whichever way the money went. So the Register may hold more, never
+  // fewer: fewer would mean the filter that opened is not the one Reports named.
+  if (total < seen.firstCount) {
+    return 'the Register filter reached from Reports is not the filter Reports stated';
+  }
+  // Leave the Register as it was found: what runs after this reads it whole.
+  await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-action=\"clear-filters\"]')?.click(); true",
+  );
+  const cleared = async (): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(
+      "!document.querySelector('[data-ayq-screen=\"register\"] [data-ayq-filter]')",
+    )) === true;
+  const clearBy = Date.now() + 30_000;
+  while (Date.now() < clearBy && !(await cleared())) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
   return '';
 }
 
@@ -2003,6 +2511,160 @@ async function reportsShown(window: BrowserWindow): Promise<string> {
  * Nothing about the wording decides any of it. A screen that had one control
  * doing both would pass a check that read labels and fail this one.
  */
+/**
+ * Gathering rows in the Register, and what the bar over them says (04 A36).
+ *
+ * Two rows are ticked and the bar is required to state that count, to say
+ * that it is a count of rows shown, and — with no filter on — to offer no
+ * "whole filter" scope at all, which is 03 §4.8 on the window. A category is
+ * then chosen and applied, and what is read back is the *table*, redrawn from
+ * the engine's answer: the two rows carry the category, the bar is gone, and
+ * the outcome names the count that changed. Nothing here presses a control
+ * that could learn a rule, because the bar has none.
+ */
+async function bulkShown(window: BrowserWindow): Promise<string> {
+  await openRegister(window);
+
+  const rows = JSON.parse(
+    String(
+      await window.webContents.executeJavaScript(`(() => {
+        const rows = [...document.querySelectorAll('[data-ayq-table="register"] tbody tr')];
+        return JSON.stringify(rows.slice(0, 3).map(row => row.getAttribute('data-ayq-row') || ''));
+      })()`),
+    ),
+  ) as string[];
+  if (rows.length < 3) return `the Register shows ${rows.length} rows, and this check needs three`;
+
+  const [first, second] = rows;
+  const tick = async (id: string): Promise<boolean> =>
+    (await window.webContents.executeJavaScript(`(() => {
+      const box = document.querySelector('[data-ayq-select-row="${id}"]');
+      if (!box) return false;
+      box.click();
+      return true;
+    })()`)) === true;
+  if (!(await tick(first)) || !(await tick(second))) {
+    return 'the rows offer nothing to tick';
+  }
+
+  const bar = async (): Promise<{
+    there: boolean;
+    count: string;
+    basis: string;
+    scopeOffered: boolean;
+    detailOpened: boolean;
+  }> =>
+    JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          const bar = document.querySelector('[data-ayq-bulk]');
+          return JSON.stringify({
+            there: !!bar,
+            count: bar ? (bar.querySelector('[data-ayq-bulk-count]') || {}).innerText || '' : '',
+            basis: bar ? (bar.querySelector('[data-ayq-bulk-basis]') || {}).getAttribute('data-ayq-bulk-basis') || '' : '',
+            scopeOffered: !!document.querySelector('[data-ayq-action="bulk-scope"]'),
+            detailOpened: !!document.querySelector('[data-ayq-detail]'),
+          });
+        })()`),
+      ),
+    );
+  const stated = await bar();
+  if (!stated.there) return 'two rows are ticked and there is no bar over them';
+  if (!/^2 /.test(stated.count)) return `the bar says "${stated.count}" for two ticked rows`;
+  if (stated.basis !== 'shown') return `the bar claims a "${stated.basis}" scope for a tick`;
+  if (stated.scopeOffered) return 'with no filter on, the bar still offers the whole filter as a scope (03 §4.8)';
+  if (stated.detailOpened) return 'ticking a row opened it';
+
+  // Set category: the scope is stated by the engine first, then applied.
+  const opened = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-ayq-action="bulk-category"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (opened !== true) return 'the bar offers no category action';
+
+  let by = Date.now() + 60_000;
+  let ready = false;
+  while (Date.now() < by && !ready) {
+    ready =
+      (await window.webContents.executeJavaScript(`(() => {
+        const apply = document.querySelector('[data-ayq-action="bulk-category-apply"]');
+        return !!apply && !apply.disabled;
+      })()`)) === true;
+    if (!ready) await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!ready) return 'the scope was never stated, so the decision could not be made';
+
+  const chosen = String(
+    await window.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector('[data-ayq-bulk-category-choice]');
+      if (!select) return '';
+      const option = [...select.options].find(one => one.value !== '');
+      if (!option) return '';
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(select), 'value');
+      if (setter && setter.set) setter.set.call(select, option.value);
+      else select.value = option.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return option.textContent || '';
+    })()`),
+  );
+  if (chosen === '') return 'no category to file into';
+
+  const pressed = await window.webContents.executeJavaScript(`(() => {
+    const apply = document.querySelector('[data-ayq-action="bulk-category-apply"]');
+    if (!apply) return false;
+    apply.click();
+    return true;
+  })()`);
+  if (pressed !== true) return 'the apply button went away before it was pressed';
+
+  by = Date.now() + 60_000;
+  let said = '';
+  while (Date.now() < by && said === '') {
+    said = String(
+      await window.webContents.executeJavaScript(
+        "(document.querySelector('[data-ayq-bulk-outcome]') || {}).innerText || ''",
+      ),
+    );
+    if (said === '') await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (said === '') {
+    const problem = await problemShown(window);
+    return `nothing came back${problem === '' ? '' : ` — the screen said: ${problem}`}`;
+  }
+  process.stdout.write(`[ayq-smoke] bulk filed as ${chosen}: ${said}\n`);
+  if (!/^2 filed/.test(said)) return `the outcome says "${said}" for two rows`;
+
+  // The table, redrawn from the engine's answer, and not the control.
+  by = Date.now() + 60_000;
+  let shown: string[] = [];
+  while (Date.now() < by) {
+    shown = JSON.parse(
+      String(
+        await window.webContents.executeJavaScript(`(() => {
+          return JSON.stringify([${JSON.stringify(first)}, ${JSON.stringify(second)}].map(id => {
+            const cell = document.querySelector(
+              '[data-ayq-table="register"] tbody tr[data-ayq-row="' + id + '"] [data-ayq-cell="category"]');
+            return cell ? cell.innerText.trim() : '';
+          }));
+        })()`),
+      ),
+    ) as string[];
+    if (shown.every(one => one === chosen)) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!shown.every(one => one === chosen)) {
+    return `the two rows read ${JSON.stringify(shown)} after filing as ${chosen}`;
+  }
+  const after = await bar();
+  if (after.there) return 'the decision was made and the bar is still claiming a selection';
+
+  // Left ticked on the way out, so the capture at the end shows the bar.
+  await tick(rows[2]);
+  return '';
+}
+
 async function reviewShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'review'))) {
     return 'the Review destination never opened';
@@ -2206,14 +2868,38 @@ async function reviewShown(window: BrowserWindow): Promise<string> {
     `[ayq-smoke] Settings holds the rule for ${afterLearning.join(', ')}\n`,
   );
 
-  // 04 A7: visible, and reversible. Taking it away is offered and works.
-  const forgot = await window.webContents.executeJavaScript(`(() => {
-    const button = document.querySelector('[data-ayq-table="rules"] tbody tr [data-ayq-action]');
+  // 04 A7: visible, and reversible. Taking it away is offered and works —
+  // through the card the rule is inspected on, which states what removal
+  // does and does not do before the button that does it.
+  const opened = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-ayq-table="rules"] tbody tr [data-ayq-action^="rule-inspect-"]');
     if (!button) return false;
     button.click();
     return true;
   })()`);
-  if (forgot !== true) return 'a rule cannot be taken away (04 A7)';
+  if (opened !== true) return 'a rule cannot be inspected where it is listed (04 A7)';
+  const press = async (action: string): Promise<boolean> => {
+    const by = Date.now() + 30_000;
+    while (Date.now() < by) {
+      const pressed = await window.webContents.executeJavaScript(`(() => {
+        const button = document.querySelector('[data-ayq-rule-card] [data-ayq-action="${action}"]');
+        if (!button || button.disabled) return false;
+        button.click();
+        return true;
+      })()`);
+      if (pressed === true) return true;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return false;
+  };
+  if (!(await press('rule-remove'))) return 'the rule card offers no removal (04 A7)';
+  const consequence = await window.webContents.executeJavaScript(
+    "document.querySelector('[data-ayq-rule-remove-consequence]')?.textContent ?? ''",
+  );
+  if (!/nothing is re-filed/.test(String(consequence))) {
+    return 'removal does not say first that what the rule filed stays where it is';
+  }
+  if (!(await press('rule-remove-confirm'))) return 'a rule cannot be taken away (04 A7)';
   const gone = Date.now() + 30_000;
   let left = afterLearning.length;
   while (Date.now() < gone && left >= afterLearning.length) {
@@ -2262,8 +2948,9 @@ async function reviewShown(window: BrowserWindow): Promise<string> {
   if (!/Renaming a category moves its rules/.test(categories.consequence)) {
     return 'Settings does not say what renaming a category does to the rules';
   }
-  if (!/does not archive or delete/.test(categories.archive)) {
-    return 'Settings does not say what it will not do to a category';
+  // 04 A35: removal is counted first and never silent, and the screen says so.
+  if (!/never destroys or refiles anything in silence/.test(categories.archive)) {
+    return 'Settings does not say what removing a category does and does not do';
   }
   process.stdout.write(
     `[ayq-smoke] Settings lists ${categories.rows} categories, and states both consequences\n`,
@@ -2378,17 +3065,25 @@ async function todayShown(window: BrowserWindow): Promise<string> {
   // follows", "queues come last". Prototype r009 put the queues above the list;
   // Canon governs, so the order is measured on the window rather than trusted
   // to the file that draws it.
-  const wanted = [
-    'today-funds',
-    'today-lasts',
-    'today-movements',
-    'today-movements-detail',
-    'today-waiting',
-  ];
-  if (seen.order.join(',') !== wanted.join(',')) {
-    return `Today is in the order ${seen.order.join(', ')}, and A21 asks for ${
-      wanted.join(', ')
-    }`;
+  // The rules, each on its own: what you have, how long it lasts, the list,
+  // and the queues after it — Needs attention before what is waiting.
+  const at = (pane: string) => seen.order.indexOf(pane);
+  const orderWrong =
+    seen.order[0] !== 'today-funds'
+      ? 'available funds are not first'
+      : seen.order[1] !== 'today-lasts'
+        ? 'how long it lasts does not follow'
+        : !(at('today-movements') > at('today-lasts'))
+          ? 'the list is not after the figures'
+          : !(at('today-attention') > at('today-movements'))
+            ? 'Needs attention is not after the list'
+            : !(at('today-waiting') > at('today-attention'))
+              ? 'what is waiting is not after Needs attention'
+              : seen.order.length !== 5
+                ? 'Today carries a pane A21 does not place'
+                : '';
+  if (orderWrong !== '') {
+    return `Today is in the order ${seen.order.join(', ')}: ${orderWrong}`;
   }
 
   // A5: a queue with nothing in it is not drawn as a line saying zero.
@@ -2605,7 +3300,9 @@ async function shellShown(window: BrowserWindow): Promise<string> {
         if (!rail) return JSON.stringify({ rail: null });
         const items = [...rail.querySelectorAll('[data-ayq-tab]')]
           .map(one => one.dataset.ayqTab);
-        const children = [...rail.children];
+        const children = [
+          ...rail.querySelectorAll('[data-ayq-tab], [data-ayq-rail-separator]'),
+        ];
         const separators = children
           .map((one, index) => (one.hasAttribute('data-ayq-rail-separator') ? index : -1))
           .filter(index => index >= 0);
@@ -2626,7 +3323,7 @@ async function shellShown(window: BrowserWindow): Promise<string> {
           review: at('review'),
           plan: at('plan'),
           reports: at('reports'),
-          last: children.length > 0 ? children[children.length - 1].dataset.ayqTab : '',
+          last: items.length > 0 ? items[items.length - 1] : '',
           wordmark: (rail.textContent || '').slice(0, 3),
           keyboard,
           scrollers: scrollers.length,
@@ -2697,6 +3394,15 @@ async function shellShown(window: BrowserWindow): Promise<string> {
     `[ayq-smoke] rail ${seen.rail.width}px, ${(seen.items ?? []).length} destinations, ` +
       `${(seen.separators ?? []).length} hairlines, one scroller at ${seen.scrollerRight}px\n`,
   );
+  // A26: ordinary chrome carries nothing technical. The data directory this
+  // very run writes to, or any word about the engine, would be a diagnostic
+  // back in the status bar.
+  if ((seen.status ?? '').includes(dataDir)) {
+    return `the status bar shows the data directory: ${seen.status}`;
+  }
+  if (/engine/i.test(seen.status ?? '')) {
+    return `the status bar reports on the engine: ${seen.status}`;
+  }
   process.stdout.write(`[ayq-smoke] status bar: ${seen.status}\n`);
 
   // And the two things A22 asks for that only a scroll can answer: the table
@@ -2922,12 +3628,18 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
           const node = document.querySelector('[data-ayq-ground]');
           if (!node) return JSON.stringify({ chosen: '', resolved: '' });
           const style = getComputedStyle(node);
+          const bar = document.querySelector('[data-ayq-title-bar]');
+          const rgb = bar ? getComputedStyle(bar).backgroundColor : '';
+          const hex = rgb.startsWith('rgb(')
+            ? '#' + rgb.slice(4, -1).split(',').map(one => Number(one).toString(16).padStart(2, '0')).join('')
+            : rgb;
           return JSON.stringify({
             chosen: node.dataset.ayqGround,
             resolved: node.dataset.ayqGroundResolved,
             pane: style.getPropertyValue('--ayq-pane').trim(),
             accent: style.getPropertyValue('--ayq-accent').trim(),
             painted: style.backgroundColor,
+            titleBar: hex,
           });
         })()`),
       ),
@@ -2937,6 +3649,7 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
       pane?: string;
       accent?: string;
       painted?: string;
+      titleBar?: string;
     };
 
     if (seen.chosen !== ground) {
@@ -2957,6 +3670,13 @@ async function groundsShown(window: BrowserWindow): Promise<string> {
     }
     if (!seen.painted || seen.painted === 'rgba(0, 0, 0, 0)') {
       return `${ground} painted nothing`;
+    }
+    // The bar is the rail's surface, live, and the native controls followed.
+    if (seen.titleBar !== want.surface.rail) {
+      return `${ground} drew the title bar ${seen.titleBar} rather than the rail's ${want.surface.rail}`;
+    }
+    if (titleBarPainted !== seen.resolved) {
+      return `${ground} left the window controls painted for ${titleBarPainted ?? 'nothing'}`;
     }
     process.stdout.write(
       `[ayq-smoke] ground ${ground} -> ${seen.resolved}, panes ${seen.pane}, ` +
@@ -3181,6 +3901,19 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await openRegister(window);
   }
 
+  // Gathering rows, and the bar that states the scope before acting (04 A36).
+  const bulkAsked = process.env.AYQ_SMOKE_BULK === '1';
+  let bulk = 'not asked';
+  let bulkOk = true;
+  if (bulkAsked) {
+    const wrong = await bulkShown(window);
+    bulk = wrong === '' ? 'held' : wrong;
+    bulkOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] bulk: ${bulkOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // Review and Settings: the two decisions of 03 §4.1, and what Settings owns.
   const reviewAsked = process.env.AYQ_SMOKE_REVIEW === '1';
   let review = 'not asked';
@@ -3232,6 +3965,36 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     aboutOk = wrong === '';
     process.stdout.write(
       `[ayq-smoke] About: ${aboutOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
+  // 010 / 013: Needs attention on Today, and the rail's count.
+  const attentionAsked = process.env.AYQ_SMOKE_ATTENTION === '1';
+  let attention = 'not asked';
+  let attentionOk = true;
+  if (attentionAsked) {
+    const wrong = await attentionShown(window).catch((error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    );
+    attention = wrong === '' ? 'held' : wrong;
+    attentionOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] Needs attention: ${attentionOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
+  // 04 A38 and 03 §12: a backup made, two bad sets refused, the backup restored.
+  const backupAsked = process.env.AYQ_SMOKE_BACKUP === '1';
+  let backup = 'not asked';
+  let backupOk = true;
+  if (backupAsked) {
+    const wrong = await backupShown(window).catch((error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    );
+    backup = wrong === '' ? 'held' : wrong;
+    backupOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] Data & Backup: ${backupOk ? 'held' : `FAILED: ${wrong}`}\n`,
     );
   }
 
@@ -3336,7 +4099,15 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
   }
 
   const hostOk = requiredHost === '' || engineHost === requiredHost;
+  const expectedWindow = process.env.AYQ_SMOKE_EXPECT_WINDOW ?? '';
+  const windowOk = expectedWindow === '' || expectedWindow === windowOpenedFrom;
+  process.stdout.write(
+    `[ayq-smoke] window: opened at the ${windowOpenedFrom}${
+      expectedWindow === '' ? '' : `, expected ${expectedWindow}`
+    }\n`,
+  );
   const passed =
+    windowOk &&
     state === 'ready' &&
     hostOk &&
     emptyOk &&
@@ -3350,9 +4121,12 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     accountsOk &&
     todayOk &&
     reviewOk &&
+    bulkOk &&
     reportsOk &&
     balanceOk &&
     aboutOk &&
+    backupOk &&
+    attentionOk &&
     snapshotOk &&
     suggestOk &&
     pagedOk;
@@ -3369,6 +4143,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       `${JSON.stringify(
         {
           passed,
+          window: windowOpenedFrom,
+          windowOk,
           state,
           engineHost,
           requiredHost,
@@ -3394,12 +4170,18 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           todayOk,
           review,
           reviewOk,
+          bulk,
+          bulkOk,
           reports,
           reportsOk,
           balance,
           balanceOk,
           about,
           aboutOk,
+          backup,
+          backupOk,
+          attention,
+          attentionOk,
           snapshot,
           snapshotOk,
           suggest,
@@ -3438,7 +4220,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} snapshot=${snapshot} suggest=${suggest}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} attention=${attention} snapshot=${snapshot} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is
@@ -3450,6 +4232,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, hold));
   }
 
+  rememberWindow(window);
   engine?.stop();
   app.exit(passed ? 0 : 1);
 }

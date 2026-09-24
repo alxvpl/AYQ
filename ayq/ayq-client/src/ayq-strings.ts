@@ -24,6 +24,7 @@ const EN = {
 
   'destination.today': 'Today',
   'destination.accounts': 'Accounts',
+  'destination.counterparty': 'Counterparty',
   'destination.register': 'Register',
   'destination.review': 'Review',
   'destination.upcoming': 'Upcoming',
@@ -54,10 +55,6 @@ const EN = {
     'CAMT.053 statement files, as XML or ZIP. A ZIP is read in memory and ' +
     'never unpacked to disk.',
 
-  'status.engine.running': 'Engine running',
-  'status.engine.starting': 'Starting the engine…',
-  'status.engine.failed': 'The engine did not answer',
-  'status.budget': 'Budget: {name}',
   'status.transactions': '{count} transactions',
   'status.accountsCounted': '{counted} of {total} accounts counted',
   'status.lastImport': 'Last import {when}',
@@ -77,13 +74,22 @@ const EN = {
   'import.categorised': '{count} categorised by rules',
   'import.skipped': '{count} skipped',
   'import.problems': '{count} could not be read',
-  'import.history': 'What AYQ has read',
+  'import.history': 'Import history',
+  'import.history.note': 'Newest first',
+  'import.freshness': 'Import freshness by account',
+  'import.column.anchor': 'Balance anchor',
+  'import.coverage.through': 'Complete through {date}',
+  'import.anchor.none': 'None',
+  'import.anchor.missing': '{account} has no balance anchor',
+  'import.anchor.missing.note':
+    'The import succeeded and the movements are held, but the balance stays ' +
+    'Unknown until you set it. Net imported movements are not shown as a balance.',
   'import.history.none': 'Nothing has been imported yet.',
-  'import.column.at': 'Read',
+  'import.column.at': 'Date',
   'import.column.file': 'File',
   'import.column.account': 'Account',
-  'import.column.records': 'Records',
-  'import.column.imported': 'Imported',
+  'import.column.records': 'Records read',
+  'import.column.imported': 'New',
   'import.column.duplicates': 'Already held',
   'import.column.outcome': 'And then',
   'import.outcome.categorised': '{count} filed by a rule',
@@ -118,31 +124,225 @@ const EN = {
 
   'notBuilt.title': 'Not built yet',
 
-  // Reports (04 A2, A20). Not built, and the screen says only that.
+  // Reports (04 A2, A20, A32): what was spent, by category, over a period.
   'reports.title': 'Reports',
-  'reports.notBuilt':
-    'Reports is not built. This screen is empty because that view has not been ' +
-    'written, and for no other reason — there is no amount of history to ' +
-    'gather first and nothing here is waiting on you.',
-  'reports.willAnswer':
-    'It is the last step of the working cycle (04 A2), and the question it is ' +
-    'for is what has been spent, by category and over a period.',
-  'reports.spending':
-    'AYQ had a Spending screen before the accepted design. 04 A20’s rail has no ' +
-    'such destination and that question belongs here, so the screen was ' +
-    'removed. The engine still answers it, so nothing has to be rebuilt when ' +
-    'this screen is written.',
-  'reports.meanwhile':
-    'Until then: the Register filters by period, account, category and ' +
-    'counterparty and states the totals for whatever set it is showing.',
-  'reports.open.register': 'Open the Register',
+  'reports.magnitudes': 'Spent and Expenses are magnitudes.',
+  'reports.income': 'Income',
+  'reports.expenses': 'Expenses',
+  'reports.net': 'Net',
+  'reports.byCategory': 'Spending by category',
+  'reports.period': '{from} to {to}',
+  'reports.select': 'Select a category to open the Register with that filter applied.',
+  'reports.column.category': 'Category',
+  'reports.column.spent': 'Spent',
+  'reports.column.share': '% of total',
+  'reports.column.average': 'Monthly average',
+  'reports.column.transactions': 'Transactions',
+  'reports.empty': 'Nothing was spent in this period.',
+  'reports.transfers':
+    '{count} transfers between your own accounts are left out: they move money, ' +
+    'they do not spend it.',
+  'register.filter.dates': 'Dates',
+  'register.filter.dates.from': 'from {from}',
+  'register.filter.dates.to': 'to {to}',
 
+  'settings.accounts.blurb':
+    'Configuration only. Balances, coverage and reconciliation live in account details.',
+  'settings.categories.blurb':
+    'Removing a category never destroys or reclassifies records on its own.',
+  'settings.about.blurb': 'Product and build identity live here, not in ordinary chrome.',
   'settings.tab.accounts': 'Accounts',
   'settings.tab.categories': 'Categories',
   'settings.tab.rules': 'Rules',
   'settings.tab.appearance': 'Appearance',
-  'settings.tab.data': 'Data',
   'settings.tab.about': 'About',
+  'settings.tab.backup': 'Data & Backup',
+
+  'attention.title': 'Needs attention',
+  'attention.none': 'Nothing needs attention.',
+  'attention.state': 'Attention',
+  'attention.due-today': 'Expected payments due today',
+  'attention.overdue': 'Expected payments overdue',
+  'attention.overdue.note': '{amount} still counted',
+  'attention.reconciliation-difference':
+    "Accounts where the bank's balance and AYQ's differ",
+  'attention.balance-unknown': 'Accounts with no known balance',
+  'attention.import-failed': 'Files an import could not use',
+  'attention.backup-failed': 'The last backup failed',
+  'attention.backup-failed.note': '{when}: {why}',
+  'attention.review': 'Counterparties to review',
+  'attention.open.upcoming': 'Open Upcoming',
+  'attention.open.review': 'Open Review',
+  'attention.open.import': 'Open Import history',
+  'attention.open.backup': 'Open Data & Backup',
+  'attention.setBalance': 'Set balance: {account}',
+  'attention.openAccount': 'Open {account}',
+  'import.problems.title': 'Files that could not be used',
+  'import.problems.handle': 'Mark as handled',
+  'import.problems.handled': 'Handled {when}',
+
+  // What the engine reports as codes, worded (04 A24; ayq-reasons.ts).
+  'reason.filing.bank-charge': "the bank's own charge",
+  'reason.filing.bank-interest': 'interest charged by the bank',
+  'reason.filing.counterparty': 'the counterparty is {counterparty}',
+  'reason.filing.legacy': 'a reason recorded by an earlier version of AYQ',
+  'reason.import.line': '{file} — {why}',
+  'reason.import.gone': 'it is no longer there',
+  'reason.import.not-allowed': 'AYQ is not allowed to read it',
+  'reason.import.folder': 'it is a folder, not a file',
+  'reason.import.unreadable': 'it could not be read',
+  'reason.import.no-entries': 'it holds no CAMT.053 entries',
+  'reason.import.not-camt': 'it is not a CAMT.053 document',
+  'reason.import.legacy': 'an earlier version of AYQ could not use it',
+  'reason.resolvedBy.bank-transaction-code': "the bank's own transaction code",
+  'reason.resolvedBy.structured': "the bank's structured counterparty fields",
+  'reason.resolvedBy.intermediary': "a payment provider's account",
+  'reason.resolvedBy.description': 'the description on the statement',
+  'reason.resolvedBy.alias': 'your decision that these are one counterparty',
+  'reason.resolvedBy.unresolved': 'nothing on the statement identified it',
+  'reason.resolvedBy.other': 'a way this version of AYQ does not describe',
+  'reason.kind.card-terminal': 'Card payment',
+  'reason.kind.card-withdrawal': 'Cash withdrawal',
+  'reason.kind.direct-debit': 'Direct debit',
+  'reason.kind.credit-transfer': 'Transfer',
+  'reason.kind.bank-fee': 'Bank fee',
+  'reason.kind.interest': 'Interest',
+  'reason.kind.reversal': 'Reversal',
+  'reason.kind.unknown': 'Not stated by the bank',
+  'reason.kind.other': 'A kind this version of AYQ does not describe',
+  'reason.match.same-counterparty': 'the same counterparty',
+  'reason.match.same-mandate': 'the same SEPA mandate',
+  'reason.match.same-amount': 'the same amount',
+  'reason.match.amount-within-tenth': 'an amount within a tenth of it',
+
+  'error.unexpected': 'AYQ could not do that.',
+  'error.engine-stopped':
+    "AYQ's engine stopped. Close the window and open AYQ again.",
+  'error.engine-timeout': "AYQ's engine did not answer within {minutes} minutes.",
+  'error.engine-not-running':
+    "AYQ's engine is not running. Close the window and open AYQ again.",
+  'error.engine-native-binding':
+    'AYQ could not load the part that reads the budget. This installation is ' +
+    'incomplete; install AYQ again.',
+  'error.picker-failed': 'The file picker could not be opened.',
+  'error.store-newer':
+    "This budget's AYQ records were written by a newer AYQ (version {found}; " +
+    'this AYQ reads up to version {known}). Open it with that AYQ rather than ' +
+    'overwrite them.',
+  'error.store-copy-failed':
+    "AYQ has to bring its records from version {found} to {known} and could " +
+    'not first keep a copy of them. Nothing has been changed. Make sure the ' +
+    'budget folder can be written to, and open AYQ again.',
+  'error.budget-slow':
+    'The budget did not confirm the change in time. Try again.',
+  'error.import-no-file': 'No file was chosen.',
+  'error.import-nothing-readable': 'Nothing was imported: {problems}.',
+  'error.import-nothing-readable.none':
+    'Nothing was imported: none of the chosen files holds a CAMT.053 statement.',
+  'error.category-needs-name': 'A category needs a name.',
+  'error.category-exists': 'That group already has a category called {name}.',
+  'error.category-not-found': 'That category is no longer there.',
+  'error.category-group-not-found': 'That category group is no longer there.',
+  'error.category-wrong-kind':
+    'A category stays with its own kind: money in with money in, money out ' +
+    'with money out.',
+  'error.category-in-use':
+    '{name} is still in use. Say where what uses it should go before removing it.',
+  'error.category-own-destination': 'A category cannot be its own destination.',
+  'error.counterparty-not-found': 'That counterparty is not in this budget.',
+  'error.counterparty-self': 'A counterparty cannot be combined with itself.',
+  'error.merge-nothing':
+    'Nothing to combine: no statement name leads to that counterparty.',
+  'error.transaction-not-found': 'That transaction is not in this budget.',
+  'error.bulk-needs-scope':
+    'A bulk correction needs a stated scope: an account, a period, a ' +
+    'category, a counterparty, a word or the unfiled. The amount alone is not one.',
+  'error.rule-not-found': 'That rule is no longer there.',
+  'error.plan-needs-name': 'A planned payment needs a name.',
+  'error.plan-needs-amount': 'A planned payment needs an amount above zero.',
+  'error.plan-needs-start': 'A planned payment needs a start date.',
+  'error.plan-bad-end': 'That end date is not a date.',
+  'error.plan-end-before-start': 'An end date cannot be before the start date.',
+  'error.plan-bad-interval':
+    'An interval is a whole number of periods, at least one.',
+  'error.plan-not-found': 'That planned payment is no longer there.',
+  'error.plan-not-on-date': 'That payment does not fall on that date.',
+  'error.plan-bad-date': 'That is not a date.',
+  'error.plan-already-matched':
+    'That transaction is already matched to another expected payment.',
+  'error.month-invalid': 'That is not a month.',
+  'error.month-not-kept':
+    'There is no budget month {month} to plan in. Plans can be set from three ' +
+    'months before the earliest transaction to twelve after the current one.',
+  'error.plan-amount-invalid': 'A plan is an amount of zero or more.',
+  'error.import-problem-not-found':
+    'That file is no longer in the import history.',
+  'error.anchor-disagrees':
+    'The balance could not be applied: the budget does not agree with it.',
+  'settings.backup.blurb':
+    "A backup is the budget and AYQ's own records together, from one moment. " +
+    'Restoring one puts both back.',
+
+  'backup.pane': 'Backups',
+  'backup.now': 'Create backup now',
+  'backup.now.working': 'Backing up…',
+  'backup.now.note':
+    'Kept on this computer, beside the budget. Nothing is sent anywhere.',
+  'backup.latest': 'Last backup {when}',
+  'backup.latest.none': 'No backup yet',
+  'backup.automatic': 'Automatic backups',
+  'backup.automatic.note':
+    'Made when AYQ opens and the newest backup is more than {hours} hours old. ' +
+    'The newest {kept} automatic backups are kept; backups you make are never ' +
+    'removed.',
+  'backup.automatic.ok': 'Last automatic backup {when}',
+  'backup.automatic.never': 'No automatic backup has been made yet',
+  'backup.automatic.failed': 'The last automatic backup failed, {when}: {why}',
+  'backup.lastFailed': 'The last backup failed, {when}: {why}',
+  'backup.created': 'Backup made.',
+  'backup.failed': 'No backup was made: {why}',
+  'backup.failure.no-budget': 'there is no budget yet.',
+  'backup.failure.store-unreadable': "AYQ's own records could not be read.",
+  'backup.failure.write-failed': 'the backup could not be written to disk.',
+  'backup.history': 'History',
+  'backup.history.note': 'Newest first',
+  'backup.column.created': 'Created',
+  'backup.column.kind': 'Kind',
+  'backup.column.size': 'Size',
+  'backup.column.build': 'Made by',
+  'backup.build': 'AYQ {version}, build {build}',
+  'backup.kind.manual': 'Made by you',
+  'backup.kind.automatic': 'Automatic',
+  'backup.kind.before-restore': 'Before a restore',
+  'backup.latestMark': 'Latest',
+  'backup.notRestorable': 'Needs a newer AYQ',
+  'backup.empty':
+    'No backups yet. Create one now, or AYQ makes one the next time it opens.',
+  'backup.size': '{size} MB',
+  'backup.restore': 'Restore backup',
+  'backup.restore.confirm':
+    "Restore the backup from {when}? The budget and AYQ's own records are " +
+    'replaced together. What you have now is kept as a backup first.',
+  'backup.restore.go': 'Restore',
+  'backup.restore.cancel': 'Cancel',
+  'backup.restore.working': 'Restoring…',
+  'backup.restored':
+    'Restored the backup from {when}. What you had before is kept as a backup.',
+  'backup.refused': 'Not restored: {why} Nothing was changed.',
+  'backup.refusal.unknown-backup': 'that backup is no longer there.',
+  'backup.refusal.incomplete': 'part of that backup is missing.',
+  'backup.refusal.mismatch':
+    'that backup has been altered, or mixes parts of different backups.',
+  'backup.refusal.newer-format': 'a newer AYQ made it.',
+  'backup.refusal.newer-store': 'a newer AYQ wrote its records.',
+  'backup.refusal.unreadable': 'that backup cannot be read.',
+  'backup.refusal.conflict': 'it would overwrite a different budget.',
+  'backup.restoreFailed':
+    'The restore did not finish: {why} What you had before is still in place.',
+  'backup.failure.safety-backup-failed':
+    'AYQ could not first back up what you have now.',
+  'backup.failure.replace-failed': 'the files could not be replaced.',
+  'backup.failure.open-failed': 'the restored budget would not open.',
 
   'about.author': 'Author',
   'about.version': 'Product version',
@@ -156,6 +356,26 @@ const EN = {
   'about.development':
     'This is a development build. It was not produced by the release ' +
     'workflow and carries no revision.',
+  'about.buildDate.none': 'not a release build',
+  'about.licence.ayq':
+    'AYQ is proprietary software. Its own code is not released under the MIT ' +
+    'licence or any other open-source licence, and having a copy of it grants ' +
+    'no right to copy, modify or redistribute it.',
+  'about.licence.actual':
+    'AYQ is built on Actual Budget (copyright James Long), which it uses under ' +
+    'the MIT licence. That licence notice ships with this application. Other ' +
+    'components keep their own licences.',
+  'about.localFirst':
+    'AYQ keeps everything on this computer. The budget, the statements you ' +
+    'import and every decision you make about them stay in your own data ' +
+    'folder. AYQ has no account, sends nothing anywhere and works with no ' +
+    'network at all.',
+  'about.link.repository': 'Repository',
+  'about.pane': 'About AYQ',
+  'about.technical': 'Technical information',
+  'about.technical.note':
+    'For a fault report: copies the version, build, revision and engine ' +
+    'details. It carries nothing about your money and no file locations.',
   'about.copy': 'Copy technical information',
   'about.copied': 'Copied.',
 
@@ -183,6 +403,9 @@ const EN = {
   'register.column.category': 'Category',
   'register.column.account': 'Account',
   'register.column.amount': 'Amount',
+  'register.column.state': 'State',
+  'register.state.none': '—',
+  'detail.title': 'Transaction',
   'register.totals.filtered':
     'These totals describe the {count} transactions this filter matched, not ' +
     'everything AYQ holds. In {in} · out {out} · net {net}',
@@ -192,6 +415,54 @@ const EN = {
   'register.totals.uncategorised':
     '{count} of them are uncategorised, and are counted here.',
   'register.showing': 'Showing the newest {shown} of {total}.',
+  'register.select.row': 'Select this transaction',
+  'register.select.shown': 'Select every transaction shown',
+  'register.select.count': '{count} selected',
+  'register.select.basis': 'of {shown} shown · this filter holds {total}',
+  'register.select.basis.all': 'of {shown} shown',
+  'register.select.whole': 'All {total} in this filter selected',
+  'register.select.whole.basis':
+    'every transaction the filter holds, not only the rows shown',
+  'register.select.wholeFilter': 'Select all {total} in this filter',
+  'register.select.shownOnly': 'Select only the {shown} shown',
+  'register.select.clear': 'Clear selection',
+  'register.bulk.category': 'Set category',
+  'register.bulk.category.choose': 'Choose a category',
+  'register.bulk.category.clear': 'No category',
+  'register.bulk.category.apply': 'Apply to {count}',
+  'register.bulk.byHand':
+    '{count} of these were filed by hand. They are kept unless you say otherwise.',
+  'register.bulk.byHand.include': 'Also change the {count} filed by hand',
+  'register.bulk.counterparty': 'Set counterparty',
+  'register.bulk.counterparty.choose': 'Choose a counterparty',
+  'register.bulk.counterparty.reach':
+    'This records the {names} bank names behind your selection as that ' +
+    'counterparty. Every transaction under those names moves: {reach} in all, ' +
+    '{beyond} of them not in your selection.',
+  'register.bulk.counterparty.apply': 'Record {names} names as this counterparty',
+  'register.bulk.counterparty.none':
+    'Nothing in this selection was imported under a bank name AYQ can record.',
+  'register.bulk.filed': '{count} filed.',
+  'register.bulk.filed.kept':
+    '{count} filed. {kept} kept as you had filed them by hand.',
+  'register.bulk.moved':
+    '{names} bank names recorded as {name}; {moved} transactions now belong to it.',
+  'register.bulk.moved.none': 'Those names already belonged to {name}. Nothing moved.',
+  'review.select.row': 'Select this counterparty',
+  'review.select.shown': 'Select every counterparty shown',
+  'review.select.count': '{count} selected',
+  'review.select.basis': '{transactions} transactions · {out} out',
+  'review.select.clear': 'Clear selection',
+  'review.bulk.note':
+    'One category for all of them. Filing changes these transactions; ' +
+    'remembering also writes one rule per counterparty.',
+  'review.bulk.filed': '{count} filed across {counterparties} counterparties.',
+  'review.bulk.filed.kept':
+    '{count} filed across {counterparties} counterparties. {kept} kept as you ' +
+    'had filed them by hand.',
+  'review.bulk.learned':
+    '{count} filed, and AYQ will file these {counterparties} counterparties ' +
+    'from now on.',
   'register.showMore': 'Show more',
   'register.empty':
     'Nothing has been imported yet. A statement makes an account and fills ' +
@@ -237,11 +508,9 @@ const EN = {
   'today.noForecast':
     'Nothing is planned or expected yet, so there is no position to project.',
   'today.waiting': 'Waiting on you',
-  'today.waiting.overdue': 'overdue, {amount}',
   'today.waiting.matches': 'matches to confirm',
   'today.waiting.uncategorised': 'transactions with no category',
   'today.waiting.suggestions': 'suggested records to confirm',
-  'today.waiting.counterparties': 'counterparties with nothing filed',
   'today.waiting.none': 'Nothing is waiting on you.',
   'today.movements': 'Latest movements',
   'today.movements.all': 'all accounts',
@@ -249,6 +518,62 @@ const EN = {
   'today.open.upcoming': 'Open Upcoming',
   'today.open.review': 'Open Review',
   'today.open.register': 'Open Register',
+  'today.open': 'Open',
+  'today.accounts.select': 'Select an account for its details',
+  'today.account.open': '›',
+  'today.account.noAnchor': 'No balance anchor',
+  'detail.action.manageCounterparty': 'Manage counterparty…',
+  'review.manage': 'Manage counterparty…',
+  'counterparty.back': '‹ Back',
+  'counterparty.none': 'No counterparty in this budget has that key.',
+  'counterparty.seen': 'Seen {first} to {last} · {count} transactions',
+  'counterparty.name': 'Display name',
+  'counterparty.name.owner':
+    'Your name for it. What the bank printed is kept below, unchanged.',
+  'counterparty.name.automatic':
+    'The name the statement gave. You can call it something else; the ' +
+    'statement text stays as evidence.',
+  'counterparty.name.edit': 'Rename…',
+  'counterparty.name.save': 'Save name',
+  'counterparty.name.clear': 'Use the statement’s name',
+  'counterparty.renamed':
+    'This counterparty is now called {name} everywhere. What the bank ' +
+    'printed is kept as it was.',
+  'counterparty.renamed.cleared': 'The statement’s own name is back.',
+  'counterparty.cancel': 'Leave it as it is',
+  'counterparty.evidence': 'Names seen in statements',
+  'counterparty.evidence.kind': 'evidence, not a decision',
+  'counterparty.operational':
+    'This surface is operational. Long-term spending behaviour by counterparty ' +
+    'is a question for AYQ Analyses, not for this view (A37).',
+  'counterparty.evidence.note':
+    'One line per imported name variant, kept as evidence. A display name ' +
+    'never replaces it.',
+  'counterparty.variant.byHand': 'By your decision',
+  'counterparty.variant.byStatement': 'By the statement',
+  'counterparty.variant.undo': 'Undo this identity decision…',
+  'counterparty.variant.undo.consequence':
+    'The {count} transactions printed as {variant} go back to being their ' +
+    'own counterparty, {key}. Every record is kept.',
+  'counterparty.variant.undo.confirm': 'Undo it',
+  'counterparty.variant.undone':
+    '{variant} is its own counterparty again; {count} transactions moved.',
+  'counterparty.rules': 'Rules that mention it',
+  'counterparty.rules.none':
+    'No learned rule files this counterparty. One is learned on Review, or ' +
+    'when a transaction is categorised and you choose to remember it.',
+  'counterparty.identity': 'Identity',
+  'counterparty.merge': 'This is really another counterparty…',
+  'counterparty.merge.search': 'Find a counterparty',
+  'counterparty.merge.choose': 'Choose the counterparty this really is',
+  'counterparty.merge.consequence':
+    'Every one of the {variants} statement variants of {name} becomes ' +
+    '{target}: {count} transactions move, and every record is kept. A merge ' +
+    'is undone only by a further identity decision — removing those ' +
+    'variants from {target}, one at a time, on its page.',
+  'counterparty.merge.confirm': 'Merge into {target}',
+  'counterparty.merged': '{name} is now {target}; {moved} transactions moved.',
+  'counterparty.recent': 'Recent transactions',
   'today.open.accounts': 'Account details',
   'today.open.import': 'Import statements',
 
@@ -288,6 +613,11 @@ const EN = {
     'is a statement about every one that arrives from now on — two decisions, ' +
     'and AYQ will not make the second one for you (03 §4.1).',
   'review.do.category': 'Category',
+  'review.pane.title': 'Review group',
+  'review.pane.sub': '{count} transactions · {out} total out · seen {seen}',
+  'review.stat.counterparties': 'counterparties',
+  'review.stat.transactions': 'transactions',
+  'review.stat.out': 'total out',
   'review.do.file': 'File these',
   'review.do.learn': 'File these and remember',
   'review.filed': '{count} filed.',
@@ -329,9 +659,40 @@ const EN = {
     'budget (03 §4.2). Renaming a category moves its rules with it; the rules ' +
     'are on the Rules tab.',
   'categories.noArchive':
-    'AYQ does not archive or delete a category here. Nothing in Canon says what ' +
-    'should happen to the transactions filed under one, and guessing is worse ' +
-    'than not offering it.',
+    'Removing a category never destroys or refiles anything in silence: what ' +
+    'still uses it is counted first, and you say where it goes.',
+  'categories.move': 'Move',
+  'categories.move.to': 'Move to group',
+  'categories.move.cancel': 'Cancel',
+  'categories.moved': '{name} is now in {group}.',
+  'categories.remove': 'Remove',
+  'categories.remove.cancel': 'Cancel',
+  'categories.remove.checking': 'Counting what uses it…',
+  'categories.remove.unused':
+    'Nothing uses {name}: no transaction, no rule, no planned record, no plan amount.',
+  'categories.remove.inUse': '{name} is still in use:',
+  'categories.remove.transactions': '{count} transactions',
+  'categories.remove.rules': '{count} learned rules',
+  'categories.remove.planned': '{count} planned or recurring records',
+  'categories.remove.months': '{count} months with a plan amount',
+  'categories.remove.destination': 'Where they should go',
+  'categories.remove.destination.choose': 'Choose a destination',
+  'categories.remove.destination.uncategorised': 'Leave them Uncategorised',
+  'categories.remove.consequence.category':
+    'The transactions, the plan amounts and the planned records move to ' +
+    '{destination}; the rules follow it by name.',
+  'categories.remove.consequence.uncategorised':
+    'The transactions and the planned records survive without a category. The ' +
+    '{rules} learned rules are removed — a rule cannot file into nothing — and ' +
+    'the plan amounts are dropped.',
+  'categories.remove.confirm': 'Remove {name}',
+  'categories.removed': '{name} removed.',
+  'categories.removed.to':
+    '{name} removed; {transactions} transactions and {planned} planned records ' +
+    'moved to {destination}, {rules} rules with them.',
+  'categories.removed.uncategorised':
+    '{name} removed; {transactions} transactions and {planned} planned records ' +
+    'are now Uncategorised, and {rules} rules were removed.',
   'categories.empty': 'This budget has no categories yet.',
   'categories.needsName': 'A category needs a name.',
   'categories.made': '{name} added.',
@@ -345,8 +706,29 @@ const EN = {
   'rules.column.counterparty': 'Counterparty',
   'rules.column.category': 'Files into',
   'rules.column.since': 'Learned',
-  'rules.column.remove': 'Forget',
-  'rules.remove': 'Forget this rule',
+  'rules.column.inspect': 'Inspect',
+  'rules.inspect': 'Inspect…',
+  'rules.card.stands': '{counterparty} files into {category}, learned {date}.',
+  'rules.card.filed': 'It has filed {filed} transactions.',
+  'rules.card.byHand':
+    '{byHand} of this counterparty’s transactions were filed by hand and are ' +
+    'outside its reach.',
+  'rules.card.correct': 'Correct…',
+  'rules.card.remove': 'Remove…',
+  'rules.card.cancel': 'Leave it as it is',
+  'rules.card.category': 'Files into',
+  'rules.card.correctConsequence':
+    'Correcting re-files the {filed} transactions the rule filed into ' +
+    '{category}. The {byHand} you filed yourself stay as they are, and later ' +
+    'imports follow the corrected rule.',
+  'rules.card.correctApply': 'Correct the rule',
+  'rules.card.removeConsequence':
+    'Removing stops the rule applying to later imports. The {filed} ' +
+    'transactions it filed stay where they are: nothing is re-filed.',
+  'rules.card.removeConfirm': 'Remove the rule',
+  'rules.corrected':
+    'The rule now files {counterparty} into {category}; {filed} transactions ' +
+    'follow it.',
   'rules.apply': 'Apply the rules now',
   'rules.applied': '{count} transactions filed.',
   'rules.removed': 'That rule is gone. What it filed stays where it is.',
@@ -367,12 +749,27 @@ const EN = {
   'upcoming.column.amount': 'Amount',
   'upcoming.column.balance': 'Position after',
   'upcoming.column.state': 'State',
+  'upcoming.column.recurrence': 'Recurrence',
+  'upcoming.recurrence.plan': 'Plan amount',
+  'upcoming.position.note':
+    'Position after is Unknown where the paying account has no balance anchor; ' +
+    'it is never derived from net imported movements. A matched payment is ' +
+    'already reflected in the account balance.',
   'upcoming.state.expected': 'Expected',
   'upcoming.state.overdue': 'Overdue, still counted',
   'upcoming.state.suggested': 'Suggested',
   'upcoming.state.plan': 'Rest of the plan',
   'upcoming.state.dismissed': 'Dismissed',
   'upcoming.notCounted': 'not counted',
+  'upcoming.position.unknown': 'Unknown',
+  'upcoming.pane.position': 'Position after',
+  'upcoming.pane.category': 'Category',
+  'upcoming.match.note':
+    'Matching runs by itself every time this screen is opened. Check again ' +
+    'only if something that has happened is still shown as expected.',
+  'upcoming.match.again': 'Check what has already happened',
+  'upcoming.match.title': 'Automatic matching is the normal path',
+  'upcoming.match.glyph': 'i',
   'upcoming.empty': 'Nothing is expected yet.',
   'upcoming.lowest': 'Lowest point {amount} on {date}',
   'upcoming.lowest.unknown':
@@ -393,6 +790,7 @@ const EN = {
   'upcoming.matches.no': 'Not this one',
 
   // The pane. Every action says what it reaches (03 §7.17).
+  'upcoming.pane.title': 'Planned payment',
   'upcoming.pane.occurrence': 'This occurrence',
   'upcoming.pane.record': 'The record it comes from',
   'upcoming.pane.none': 'Choose a row to see what is behind it.',
@@ -471,6 +869,7 @@ const EN = {
   'plan.blurb':
     'What each category is planned to take this month, what it has taken, and ' +
     'what AYQ still expects before the month is out.',
+  'plan.currency': '€',
   'plan.month': 'Month',
   'plan.column.category': 'Category',
   'plan.column.plan': 'Planned',
@@ -506,6 +905,7 @@ const EN = {
   'accounts.column.statements': 'Statements to',
   'accounts.column.balance': 'Balance',
   'accounts.column.agrees': 'Agrees with the bank',
+  'accounts.column.details': 'Details',
   'accounts.counts.yes': 'Counted',
   'accounts.counts.no': 'Not counted',
   'accounts.statements.none': 'Nothing imported',
@@ -529,7 +929,9 @@ const EN = {
   'accounts.detail.readFrom': 'Read from',
   'accounts.detail.readAt': 'Read on',
   'accounts.detail.counts': 'Counts toward available funds',
+  'accounts.detail.statements': 'Statements through',
   'accounts.detail.balance': 'Balance',
+  'accounts.detail.operational': 'Operational state',
   'accounts.detail.anchor': 'Anchor',
   'accounts.detail.anchor.bank': 'the bank stated it on {date}',
   'accounts.detail.anchor.manual': 'you set it, for {date}',
@@ -544,7 +946,7 @@ const EN = {
   'accounts.detail.configure':
     'Whether this account counts toward available funds is set in ' +
     'Settings \u2192 Accounts.',
-  'accounts.back': 'Back to Today',
+  'accounts.back': '‹ Back to Today',
 
   // Setting and correcting a balance (§4.4, §4.5).
   'balance.set.title': 'Set account balance',
@@ -590,6 +992,8 @@ const EN = {
     'A transfer between a counted and an uncounted account moves money in or ' +
     'out of available funds; it is never income or expense.',
   'settings.accounts.open': 'Open Accounts',
+  'settings.accounts.kind': 'Bank account',
+  'settings.accounts.openOne': 'Open account details',
 
   'detail.none': 'Choose a transaction to see what is behind it.',
   'detail.bankSaid': 'What the bank said',
@@ -623,6 +1027,7 @@ const EN = {
   'detail.history': 'Decisions',
   'detail.history.none': 'Nothing has been decided about this one yet.',
   'detail.history.line': '{category} — {by}, {when}',
+  'detail.history.lineBecause': '{category} — {by}, {when}: {because}',
   'detail.history.cleared': 'the category was cleared',
   'detail.action.changeCategory': 'Change category…',
   'detail.action.correctCounterparty': 'Correct counterparty…',
@@ -659,16 +1064,21 @@ const EN = {
   'appearance.buttons.heading': 'Buttons',
   'appearance.buttons.note':
     'One treatment for a filled button everywhere: dark, with mint text.',
+  'appearance.buttons.disabled': 'Disabled',
   'appearance.buttons.primary': 'Filled',
   'appearance.buttons.secondary': 'Plain',
   'appearance.saving': 'Saving…',
   'appearance.failed': 'The ground could not be saved: {reason}',
 
-  'state.confirmed': 'Confirmed',
+  'state.confirmed': 'Owner set',
+  'state.rule': 'Rule applied',
   'state.suggested': 'Suggested',
-  'state.overdue': 'Overdue',
+  'state.overdue': 'Attention',
   'state.neutral': 'Neutral',
   'state.uncategorised': 'Uncategorised',
+  'state.operational': 'Coverage complete',
+  'state.rule.glyph': 'ƒ',
+  'state.operational.tick': '✓',
 
   'sample.figure.label': 'Available funds',
   'sample.figure.note': 'Sample values. Nothing here is anybody’s money.',
@@ -730,6 +1140,11 @@ const AMOUNT = new Intl.NumberFormat(AYQ_LOCALE, {
 
 const WHOLE = new Intl.NumberFormat(AYQ_LOCALE);
 
+const MEGABYTES = new Intl.NumberFormat(AYQ_LOCALE, {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
 const DAY = new Intl.DateTimeFormat(AYQ_LOCALE, {
   day: 'numeric',
   month: 'short',
@@ -758,9 +1173,17 @@ const LIST = new Intl.ListFormat(AYQ_LOCALE, {
   type: 'conjunction',
 });
 
+/**
+ * The minus sign carrying direction (04 A19): the typographic minus, U+2212,
+ * never the hyphen the formatter falls back to.
+ */
+function minus(text: string): string {
+  return text.replace(/^-/, '−');
+}
+
 /** Integer cents with the currency symbol. */
 export function ayqMoney(cents: number): string {
-  return MONEY.format(cents / 100);
+  return minus(MONEY.format(cents / 100));
 }
 
 /**
@@ -770,7 +1193,7 @@ export function ayqMoney(cents: number): string {
  * nothing after the first; the column heading carries it.
  */
 export function ayqAmount(cents: number): string {
-  return AMOUNT.format(cents / 100);
+  return minus(AMOUNT.format(cents / 100));
 }
 
 /** A count, grouped: 50 000 rather than 50000. */
@@ -802,6 +1225,13 @@ export function ayqMonthName(month: string): string {
 export function ayqMoment(iso: string): string {
   const when = new Date(iso);
   return Number.isNaN(when.getTime()) ? iso : MOMENT.format(when);
+}
+
+/** A size on disk, in megabytes to one place, as the locale writes it. */
+export function ayqMegabytes(bytes: number): string {
+  // Never "0.0 MB" for something that is there.
+  const shown = Math.max(bytes / 1_048_576, bytes > 0 ? 0.1 : 0);
+  return ayqText('backup.size', { size: MEGABYTES.format(shown) });
 }
 
 /** "a, b and c", as the locale joins them. */

@@ -13,8 +13,14 @@
 // is a statement about the transactions in front of you; learning a rule is a
 // statement about every one that arrives from now on (03 §4.1). AYQ will not
 // make the second from the first, and the screen says which is which.
+//
+// Several counterparties can be gathered and filed into one category at once
+// (04 A36). The bar over the table states what that is — how many
+// counterparties, how many transactions, how much — before either button is
+// pressed, and the two buttons keep their meanings: one files, the other files
+// and writes one rule per counterparty. Nothing is inferred from the gathering.
 
-import { Input, Select, makeStyles } from '@fluentui/react-components';
+import { Input, Select, makeStyles, mergeClasses } from '@fluentui/react-components';
 import {
   useCallback,
   useEffect,
@@ -36,13 +42,15 @@ import {
   ayqMoney,
   ayqText,
 } from '../ayq-strings.ts';
-import { AYQ_METRIC } from '../ayq-tokens.ts';
+import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
-import { ayqBorderTop } from '../ayq-ui/ayq-css.ts';
+import { ayqBorderLeft, ayqBorderTop } from '../ayq-ui/ayq-css.ts';
+import { useAyqFieldStyles } from '../ayq-ui/ayq-field.ts';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
+import { AyqReviewBulkBar } from './ayq-review-bulk.tsx';
 
 const useStyles = makeStyles({
   body: {
@@ -52,6 +60,49 @@ const useStyles = makeStyles({
     padding: `13px ${AYQ_METRIC.space.screen}px`,
   },
   note: { margin: '0', color: 'var(--ayq-ink-quiet)' },
+  stats: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '0',
+    marginTop: '-52px',
+    marginBottom: '6px',
+  },
+  stat: {
+    display: 'grid',
+    gap: '2px',
+    padding: `0 ${AYQ_METRIC.space.wide}px`,
+    ...ayqBorderLeft('var(--ayq-line)'),
+    ':first-child': { borderLeftWidth: '0' },
+  },
+  statFigure: {
+    fontSize: 'var(--ayq-size-screen)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    fontVariantNumeric: AYQ_TYPE.figures,
+    color: 'var(--ayq-ink)',
+  },
+  statLabel: { fontSize: 'var(--ayq-size-small)', color: 'var(--ayq-ink-faint)' },
+  sub: { margin: '0', fontSize: 'var(--ayq-size-small)', color: 'var(--ayq-ink-faint)' },
+  name: {
+    margin: '0',
+    fontSize: 'var(--ayq-size-screen)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
+  },
+  sectionTitle: {
+    margin: '0',
+    fontSize: 'var(--ayq-size-heading)',
+    fontWeight: AYQ_TYPE.weight.semibold,
+    color: 'var(--ayq-ink)',
+  },
+  transaction: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: `${AYQ_METRIC.space.ten}px`,
+    padding: `${AYQ_METRIC.space.small}px 0`,
+    ...ayqBorderTop('var(--ayq-section)'),
+    ':first-of-type': { borderTopWidth: '0' },
+  },
+  full: { width: '100%' },
   rename: {
     display: 'flex',
     alignItems: 'center',
@@ -92,11 +143,14 @@ const useStyles = makeStyles({
 export function AyqReviewScreen({
   onFailure,
   onOpenRegister,
+  onManage,
   onChanged,
 }: {
   onFailure(message: string): void;
   /** Review does not navigate; it asks the shell to open the Register. */
   onOpenRegister(counterpartyKey: string): void;
+  /** Likewise the counterparty's own page (04 A37). */
+  onManage?(counterpartyKey: string): void;
   /** Something was filed, so what the shell is holding has moved. */
   onChanged(): void;
 }): ReactNode {
@@ -107,6 +161,9 @@ export function AyqReviewScreen({
   const [detail, setDetail] = useState<AyqCounterpartyDetail | null>(null);
   const [outcome, setOutcome] = useState<string | null>(null);
   const [round, setRound] = useState(0);
+  // The counterparties gathered for one decision (04 A36). The Review's own.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [bulkOutcome, setBulkOutcome] = useState<string | null>(null);
 
   const ask = useCallback(async <T,>(body: AyqRequestBody): Promise<T> => {
     const answer = await ayqAsk(body);
@@ -162,6 +219,10 @@ export function AyqReviewScreen({
     return <p className={styles.note}>{ayqText('common.loading')}</p>;
   }
 
+  // The gathered counterparties that are still in the backlog: one filed since
+  // has left it, and is no part of what the bar claims.
+  const gathered = backlog.filter(row => selected.has(row.key));
+
   const columns: readonly AyqColumn<AyqUnfiled>[] = [
     {
       id: 'name',
@@ -198,17 +259,47 @@ export function AyqReviewScreen({
     },
   ];
 
+  const totalOut = backlog.reduce((sum, row) => sum + row.cents, 0);
+  const totalRows = backlog.reduce((sum, row) => sum + row.transactions, 0);
+
   return (
+    <>
+      {/* What the queue comes to, stated once (template r003's head). */}
+      <div className={styles.stats} data-ayq-backlog={String(backlog.length)}>
+        <span className={styles.stat}>
+          <span className={styles.statFigure}>{ayqCount(backlog.length)}</span>
+          <span className={styles.statLabel}>{ayqText('review.stat.counterparties')}</span>
+        </span>
+        <span className={styles.stat}>
+          <span className={styles.statFigure}>{ayqCount(totalRows)}</span>
+          <span className={styles.statLabel}>{ayqText('review.stat.transactions')}</span>
+        </span>
+        <span className={styles.stat}>
+          <span className={styles.statFigure}>{ayqMoney(totalOut)}</span>
+          <span className={styles.statLabel}>{ayqText('review.stat.out')}</span>
+        </span>
+      </div>
+      {bulkOutcome === null ? null : (
+        <p className={styles.outcome} data-ayq-bulk-outcome="">
+          {bulkOutcome}
+        </p>
+      )}
+      {gathered.length === 0 ? null : (
+        <AyqReviewBulkBar
+          gathered={gathered}
+          categories={categories}
+          onClear={() => setSelected(new Set())}
+          onDone={said => {
+            setSelected(new Set());
+            setBulkOutcome(said);
+            again();
+          }}
+          onFailure={onFailure}
+        />
+      )}
     <AyqSplit
       table={
-        <AyqPane
-          mark="review-backlog"
-          title={ayqText('review.backlog')}
-          note={ayqCount(backlog.length)}
-        >
-          <p className={`${styles.note} ${styles.body}`} data-ayq-backlog={String(backlog.length)}>
-            {ayqText('review.backlog.note')}
-          </p>
+        <AyqPane mark="review-backlog">
           <AyqTable
             mark="review"
             columns={columns}
@@ -219,7 +310,24 @@ export function AyqReviewScreen({
               setOutcome(null);
               setOpenKey(row.key);
             }}
+            selection={{
+              selected,
+              onToggle: (key, checked) =>
+                setSelected(before => {
+                  const next = new Set(before);
+                  if (checked) next.add(key);
+                  else next.delete(key);
+                  return next;
+                }),
+              onToggleShown: checked =>
+                setSelected(
+                  checked ? new Set(backlog.map(row => row.key)) : new Set(),
+                ),
+              rowLabel: ayqText('review.select.row'),
+              shownLabel: ayqText('review.select.shown'),
+            }}
             empty={ayqText('review.backlog.none')}
+            footer={ayqText('review.backlog.note')}
           />
         </AyqPane>
       }
@@ -230,12 +338,14 @@ export function AyqReviewScreen({
           outcome={outcome}
           onFailure={onFailure}
           onOpenRegister={onOpenRegister}
+          onManage={onManage}
           onOutcome={setOutcome}
           onOpenKey={setOpenKey}
           onChanged={again}
         />
       }
     />
+    </>
   );
 }
 
@@ -245,6 +355,7 @@ function AyqReviewPane({
   outcome,
   onFailure,
   onOpenRegister,
+  onManage,
   onOutcome,
   onOpenKey,
   onChanged,
@@ -254,11 +365,13 @@ function AyqReviewPane({
   outcome: string | null;
   onFailure(message: string): void;
   onOpenRegister(counterpartyKey: string): void;
+  onManage?(counterpartyKey: string): void;
   onOutcome(said: string): void;
   onOpenKey(key: string): void;
   onChanged(): void;
 }): ReactNode {
   const styles = useStyles();
+  const fields = useAyqFieldStyles();
   const [categoryId, setCategoryId] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [typedName, setTypedName] = useState('');
@@ -361,12 +474,82 @@ function AyqReviewPane({
   };
 
   return (
-    <AyqPane mark="review-detail" title={counterparty.name}>
+    <AyqPane mark="review-detail" title={ayqText('review.pane.title')}>
       <div className={styles.body} data-ayq-counterparty={counterparty.key}>
         <div className={styles.group}>
-          {/* The owner's own name for this counterparty. Beside the figures
-              because it is a fact about who this is, not an action buried in a
-              menu. */}
+          <h3 className={styles.name}>{counterparty.name}</h3>
+          <p className={styles.sub}>
+            {ayqText('review.pane.sub', {
+              count: ayqCount(counterparty.transactions),
+              out: ayqMoney(counterparty.outgoingCents),
+              seen: ayqText('review.seen', {
+                first: ayqDate(counterparty.firstDate),
+                last: ayqDate(counterparty.lastDate),
+              }),
+            })}
+          </p>
+          {detail.recurring === null ? null : (
+            <span className={styles.quiet} data-ayq-rhythm={detail.recurring.cadence}>
+              {ayqText('review.pane.rhythm', {
+                cadence: detail.recurring.cadence,
+                amount: ayqMoney(detail.recurring.averageAmountCents),
+              })}
+            </span>
+          )}
+        </div>
+
+        <div className={styles.decide}>
+          <h4 className={styles.sectionTitle}>{ayqText('review.pane.recent')}</h4>
+          <div>
+            {detail.recent.slice(0, 6).map(row => (
+              <div key={row.id} className={styles.transaction} data-ayq-recent={row.id}>
+                <span className={styles.quiet}>{ayqDate(row.date)}</span>
+                <AyqFigure cents={row.amountCents} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {outcome === null ? null : (
+          <p className={styles.outcome} data-ayq-outcome="">
+            {outcome}
+          </p>
+        )}
+
+        {/* The two decisions, and which is which said in words. */}
+        <div className={styles.decide} data-ayq-file="">
+          <h4 className={styles.sectionTitle}>{ayqText('review.pane.file')}</h4>
+          <Select
+            className={mergeClasses(fields.field, styles.full)}
+            value={categoryId}
+            data-ayq-review-category=""
+            aria-label={ayqText('review.do.category')}
+            onChange={(_event, data) => setCategoryId(data.value)}
+          >
+            <option value="">{ayqText('review.do.category')}</option>
+            {categories
+              .filter(one => !one.isIncome)
+              .map(one => (
+                <option key={one.id} value={one.id}>
+                  {one.name}
+                </option>
+              ))}
+          </Select>
+          <p className={styles.sub}>{ayqText('review.pane.file.note')}</p>
+          <div className={styles.inline}>
+            <AyqButton filled mark="review-file" onClick={() => file(false)}>
+              {ayqText('review.do.file')}
+            </AyqButton>
+            <AyqButton mark="review-learn" onClick={() => file(true)}>
+              {ayqText('review.do.learn')}
+            </AyqButton>
+          </div>
+        </div>
+
+        <div className={styles.decide}>
+          {/* The owner's own name for this counterparty. A fact about who this
+              is, not an action buried in a menu. */}
+          <div className={styles.inline}>
           {renaming ? (
             <span className={styles.rename}>
               <Input
@@ -408,56 +591,6 @@ function AyqReviewPane({
               {ayqText('review.rename')}
             </AyqButton>
           )}
-          <AyqFigure cents={-counterparty.outgoingCents} size="large" />
-          <span className={styles.quiet}>
-            {ayqText('review.seen', {
-              first: ayqDate(counterparty.firstDate),
-              last: ayqDate(counterparty.lastDate),
-            })}{' '}
-            · {ayqCount(counterparty.transactions)}
-          </span>
-          {detail.recurring === null ? null : (
-            <span className={styles.quiet} data-ayq-rhythm={detail.recurring.cadence}>
-              {ayqText('review.pane.rhythm', {
-                cadence: detail.recurring.cadence,
-                amount: ayqMoney(detail.recurring.averageAmountCents),
-              })}
-            </span>
-          )}
-        </div>
-
-        {outcome === null ? null : (
-          <p className={styles.outcome} data-ayq-outcome="">
-            {outcome}
-          </p>
-        )}
-
-        {/* The two decisions, and which is which said in words. */}
-        <div className={styles.decide} data-ayq-file="">
-          <span className={styles.label}>{ayqText('review.pane.file')}</span>
-          <p className={styles.note}>{ayqText('review.pane.file.note')}</p>
-          <Select
-            value={categoryId}
-            data-ayq-review-category=""
-            aria-label={ayqText('review.do.category')}
-            onChange={(_event, data) => setCategoryId(data.value)}
-          >
-            <option value="">{ayqText('review.do.category')}</option>
-            {categories
-              .filter(one => !one.isIncome)
-              .map(one => (
-                <option key={one.id} value={one.id}>
-                  {one.name}
-                </option>
-              ))}
-          </Select>
-          <div className={styles.inline}>
-            <AyqButton mark="review-file" onClick={() => file(false)}>
-              {ayqText('review.do.file')}
-            </AyqButton>
-            <AyqButton filled mark="review-learn" onClick={() => file(true)}>
-              {ayqText('review.do.learn')}
-            </AyqButton>
           </div>
         </div>
 
@@ -514,14 +647,6 @@ function AyqReviewPane({
         </div>
 
         <div className={styles.decide}>
-          <span className={styles.label}>{ayqText('review.pane.recent')}</span>
-          {detail.recent.slice(0, 6).map(row => (
-            <div key={row.id} className={styles.inline} data-ayq-recent={row.id}>
-              <span className={styles.quiet}>{ayqDate(row.date)}</span>
-              <span>{row.payee ?? ''}</span>
-              <AyqFigure cents={row.amountCents} />
-            </div>
-          ))}
           <div className={styles.inline}>
             <AyqButton
               size="small"
@@ -530,6 +655,15 @@ function AyqReviewPane({
             >
               {ayqText('today.open.register')}
             </AyqButton>
+            {onManage === undefined ? null : (
+              <AyqButton
+                size="small"
+                mark="review-manage"
+                onClick={() => onManage(counterparty.key)}
+              >
+                {ayqText('review.manage')}
+              </AyqButton>
+            )}
           </div>
         </div>
       </div>

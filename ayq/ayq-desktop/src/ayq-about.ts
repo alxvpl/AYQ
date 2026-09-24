@@ -16,6 +16,10 @@
 // The engine version is read back from the API that is actually loaded rather
 // than restated from the manifest, for the same reason.
 //
+// What About *says* in sentences — the licence notes, the local-first note, a
+// link's name — is not here: those are words on a screen and live in the
+// client's catalogue (04 A24). This answers facts.
+//
 // ## The copy button has a privacy contract (§12.4)
 //
 // `technicalInformation` is exactly what reaches the clipboard, and it is built
@@ -43,7 +47,7 @@ export const AYQ_PRODUCT_NAME = 'AYQ Personal Finances';
 export const AYQ_TAGLINE =
   'Local-first personal finance application for Windows';
 export const AYQ_AUTHOR = 'Plamen Alexandrov';
-export const AYQ_COPYRIGHT = '© 2026 Plamen Alexandrov.';
+export const AYQ_COPYRIGHT = '© 2026 Plamen Alexandrov. All rights reserved.';
 
 /** What the build stamped into the bundle, when there was a build. */
 type AyqCompiledBuild = {
@@ -118,13 +122,13 @@ function architecture(platform: string, arch: string): string {
  * file to acquire a URL nobody configured. An absent or non-http value produces
  * no link at all rather than a dead one.
  */
-function links(repositoryUrl: string | null): Array<{ label: string; url: string }> {
+function links(repositoryUrl: string | null): Array<{ kind: 'repository'; url: string }> {
   if (repositoryUrl === null) return [];
   const cleaned = repositoryUrl
     .replace(/^git\+/, '')
     .replace(/\.git$/, '');
   if (!/^https:\/\//.test(cleaned)) return [];
-  return [{ label: 'Repository', url: cleaned }];
+  return [{ kind: 'repository', url: cleaned }];
 }
 
 export type AyqAboutInput = {
@@ -156,15 +160,6 @@ export function ayqAbout(input: AyqAboutInput): AyqAbout {
     electronVersion: input.electronVersion,
     nodeVersion: input.nodeVersion,
     development: build.development,
-    licence:
-      'AYQ is released under the MIT licence. It is built on Actual Budget, ' +
-      'which is also released under the MIT licence. Both licence texts ship ' +
-      'with the application.',
-    localFirst:
-      'AYQ keeps everything on this computer. The budget, the statements you ' +
-      'import and every decision you make about them stay in your own data ' +
-      'folder. AYQ has no account, sends nothing anywhere and works with no ' +
-      'network at all.',
     links: links(input.repositoryUrl),
     technicalInformation: '',
   };

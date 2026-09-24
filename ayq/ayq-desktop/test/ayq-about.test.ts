@@ -9,6 +9,7 @@
 // other side.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -36,7 +37,8 @@ test('About states the product, the author and the copyright exactly', () => {
   assert.equal(said.tagline, 'Local-first personal finance application for Windows');
   assert.equal(said.author, 'Plamen Alexandrov');
   assert.equal(said.author, AYQ_AUTHOR);
-  assert.equal(said.copyright, '\u00a9 2026 Plamen Alexandrov.');
+  // 01 §6.1 / 06 §3.6, word for word.
+  assert.equal(said.copyright, '\u00a9 2026 Plamen Alexandrov. All rights reserved.');
   assert.equal(said.copyright, AYQ_COPYRIGHT);
 });
 
@@ -73,7 +75,7 @@ test('only links that are really declared are offered', () => {
 
   // The one the manifest declares, with git's own prefix and suffix off.
   assert.deepEqual(about().links, [
-    { label: 'Repository', url: 'https://github.com/alxvpl/AYQ' },
+    { kind: 'repository', url: 'https://github.com/alxvpl/AYQ' },
   ]);
 
   // Anything that is not an https URL is not a link.
@@ -174,8 +176,94 @@ test('a build with no revision copies a phrase, not an empty field', () => {
   assert.match(copied, /AYQ revision\s*: not a release build/);
 });
 
-test('the local-first note and the licence are stated', () => {
+test('the copied text carries the exact build timestamp and the full revision (06 §3.7)', () => {
+  // A stamped build, as the packaged application has one: the screen may
+  // shorten these, the copy may not.
+  const sha = 'e93c77e546791439a85e0ef29fc2c7e9cfb1e2d9';
+  const copied = ayqTechnicalInformation({
+    ...about(),
+    revision: sha,
+    buildDate: '2026-09-16T09:00:00Z',
+  });
+  assert.match(copied, /^AYQ revision\s*: e93c77e546791439a85e0ef29fc2c7e9cfb1e2d9$/m);
+  assert.match(copied, /^Build date\s*: 2026-09-16T09:00:00Z$/m);
+});
+
+test('About answers facts, and no sentence a person reads (04 A24)', () => {
+  // The licence notes, the local-first note and a link's name are words on a
+  // screen, and words live in the client's catalogue so that a second
+  // language never has to touch the engine. Composing them here is the class
+  // of bypass this guards: the answer is a fixed set of fields, none of which
+  // is prose.
   const said = about();
-  assert.match(said.localFirst, /on this computer/);
-  assert.match(said.licence, /MIT/);
+  assert.deepEqual(Object.keys(said).sort(), [
+    'actualBaseline',
+    'architecture',
+    'author',
+    'buildDate',
+    'buildNumber',
+    'copyright',
+    'development',
+    'electronVersion',
+    'engine',
+    'links',
+    'nodeVersion',
+    'productName',
+    'productVersion',
+    'revision',
+    'tagline',
+    'technicalInformation',
+  ]);
+  for (const [field, value] of Object.entries(said)) {
+    if (typeof value !== 'string' || field === 'copyright') continue;
+    // A sentence: words, a space, and a full stop at the end. The copyright
+    // notice is the one fixed legal string 06 §3.6 spells out.
+    assert.ok(
+      !/\p{L}+ \p{L}+.*\.$/su.test(value),
+      `About's ${field} is a sentence composed by the engine: ${value}`,
+    );
+  }
+  for (const link of said.links) {
+    assert.deepEqual(Object.keys(link).sort(), ['kind', 'url'], 'a link carries a label');
+  }
+});
+
+test('the AYQ packages are not MIT, and Actual Budget keeps its MIT notice (06 §9)', () => {
+  const here = new URL('.', import.meta.url);
+  const read = (relative: string) => readFileSync(new URL(relative, here), 'utf8');
+  for (const name of [
+    'ayq-actual-bridge',
+    'ayq-camt',
+    'ayq-client',
+    'ayq-desktop',
+    'ayq-screen',
+  ]) {
+    const manifest = JSON.parse(read(`../../${name}/package.json`)) as {
+      license?: string;
+      private?: boolean;
+    };
+    assert.equal(manifest.license, 'UNLICENSED', `${name} declares ${manifest.license}`);
+    const lock = JSON.parse(read(`../../${name}/package-lock.json`)) as {
+      packages: Record<string, { license?: string }>;
+    };
+    assert.equal(
+      lock.packages[''].license,
+      'UNLICENSED',
+      `${name}'s lockfile still describes it as ${lock.packages[''].license}`,
+    );
+  }
+
+  // The installer carries Actual Budget's own MIT notice, unaltered, beside
+  // the application — the notice About says ships with it.
+  const desktop = JSON.parse(read('../package.json')) as {
+    build: { copyright: string; extraResources?: Array<{ from: string; to: string }> };
+  };
+  assert.equal(desktop.build.copyright, '\u00a9 2026 Plamen Alexandrov. All rights reserved.');
+  const shipped = (desktop.build.extraResources ?? []).find(one =>
+    one.to.startsWith('licenses/'),
+  );
+  assert.ok(shipped, 'the installer ships no licence notice for Actual Budget');
+  const notice = read(`../${shipped.from}`);
+  assert.match(notice, /^Copyright James Long/);
+  assert.match(notice, /Permission is hereby granted, free of charge/);
 });

@@ -331,6 +331,123 @@ export type AyqCounterpartyFiled = {
   ruleWritten: boolean;
 };
 
+/**
+ * The bounded set of existing transactions a bulk correction is about.
+ *
+ * 03 §4.7 gives a manual correction an explicit scope, and §4.8 names the two
+ * forms it may take: the rows a person picked, one by one, or a clearly stated
+ * existing-record scope. The second is the Register's own filter — every row it
+ * admits, not only the page that happens to be on the screen. Amount alone is
+ * never such a scope (§4.8): a filter that says nothing but "between ten and
+ * twenty euros" is refused by the engine, and the screen does not offer it.
+ *
+ * Either way it is a decision about records that already exist. No rule is
+ * written and no automation is widened by it (04 A36).
+ */
+export type AyqBulkScope =
+  | { kind: 'selected'; transactionIds: string[] }
+  | { kind: 'filter'; filter: AyqLedgerFilter };
+
+/**
+ * What a bulk correction would touch, stated before it is executed (04 A36).
+ *
+ * `transactions` is the size of the scope itself. A counterparty correction
+ * reaches further than that: it is an identity decision about the names the
+ * bank printed (03 §3.11), so every transaction under those names moves, not
+ * only the ones in the scope. `variants` lists those names, each with the
+ * number of transactions in the whole budget that carry it, so the screen can
+ * say how far the decision reaches before anyone makes it.
+ */
+export type AyqBulkScopeReport = {
+  transactions: number;
+  /**
+   * How many of them already carry a decision made by hand. A bulk correction
+   * keeps those unless it is told otherwise (03 §4.9), so the screen says how
+   * many there are before the decision is made, not after.
+   */
+  byHand: number;
+  variants: Array<{
+    variantKey: string;
+    variant: string;
+    /** Every transaction in the budget imported under this name. */
+    transactions: number;
+  }>;
+  /** The sum over `variants` — what a counterparty correction would move. */
+  variantTransactions: number;
+};
+
+/** What filing a scope by hand came to. */
+export type AyqBulkCategorised = {
+  /** How many the scope held when the decision was executed. */
+  scoped: number;
+  categorised: number;
+  /**
+   * Already filed by hand into something else, and left exactly as they were
+   * because `includeByHand` was not set: a bulk correction never overwrites
+   * an earlier manual decision silently (03 §4.9). Counted so the screen can
+   * say so.
+   */
+  keptByHand: number;
+};
+
+/** What recording the names behind a scope as one counterparty came to. */
+export type AyqBulkCounterparty = {
+  /** How many bank names were recorded as the counterparty. */
+  variants: number;
+  /** Every transaction that now carries it, in or out of the scope. */
+  moved: number;
+  counterpartyKey: string;
+  counterpartyName: string;
+};
+
+/**
+ * What still uses a category, said before it is removed (04 A35).
+ *
+ * Removal never destroys or reclassifies data in silence: the owner is shown
+ * these counts and chooses where what used the category goes. Every count is
+ * read from the budget and the store at the moment of asking.
+ */
+export type AyqCategoryImpact = {
+  categoryId: string;
+  name: string;
+  isIncome: boolean;
+  /** Transactions filed in it, however they were filed. */
+  transactions: number;
+  /** Learned rules that file into it, by name (03 §4.2). */
+  rules: number;
+  /** Planned and recurring records that carry it (03 §7.23). */
+  planned: number;
+  /** Months of the Plan with an amount set for it. */
+  plannedMonths: number;
+  /** True when none of the above is non-zero: one confirmed action removes it. */
+  unused: boolean;
+};
+
+/**
+ * Where what used a removed category goes.
+ *
+ * A category of the same kind, into which the transactions, the plan amounts,
+ * the rules and the planned records move; or the explicit `Uncategorised`
+ * state (03 §4.5, §7.23), in which the transactions and planned records
+ * survive without a category, and the rules — which cannot file into nothing
+ * — are removed, said in advance.
+ */
+export type AyqCategoryDestination =
+  | { kind: 'category'; categoryId: string }
+  | { kind: 'uncategorised' };
+
+/** What removing a category came to. */
+export type AyqCategoryRemoved = {
+  categories: AyqCategory[];
+  removed: string;
+  /** The destination's name, or null for Uncategorised. */
+  movedTo: string | null;
+  transactions: number;
+  rulesMoved: number;
+  rulesRemoved: number;
+  planned: number;
+};
+
 /** Which period, and which account, the spending question is being asked of. */
 export type AyqSpendingFilter = {
   /** Inclusive YYYY-MM-DD bounds; both absent means everything there is. */
@@ -438,12 +555,29 @@ export type AyqDecision = {
   categoryName: string;
   at: string;
   /**
-   * For `auto`, the evidence the classification matched on, in words (§11.11).
-   * Absent on a decision of any other kind, and on `auto` decisions written
-   * before the reason was recorded.
+   * For `auto`, the evidence the classification matched on (§11.11), as a
+   * code the renderer words (04 A24). Absent on a decision of any other kind,
+   * and on `auto` decisions written before the reason was recorded.
    */
-  because?: string;
+  reason?: AyqFilingReason;
 };
+
+/**
+ * Why AYQ's own classification filed a transaction where it did (03 §11.11).
+ *
+ * A code and its parameters, never a sentence: the words are the catalogue's
+ * (04 A24). `counterparty` is the line of AYQ's merchant table that matched —
+ * data, not prose.
+ *
+ * `legacy` is a reason a version-9 store held in words this AYQ does not
+ * recognise. It is kept as the evidence it is and never shown as it stands;
+ * the renderer says, in its own words, that an earlier AYQ recorded it.
+ */
+export type AyqFilingReason =
+  | { code: 'bank-charge' }
+  | { code: 'bank-interest' }
+  | { code: 'counterparty'; counterparty: string }
+  | { code: 'legacy'; legacyText: string };
 
 /** What an expected payment this transaction was matched to is (03 §7.16). */
 export type AyqTransactionMatch = {
@@ -488,6 +622,32 @@ export type AyqCategoryRule = {
   /** Kept by name: a category id is a budget's, a rule outlives one. */
   categoryName: string;
   createdAt: string;
+};
+
+/**
+ * What a rule has done, counted now (04 A7, 03 §4.4).
+ *
+ * Stated wherever the rule is seen, before correction or removal is offered:
+ * a person deciding about a rule is deciding about these transactions too, and
+ * about the ones the rule may not touch.
+ */
+export type AyqRuleImpact = {
+  rule: AyqCategoryRule;
+  /** Transactions the rule filed and that still stand as it filed them. */
+  filed: number;
+  /** Transactions of this counterparty filed by hand — outside its reach. */
+  byHand: number;
+  /** False when the budget lacks the category: the rule files nothing. */
+  categoryExists: boolean;
+};
+
+/** What correcting a rule came to. */
+export type AyqRuleCorrected = {
+  rules: AyqCategoryRule[];
+  rule: AyqCategoryRule;
+  /** Transactions that now stand as the corrected rule files them. */
+  filed: number;
+  byHand: number;
 };
 
 export type AyqRecurring = {
@@ -569,6 +729,8 @@ export type AyqCounterpartyVariant = {
   lastDate: string;
   /** True when this variant is under this counterparty because a person said so. */
   aliased: boolean;
+  /** The identity decision that put it here, when one did — what undoes it. */
+  aliasId: string | null;
 };
 
 export type AyqCounterpartyDetail = {
@@ -578,6 +740,23 @@ export type AyqCounterpartyDetail = {
   recurring: AyqRecurring | null;
   /** The newest transactions of this counterparty. */
   recent: AyqLedgerRow[];
+  /** The learned rules keyed on it (03 §4.1). */
+  rules: AyqCategoryRule[];
+  /** True when `counterparty.name` is the owner's; the statement's stays in variants. */
+  ownerNamed: boolean;
+};
+
+/** What merging one counterparty into another came to (04 A37). */
+export type AyqCounterpartyMerged = {
+  /** The survivor. */
+  counterpartyKey: string;
+  counterpartyName: string;
+  /** Identity decisions written: one per statement variant of the merged one. */
+  variants: number;
+  /** Transactions whose payee moved. */
+  moved: number;
+  rulesMoved: number;
+  rulesRemoved: number;
 };
 
 /**
@@ -660,12 +839,89 @@ export type AyqImportRecord = {
   anchorEstablished: boolean;
 };
 
+/* ------------------------------------------------------------ needs attention
+
+   010 with the five corrections of 013: what needs the owner now, derived by
+   the engine from state AYQ already holds, and shown on Today. Nothing here is
+   stored: a group exists while its condition holds and is gone when it does
+   not. The renderer displays groups; it never decides whether one applies.  */
+
+/**
+ *   due-today                  expected payments dated today, unmatched (03 §7.26)
+ *   overdue                    expected payments past their date, unmatched (§7.13)
+ *   reconciliation-difference  the bank's balance and AYQ's differ (03 §8.2)
+ *   balance-unknown            no balance anchor, so the balance is unknown (§10.5)
+ *   import-failed              a chosen file an import could not use, not yet
+ *                              imported since and not marked handled (013 §1)
+ *   backup-failed              the last backup attempt failed (A38)
+ *   review                     counterparties to review (A29)
+ */
+export type AyqAttentionKind =
+  | 'due-today'
+  | 'overdue'
+  | 'reconciliation-difference'
+  | 'balance-unknown'
+  | 'import-failed'
+  | 'backup-failed'
+  | 'review';
+
+/** One condition that holds, and what it is about. Counted as one group (013 §5). */
+export type AyqAttentionGroup = {
+  /** Stable while the condition holds: the kind, and what it is about. */
+  key: string;
+  kind: AyqAttentionKind;
+  /** How many records share the condition — payments, accounts, files, counterparties. */
+  count: number;
+  /** For the account kinds: which accounts, so each can be opened. */
+  accounts?: Array<{ accountId: string; accountName: string }>;
+  /** For `import-failed`: which files, from which import, and why. */
+  files?: Array<{ importId: string; at: string; name: string; code: AyqImportProblemCode }>;
+  /** For `overdue`: what the late payments come to, positive cents. */
+  amountCents?: number;
+  /** For `backup-failed`: when, and why. */
+  backup?: { at: string; failure: AyqBackupFailure | null };
+};
+
+export type AyqAttention = {
+  /** In the order Today shows them. */
+  groups: AyqAttentionGroup[];
+};
+
 /** One chosen thing AYQ could not use, and why. */
 export type AyqImportProblem = {
   /** The base name of what was chosen; the path stays on the machine. */
   name: string;
-  reason: string;
+  /** Why, as a code the renderer words (04 A24). */
+  code: AyqImportProblemCode;
+  /**
+   * Only on `legacy`: what a version-9 store recorded in words this AYQ does
+   * not recognise. Kept as evidence, never shown.
+   */
+  legacyText?: string;
+  /**
+   * When the owner marked this file as dealt with in Import history (013
+   * §1b), since store version 11. Absent means not marked.
+   */
+  handledAt?: string;
 };
+
+/**
+ *   gone         it is no longer where it was chosen
+ *   not-allowed  AYQ may not read it
+ *   folder       a folder was chosen where a file was expected
+ *   unreadable   it could not be read, for any other reason
+ *   no-entries   it is XML, and holds no CAMT.053 entries
+ *   not-camt     it is not a CAMT.053 document
+ *   legacy       recorded by an earlier AYQ in words not recognised
+ */
+export type AyqImportProblemCode =
+  | 'gone'
+  | 'not-allowed'
+  | 'folder'
+  | 'unreadable'
+  | 'no-entries'
+  | 'not-camt'
+  | 'legacy';
 
 /**
  * What a CAMT import did.
@@ -965,8 +1221,11 @@ export type AyqMatchProposal = {
   /** Signed cents, as the ledger holds it. */
   transactionAmountCents: number;
   daysApart: number;
-  /** What they have in common, in words, so agreeing to it is informed. */
-  evidence: string[];
+  /**
+   * What they have in common, so agreeing to it is informed — as codes the
+   * renderer words (04 A24). How many days apart they are is `daysApart`.
+   */
+  evidence: AyqMatchEvidence[];
   /**
    * Clear enough to apply without asking: the counterparty or the mandate
    * agrees, the amount is exact, and the date is within a week. Anything less
@@ -1204,10 +1463,12 @@ export type AyqAbout = {
   electronVersion: string | null;
   nodeVersion: string;
   development: boolean;
-  licence: string;
-  localFirst: string;
-  /** Only links that really exist. Never invented. */
-  links: Array<{ label: string; url: string }>;
+  /**
+   * Only links that really exist. Never invented. The kind, not a label: what
+   * a link is called is a word on the screen, and words live in the catalogue
+   * (04 A24), as do the licence and local-first notes About states.
+   */
+  links: Array<{ kind: 'repository'; url: string }>;
   /**
    * Exactly what **Copy technical information** puts on the clipboard.
    *
@@ -1219,6 +1480,122 @@ export type AyqAbout = {
    */
   technicalInformation: string;
 };
+
+/**
+ * Why a backup exists (03 §12.2).
+ *
+ * `before-restore` is the state a restore replaced, kept so that choosing the
+ * wrong backup is itself something a person can undo.
+ */
+export type AyqBackupTrigger = 'manual' | 'automatic' | 'before-restore';
+
+/**
+ * One backup: the Actual budget and AYQ's own records, captured together at one
+ * moment (02 §5.9, 03 §12.1).
+ *
+ * There is deliberately no field naming either half on its own. The interface
+ * restores a backup, never a budget from one and a store from another (04 A38),
+ * and a type that carried the halves separately would be an invitation to.
+ */
+export type AyqBackupEntry = {
+  /**
+   * Opaque. The renderer hands it back to restore and never reads meaning into
+   * it: it is not a path, and the engine refuses anything that is not one of
+   * its own identifiers.
+   */
+  backupId: string;
+  /** ISO 8601 UTC. */
+  createdAt: string;
+  trigger: AyqBackupTrigger;
+  /** The AYQ that wrote it. */
+  productVersion: string;
+  buildNumber: string;
+  /** The whole set, in bytes. */
+  bytes: number;
+  /**
+   * False when reading the set's description already shows this AYQ cannot
+   * restore it — written by a newer AYQ, say. True is not a promise: the
+   * whole set is checked again, byte for byte, when a restore is asked for.
+   */
+  restorable: boolean;
+};
+
+/** Why a backup could not be made. Words for each live in the catalogue (04 A24). */
+export type AyqBackupFailure = 'no-budget' | 'store-unreadable' | 'write-failed';
+
+/**
+ * The outcome of one attempt to make a backup, kept as state (030 §2).
+ *
+ * Operational evidence and not financial truth (03 §12.3): it says when AYQ
+ * tried and whether it managed, and nothing about the money.
+ */
+export type AyqBackupAttempt = {
+  /** ISO 8601 UTC. */
+  at: string;
+  trigger: AyqBackupTrigger;
+  outcome: 'succeeded' | 'failed';
+  /** The backup made, when one was. */
+  backupId: string | null;
+  failure: AyqBackupFailure | null;
+};
+
+/** Settings → Data & Backup (04 A38): what exists, and how the last tries went. */
+export type AyqBackupOverview = {
+  /** Newest first. */
+  backups: AyqBackupEntry[];
+  latestBackupId: string | null;
+  /** The last attempt of any kind. */
+  lastAttempt: AyqBackupAttempt | null;
+  /** The last automatic attempt, which nobody was watching. */
+  lastAutomaticAttempt: AyqBackupAttempt | null;
+  /** How automatic backups behave, as this build does it. */
+  automatic: { everyHours: number; kept: number };
+};
+
+export type AyqBackupCreated =
+  | { outcome: 'created'; backupId: string; overview: AyqBackupOverview }
+  | { outcome: 'failed'; failure: AyqBackupFailure; overview: AyqBackupOverview };
+
+/**
+ * Why a backup was not restored, decided before anything was replaced.
+ *
+ *   unknown-backup  no backup by that identifier
+ *   incomplete      a part is missing, or something is there that is not part
+ *   mismatch        a part is not the part that was captured — altered, or
+ *                   taken from another backup
+ *   newer-format    a newer AYQ packed it in a way this one cannot read
+ *   newer-store     a newer AYQ wrote its records (06 §6.2: refused, not repaired)
+ *   unreadable      the description or a part cannot be read at all
+ *   conflict        restoring it would overwrite a budget that is not the current one
+ */
+export type AyqRestoreRefusal =
+  | 'unknown-backup'
+  | 'incomplete'
+  | 'mismatch'
+  | 'newer-format'
+  | 'newer-store'
+  | 'unreadable'
+  | 'conflict';
+
+/**
+ * Why a restore that had begun did not finish. In every case the state from
+ * before the restore is what AYQ holds afterwards (03 §12.4).
+ */
+export type AyqRestoreFailure =
+  | 'safety-backup-failed'
+  | 'replace-failed'
+  | 'open-failed';
+
+export type AyqRestored =
+  | {
+      outcome: 'restored';
+      backupId: string;
+      /** The backup of what the restore replaced. */
+      keptBackupId: string;
+      overview: AyqBackupOverview;
+    }
+  | { outcome: 'refused'; refusal: AyqRestoreRefusal; overview: AyqBackupOverview }
+  | { outcome: 'failed'; failure: AyqRestoreFailure; overview: AyqBackupOverview };
 
 /** What the engine answers to each request kind. */
 export type AyqResults = {
@@ -1239,15 +1616,24 @@ export type AyqResults = {
   'transaction.detail': AyqTransactionDetail;
   'transaction.categorise': AyqCategorised;
   'transaction.categoriseCounterparty': AyqCounterpartyFiled;
+  'transactions.scope': AyqBulkScopeReport;
+  'transactions.categoriseMany': AyqBulkCategorised;
+  'transactions.correctCounterparty': AyqBulkCounterparty;
   'categories.list': AyqCategory[];
   'categories.create': AyqCategory[];
   'categories.rename': AyqCategory[];
+  'categories.move': AyqCategory[];
+  'categories.impact': AyqCategoryImpact;
+  'categories.remove': AyqCategoryRemoved;
   'rules.list': AyqCategoryRule[];
+  'rules.impact': AyqRuleImpact;
+  'rules.correct': AyqRuleCorrected;
   'rules.remove': AyqCategoryRule[];
   'rules.apply': { categorised: number };
   'recurring.list': AyqRecurring[];
   'counterparties.list': AyqCounterpartyList;
   'counterparty.detail': AyqCounterpartyDetail;
+  'counterparty.merge': AyqCounterpartyMerged;
   'aliases.list': AyqAliasRecord[];
   'alias.create': AyqAliasApplied;
   'alias.remove': AyqAliasApplied;
@@ -1256,6 +1642,7 @@ export type AyqResults = {
   spending: AyqSpending;
   'counterparties.unfiled': AyqUnfiled[];
   'import.pick': AyqPickedFile;
+  'window.ground': { applied: boolean };
   'import.camt': AyqImportSummary;
   'snapshot.pickTarget': AyqSnapshotTarget;
   'snapshot.export': AyqSnapshotExport;
@@ -1274,6 +1661,11 @@ export type AyqResults = {
   'match.apply': AyqMatches;
   'match.reject': AyqMatches;
   'match.unmatch': AyqMatches;
+  'backup.overview': AyqBackupOverview;
+  'backup.create': AyqBackupCreated;
+  'backup.restore': AyqRestored;
+  attention: AyqAttention;
+  'imports.markHandled': AyqImportRecord[];
 };
 
 /**
@@ -1390,15 +1782,113 @@ export type AyqRequestBody =
       categoryId: string;
       createRule: boolean;
     }
+  | {
+      /** What a bulk correction over this scope would touch, before it is made. */
+      kind: 'transactions.scope';
+      scope: AyqBulkScope;
+    }
+  | {
+      /**
+       * Files every transaction in the scope, by hand, and learns nothing.
+       *
+       * A manual decision about each of them (03 §4.7), recorded as such, so no
+       * rule may overwrite it afterwards. One already filed by hand into
+       * something else is kept and counted (§4.9). No rule is written: that is a
+       * separate statement, and this request cannot make it.
+       */
+      kind: 'transactions.categoriseMany';
+      scope: AyqBulkScope;
+      /** null clears the category. */
+      categoryId: string | null;
+      /**
+       * Also change the rows already filed by hand into something else.
+       *
+       * Off, they are kept and counted (03 §4.9): a bulk correction does not
+       * overwrite an earlier manual decision silently. On, the person has been
+       * told how many there are and has said so — a newer decision by hand over
+       * an older one, which is theirs to make (§4.4).
+       */
+      includeByHand?: boolean;
+    }
+  | {
+      /**
+       * Records every bank name behind the scope as this counterparty.
+       *
+       * An identity decision (03 §3.11, §3.14), made once per name the bank
+       * printed rather than once per transaction, which is why it reaches every
+       * transaction under those names and not only the scope. The report from
+       * `transactions.scope` says how far that is.
+       */
+      kind: 'transactions.correctCounterparty';
+      scope: AyqBulkScope;
+      counterpartyKey: string;
+    }
   | { kind: 'categories.list' }
   | { kind: 'categories.create'; name: string; groupId: string }
   | { kind: 'categories.rename'; categoryId: string; name: string }
+  | {
+      /** Moves a category to another group of the same kind (04 A35). */
+      kind: 'categories.move';
+      categoryId: string;
+      groupId: string;
+    }
+  | {
+      /** What still uses this category — asked before any removal is offered. */
+      kind: 'categories.impact';
+      categoryId: string;
+    }
+  | {
+      /**
+       * Removes a category, with an explicit destination for what used it.
+       *
+       * A category in use cannot be removed without one: the engine refuses.
+       * An unused one needs none. Nothing is destroyed or reclassified in
+       * silence (04 A35); the answer says what moved where.
+       */
+      kind: 'categories.remove';
+      categoryId: string;
+      destination?: AyqCategoryDestination;
+    }
   | { kind: 'rules.list' }
-  | { kind: 'rules.remove'; ruleId: string }
+  | {
+      /** What a rule has filed, and what it may not touch, counted now. */
+      kind: 'rules.impact';
+      ruleId: string;
+    }
+  | {
+      /**
+       * Changes where a rule files, and re-files what the rule itself filed
+       * (03 §4.4). Never a transaction filed by hand: a manual decision
+       * outranks the rule, before and after the correction.
+       */
+      kind: 'rules.correct';
+      ruleId: string;
+      categoryId: string;
+    }
+  | {
+      /**
+       * Removes a rule. It stops applying to later imports; what it already
+       * filed stays where it is, and nothing is re-filed (04 A7).
+       */
+      kind: 'rules.remove';
+      ruleId: string;
+    }
   | { kind: 'rules.apply' }
   | { kind: 'recurring.list' }
   | { kind: 'counterparties.list'; filter?: AyqCounterpartyFilter }
   | { kind: 'counterparty.detail'; key: string }
+  | {
+      /**
+       * Says that one counterparty is really another (04 A37; 03 §3.6).
+       *
+       * One alias per statement variant of `counterpartyKey`, into `intoKey`;
+       * every transaction moves and every record is kept. Reversible only by
+       * removing those aliases, one at a time, from the survivor.
+       */
+      kind: 'counterparty.merge';
+      counterpartyKey: string;
+      intoKey: string;
+    }
   | { kind: 'aliases.list' }
   | {
       /**
@@ -1419,6 +1909,15 @@ export type AyqRequestBody =
   | { kind: 'spending'; filter?: AyqSpendingFilter }
   | { kind: 'counterparties.unfiled'; filter?: AyqSpendingFilter }
   | { kind: 'import.pick' }
+  | {
+      /**
+       * The ground the window resolved to, told to the host so the native
+       * title-bar controls are painted to match (04 A26). Answered by the
+       * host, not the engine: it is about this window, not the budget.
+       */
+      kind: 'window.ground';
+      resolved: 'light' | 'dark';
+    }
   | { kind: 'import.camt'; paths: string[] }
   | {
       /** Asks the host where the snapshot should be written (a save dialog). */
@@ -1534,7 +2033,93 @@ export type AyqRequestBody =
       recordId: string;
       dueDate: string;
       today?: string;
+    }
+  | AyqBackupRequest
+  | AyqAttentionRequest;
+
+/**
+ * Backup and restore (02 §5.8): three requests and no more.
+ *
+ * The renderer names a backup by its opaque id and nothing else. No member
+ * here carries a path, a file or a directory, and `ayq-boundary.test.ts`
+ * holds that: the capture, the check and the replacement are all the engine's.
+ */
+export type AyqBackupRequest =
+  | { kind: 'backup.overview' }
+  | { kind: 'backup.create' }
+  | { kind: 'backup.restore'; backupId: string };
+
+/** Needs attention (010, 013): the groups that hold, and the one owner action. */
+export type AyqAttentionRequest =
+  | { kind: 'attention'; today?: string }
+  | {
+      /**
+       * The owner has dealt with a file an import could not use (013 §1b).
+       * It changes the import history, not the attention item: the item
+       * clears because its condition no longer holds.
+       */
+      kind: 'imports.markHandled';
+      importId: string;
+      name: string;
     };
+
+/** One thing an actual transaction and an expected payment agree on (03 §7.16). */
+export type AyqMatchEvidence =
+  | 'same-counterparty'
+  | 'same-mandate'
+  | 'same-amount'
+  | 'amount-within-tenth';
+
+/**
+ * Why a request failed, as a code the renderer words (04 A24).
+ *
+ * `unexpected` is everything without a code of its own — a fault inside
+ * Actual, or a request that should never have been sent. The renderer says so
+ * in its own words; the engine's English stays in `detail`, for a developer.
+ */
+export type AyqErrorCode =
+  | 'unexpected'
+  | 'engine-stopped'
+  | 'engine-timeout'
+  | 'engine-not-running'
+  | 'engine-native-binding'
+  | 'picker-failed'
+  | 'store-newer'
+  | 'store-copy-failed'
+  | 'budget-slow'
+  | 'import-no-file'
+  | 'import-nothing-readable'
+  | 'category-needs-name'
+  | 'category-exists'
+  | 'category-not-found'
+  | 'category-group-not-found'
+  | 'category-wrong-kind'
+  | 'category-in-use'
+  | 'category-own-destination'
+  | 'counterparty-not-found'
+  | 'counterparty-self'
+  | 'merge-nothing'
+  | 'transaction-not-found'
+  | 'bulk-needs-scope'
+  | 'rule-not-found'
+  | 'plan-needs-name'
+  | 'plan-needs-amount'
+  | 'plan-needs-start'
+  | 'plan-bad-end'
+  | 'plan-end-before-start'
+  | 'plan-bad-interval'
+  | 'plan-not-found'
+  | 'plan-not-on-date'
+  | 'plan-bad-date'
+  | 'plan-already-matched'
+  | 'month-invalid'
+  | 'month-not-kept'
+  | 'plan-amount-invalid'
+  | 'anchor-disagrees'
+  | 'import-problem-not-found';
+
+/** Bounded values a code's sentence may name: a file, a month, a version. */
+export type AyqErrorParams = Readonly<Record<string, string | number>>;
 
 /** Correlation id; the host echoes it back untouched. */
 export type AyqRequest = AyqRequestBody & { id: string };
@@ -1548,7 +2133,20 @@ export type AyqResponse =
         result: AyqResults[K];
       };
     }[keyof AyqResults]
-  | { id: string; ok: false; kind: 'error'; message: string };
+  | {
+      id: string;
+      ok: false;
+      kind: 'error';
+      code: AyqErrorCode;
+      params?: AyqErrorParams;
+      /** For `import-nothing-readable`: each file, and why. */
+      problems?: AyqImportProblem[];
+      /**
+       * The engine's own account of it, in English, for a developer reading a
+       * log. Never shown: the renderer words the code (04 A24).
+       */
+      detail: string;
+    };
 
 /**
  * What the preload exposes on `window.ayq`.

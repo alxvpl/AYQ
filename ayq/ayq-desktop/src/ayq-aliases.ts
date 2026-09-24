@@ -63,6 +63,7 @@ import {
   ayqWriteStore,
   type AyqStore,
 } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 export function ayqAliases(dataDir: string): AyqAliasRecord[] {
   return ayqReadStore(dataDir).aliases;
@@ -311,7 +312,7 @@ export function ayqRememberAlias(
   },
 ): AyqAliasRecord[] {
   if (input.variantKey === input.counterpartyKey) {
-    throw new Error('a counterparty cannot be an alias of itself');
+    throw new AyqEngineError('counterparty-self', 'a counterparty cannot be an alias of itself');
   }
 
   const store = ayqReadStore(dataDir);
@@ -325,7 +326,7 @@ export function ayqRememberAlias(
   const counterpartyName = settled?.counterpartyName ?? input.counterpartyName;
 
   if (input.variantKey === counterpartyKey) {
-    throw new Error('a counterparty cannot be an alias of itself');
+    throw new AyqEngineError('counterparty-self', 'a counterparty cannot be an alias of itself');
   }
 
   store.aliases = store.aliases.filter(

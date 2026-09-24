@@ -5,11 +5,13 @@
 // is a real failure and is reported as one, never papered over with a stand-in
 // answer.
 
-import {
-  type AyqBridge,
-  type AyqRequestBody,
-  type AyqResponse,
+import type {
+  AyqBridge,
+  AyqErrorCode,
+  AyqRequestBody,
+  AyqResponse,
 } from './ayq-ipc-contract.ts';
+import { ayqErrorText } from './ayq-reasons.ts';
 
 declare global {
   interface Window {
@@ -25,7 +27,25 @@ function nextId(): string {
   return `ayq-${Date.now().toString(36)}-${counter}`;
 }
 
-export async function ayqAsk(body: AyqRequestBody): Promise<AyqResponse> {
+/**
+ * What a screen receives: the engine's answer, and for a failure the
+ * catalogue's sentence for its code (04 A24).
+ *
+ * The engine's own English (`detail`) is dropped here, at the one door, so
+ * no screen can put it on the window — every `onFailure(answer.message)` in
+ * the renderer says what the catalogue says.
+ */
+export type AyqAnswer =
+  | Exclude<AyqResponse, { ok: false }>
+  | {
+      id: string;
+      ok: false;
+      kind: 'error';
+      code: AyqErrorCode;
+      message: string;
+    };
+
+export async function ayqAsk(body: AyqRequestBody): Promise<AyqAnswer> {
   const bridge = window.ayq;
   if (!bridge) {
     throw new Error(
@@ -33,5 +53,13 @@ export async function ayqAsk(body: AyqRequestBody): Promise<AyqResponse> {
         'AYQ Electron host, and there is no other way to reach the engine.',
     );
   }
-  return bridge.request({ ...body, id: nextId() });
+  const answer = await bridge.request({ ...body, id: nextId() });
+  if (answer.ok) return answer;
+  return {
+    id: answer.id,
+    ok: false,
+    kind: 'error',
+    code: answer.code,
+    message: ayqErrorText(answer),
+  };
 }

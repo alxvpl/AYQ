@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "demo": "node src/ayq-demo.ts"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
     "@actual-app/api": "^26.9.0"
   },

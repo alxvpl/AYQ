@@ -64,6 +64,7 @@ const DETAIL: AyqCounterpartyDetail = {
       firstDate: '2026-01-08',
       lastDate: '2026-09-09',
       aliased: false,
+      aliasId: null,
     },
     {
       key: 'TESTMKT EXPRESS',
@@ -72,6 +73,7 @@ const DETAIL: AyqCounterpartyDetail = {
       firstDate: '2026-05-02',
       lastDate: '2026-07-02',
       aliased: true,
+      aliasId: 'alias-1',
     },
   ],
   recurring: null,
@@ -89,6 +91,8 @@ const DETAIL: AyqCounterpartyDetail = {
       cleared: true,
     },
   ],
+  rules: [],
+  ownerNamed: false,
 };
 
 const CATEGORIES = [

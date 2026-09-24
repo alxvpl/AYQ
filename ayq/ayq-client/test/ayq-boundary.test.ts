@@ -192,3 +192,121 @@ test('the built bundle carries no engine or host code', async () => {
   // And the one door it is allowed is present.
   assert.ok(bundle.includes('window.ayq'), 'the bundle uses the bridge');
 });
+
+/**
+ * The text of one exported type in the contract, up to the next declaration.
+ *
+ * Read from the source rather than from a compiled shape because what is being
+ * checked is what the contract lets a renderer *say*: a field that exists in
+ * the type is a field a renderer can fill.
+ */
+function contractType(source: string, name: string): string {
+  const start = source.indexOf(`export type ${name} =`);
+  assert.ok(start >= 0, `the contract has no ${name}`);
+  const rest = source.slice(start + 1);
+  const next = rest.search(/\n(?:\/\*\*|export )/);
+  return next < 0 ? rest : rest.slice(0, next);
+}
+
+/** Every property name declared in a slice of the contract. */
+function propertiesOf(declaration: string): string[] {
+  return [...declaration.matchAll(/(?:^|[{;\s])(\w+)\??:/g)].map(one => one[1]);
+}
+
+test('backup and restore give the renderer no way to name a file (02 §5.8)', async () => {
+  const source = await readFile(join(src, 'ayq-ipc-contract.ts'), 'utf8');
+
+  // What the renderer may send: a kind, and for a restore, one opaque id. No
+  // path, no file, no folder, and no way to name the budget or the store alone.
+  const requests = contractType(source, 'AyqBackupRequest');
+  assert.deepEqual(
+    [...new Set(propertiesOf(requests))].sort(),
+    ['backupId', 'kind'],
+    'a backup request carries something other than its kind and a backup id',
+  );
+  // And those three are the only backup requests there are.
+  const kinds = [...source.matchAll(/kind: '(backup\.[\w.]+)'/g)].map(one => one[1]);
+  assert.deepEqual([...new Set(kinds)].sort(), [
+    'backup.create',
+    'backup.overview',
+    'backup.restore',
+  ]);
+
+  // What comes back names no place on disk either, so there is nothing the
+  // renderer could hold on to and hand back as one.
+  for (const name of [
+    'AyqBackupEntry',
+    'AyqBackupAttempt',
+    'AyqBackupOverview',
+    'AyqBackupCreated',
+    'AyqRestored',
+  ]) {
+    for (const property of propertiesOf(contractType(source, name))) {
+      assert.doesNotMatch(
+        property,
+        /path|file|dir|folder|store|budget/i,
+        `${name}.${property} could carry a location`,
+      );
+    }
+  }
+});
+
+test('no renderer source knows where a backup, the budget or the store lives', async () => {
+  for (const file of await sourceFiles()) {
+    const source = await readFile(file, 'utf8');
+    for (const name of ['ayq-backups', 'ayq-store.json', 'db.sqlite', 'metadata.json', '.ayq-restore']) {
+      assert.ok(!source.includes(name), `${file} names ${name}`);
+    }
+  }
+});
+
+test('reasons cross the boundary as codes, never as display English (04 A24)', async () => {
+  const source = await readFile(join(src, 'ayq-ipc-contract.ts'), 'utf8');
+
+  // The four classes 028 §10.1 named, each typed as a code.
+  const decision = contractType(source, 'AyqDecision');
+  assert.doesNotMatch(decision, /because/, 'a filing reason is a sentence again');
+  assert.match(decision, /reason\?: AyqFilingReason;/);
+
+  const problem = contractType(source, 'AyqImportProblem');
+  assert.doesNotMatch(problem, /reason:\s*string/, 'an import problem is a sentence again');
+  assert.match(problem, /code: AyqImportProblemCode;/);
+
+  assert.match(source, /evidence: AyqMatchEvidence\[\];/, 'match evidence is a sentence again');
+  assert.doesNotMatch(source, /evidence: string\[\]/);
+
+  const response = contractType(source, 'AyqResponse');
+  assert.match(response, /code: AyqErrorCode;/);
+  assert.doesNotMatch(response, /message:\s*string/, 'an error carries display English again');
+
+  // Each code union is literals only: a `string` member would let prose back in.
+  for (const name of [
+    'AyqErrorCode',
+    'AyqImportProblemCode',
+    'AyqMatchEvidence',
+  ]) {
+    const union = contractType(source, name);
+    assert.doesNotMatch(union, /\bstring\b/, `${name} admits free text`);
+  }
+});
+
+test('no screen shows what the engine wrote in English', async () => {
+  for (const file of await sourceFiles()) {
+    if (file.endsWith('ayq-ipc-contract.ts')) continue;
+    const source = await readFile(file, 'utf8');
+    // The engine's English travels as `detail` and legacy text as
+    // `legacyText`; neither is read anywhere in the renderer.
+    // A property read on a value, not a request kind such as 'counterparty.detail'.
+    assert.doesNotMatch(source, /(?<!['.\w-])[A-Za-z_$][\w$]*\.detail\b(?![.'\w-])/, `${file} reads the engine's English`);
+    assert.doesNotMatch(source, /\.legacyText\b/, `${file} shows legacy text`);
+    // And no screen words a reason by itself: only ayq-reasons.ts does.
+    // The catalogue defines the keys; ayq-reasons.ts is the one place that uses them.
+    if (!file.endsWith('ayq-reasons.ts') && !file.endsWith('ayq-strings.ts')) {
+      assert.doesNotMatch(
+        source,
+        /'(reason|error)\.[a-z-]+'/,
+        `${file} words a reason itself instead of through ayq-reasons.ts`,
+      );
+    }
+  }
+});

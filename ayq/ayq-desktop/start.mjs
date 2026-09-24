@@ -111,7 +111,9 @@ if (has('register')) env.AYQ_SMOKE_REGISTER = '1';
 // again on fifty thousand records.
 if (has('import-once')) env.AYQ_SMOKE_IMPORT_ONCE = '1';
 
-// `--reports` opens Reports and requires it to say it is not built, to invent no
+// `--reports` opens Reports, requires a category table, and follows the first
+// row into the Register to check the filter actually applied. It used to
+// require the screen to say it is not built, to invent no
 // reason for being empty, to draw nothing that could be read as an answer, and
 // to record the Spending screen 04 A20 removed — whose question is this one.
 if (has('reports')) env.AYQ_SMOKE_REPORTS = '1';
@@ -123,6 +125,12 @@ if (has('reports')) env.AYQ_SMOKE_REPORTS = '1';
 // takes the rule away again (04 A7) and reads what Settings → Categories says it
 // will and will not do.
 if (has('review')) env.AYQ_SMOKE_REVIEW = '1';
+
+// `--bulk` ticks two Register rows, requires the bar over them to state that
+// count as a count of rows shown and to offer no whole-filter scope while no
+// filter is on (03 §4.8), files them into a category through the bar, and
+// requires the redrawn table to carry it and the bar to be gone (04 A36).
+if (has('bulk')) env.AYQ_SMOKE_BULK = '1';
 
 // `--today` opens Today and requires available funds to be first and the
 // largest figure on the screen — both measured on the drawn window — the
@@ -161,7 +169,18 @@ if (has('balance')) env.AYQ_SMOKE_BALANCE = '1';
 // forbidden ones (12 §12.1, §12.4).
 if (has('about')) env.AYQ_SMOKE_ABOUT = '1';
 
-// `--snapshot <file>` opens Settings → Data, exports the analytical snapshot
+// `--backup` opens Settings → Data & Backup, makes a backup with the button,
+// changes both the budget and the AYQ store, requires a mixed set and a set a
+// newer AYQ wrote to be refused with the state untouched, and then restores the
+// backup through the window and requires both halves to be back (04 A38, 03 §12).
+if (has('backup')) env.AYQ_SMOKE_BACKUP = '1';
+
+// `--attention` reads Needs attention off Today: the groups the engine answers,
+// in its order, the rail's count of them, no engine identifier on the screen,
+// and the review row opening Review (010, 013).
+if (has('attention')) env.AYQ_SMOKE_ATTENTION = '1';
+
+// `--snapshot <file>` opens Settings → Data & Backup, exports the analytical snapshot
 // through the screen to that file (the host's save dialog is answered with
 // it), and requires the file to validate under the contract (03 §13). Only a
 // synthetic budget is ever exported here.

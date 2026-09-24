@@ -53,6 +53,19 @@ function engine(over: Record<string, unknown> = {}) {
     if (request.kind === 'rules.list') return over.rules ?? RULES;
     if (request.kind === 'rules.remove') return [RULES[0]];
     if (request.kind === 'rules.apply') return { categorised: 14 };
+    if (request.kind === 'rules.impact') {
+      const rule = RULES.find(one => one.id === request.ruleId);
+      return {
+        rule,
+        filed: rule?.id === 'rule-1' ? 6 : 0,
+        byHand: rule?.id === 'rule-1' ? 1 : 0,
+        categoryExists: rule?.id === 'rule-1',
+      };
+    }
+    if (request.kind === 'rules.correct') {
+      const rule = { ...RULES[0], categoryName: 'Housing' };
+      return { rules: [rule, RULES[1]], rule, filed: 6, byHand: 1 };
+    }
     return undefined;
   };
 }
@@ -112,15 +125,16 @@ test('both consequences of this screen are stated on it', async () => {
       '',
     /Renaming a category moves its rules with it/,
   );
-  // And what AYQ does not do here, and why. Nothing on the screen offers it.
+  // And what removal does and does not do (04 A35): counted first, never
+  // silent. Nothing on the screen offers to archive or delete.
   assert.match(
     window.container.querySelector('[data-ayq-no-archive]')?.textContent ?? '',
-    /does not archive or delete a category here/,
+    /never destroys or refiles anything in silence/,
   );
   const said = window.container.textContent ?? '';
   for (const forbidden of ['Archive', 'Delete']) {
     assert.ok(
-      !new RegExp(`${forbidden}(?! or delete)`).test(said),
+      !new RegExp(forbidden).test(said),
       `the screen offers to ${forbidden.toLowerCase()} a category`,
     );
   }
@@ -236,12 +250,85 @@ test('a rule naming a category the budget lacks says it files nothing', async ()
   await window.close();
 });
 
+test('inspecting a rule says what it has filed, and what it may not touch', async () => {
+  const window = await ayqOpenWindow(engine());
+  await window.render(rulesScreen());
+
+  await ayqPress(
+    window.container.querySelector('[data-ayq-action="rule-inspect-rule-1"]'),
+  );
+  assert.deepEqual(
+    window.asked.filter(one => one.kind === 'rules.impact').map(one => one.ruleId),
+    ['rule-1'],
+  );
+  const card = window.container.querySelector('[data-ayq-rule-card="rule-1"]');
+  assert.ok(card, 'the rule did not open');
+  const impact = card.querySelector('[data-ayq-rule-impact]')?.textContent ?? '';
+  assert.match(impact, /filed 6 transactions/);
+  assert.match(impact, /1 of this counterparty/);
+  assert.match(impact, /outside its reach/);
+  // Nothing was changed by looking.
+  assert.ok(
+    !window.asked.some(
+      one => one.kind === 'rules.correct' || one.kind === 'rules.remove',
+    ),
+  );
+  await window.close();
+});
+
+test('correcting a rule states what it will re-file, then sends that correction', async () => {
+  const window = await ayqOpenWindow(engine());
+  await window.render(rulesScreen());
+  await ayqPress(
+    window.container.querySelector('[data-ayq-action="rule-inspect-rule-1"]'),
+  );
+  await ayqPress(window.container.querySelector('[data-ayq-action="rule-correct"]'));
+
+  const picker = window.container.querySelector('[data-ayq-rule-category]');
+  assert.ok(picker, 'no category to correct to');
+  await ayqType(picker, 'cat-2');
+  const consequence =
+    window.container.querySelector('[data-ayq-rule-consequence]')?.textContent ?? '';
+  assert.match(consequence, /re-files the 6 transactions the rule filed into Housing/);
+  assert.match(consequence, /The 1 you filed yourself stay as they are/);
+  assert.equal(
+    window.asked.filter(one => one.kind === 'rules.correct').length,
+    0,
+    'stated before it was done',
+  );
+
+  await ayqPress(
+    window.container.querySelector('[data-ayq-action="rule-correct-apply"]'),
+  );
+  const sent = window.asked.filter(one => one.kind === 'rules.correct');
+  assert.deepEqual(
+    sent.map(one => [one.ruleId, one.categoryId]),
+    [['rule-1', 'cat-2']],
+  );
+  assert.match(
+    window.container.querySelector('[data-ayq-rules-said]')?.textContent ?? '',
+    /now files TESTMARKT into Housing; 6 transactions follow it/,
+  );
+  await window.close();
+});
+
 test('a rule can be taken away, and what it filed stays where it is', async () => {
   const window = await ayqOpenWindow(engine());
   await window.render(rulesScreen());
 
   await ayqPress(
-    window.container.querySelector('[data-ayq-action="rule-forget-rule-2"]'),
+    window.container.querySelector('[data-ayq-action="rule-inspect-rule-2"]'),
+  );
+  await ayqPress(window.container.querySelector('[data-ayq-action="rule-remove"]'));
+  // The consequence is stated before the action is available.
+  assert.match(
+    window.container.querySelector('[data-ayq-rule-remove-consequence]')
+      ?.textContent ?? '',
+    /stay where they are: nothing is re-filed/,
+  );
+  assert.equal(window.asked.filter(one => one.kind === 'rules.remove').length, 0);
+  await ayqPress(
+    window.container.querySelector('[data-ayq-action="rule-remove-confirm"]'),
   );
 
   const sent = window.asked.find(one => one.kind === 'rules.remove');

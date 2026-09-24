@@ -19,7 +19,7 @@ import type {
   AyqTransactionDetail,
 } from '../src/ayq-ipc-contract.ts';
 import { AyqRegisterScreen } from '../src/ayq-screens/ayq-register.tsx';
-import { ayqAmount, ayqText } from '../src/ayq-strings.ts';
+import { ayqMoney, ayqText } from '../src/ayq-strings.ts';
 import { AyqGroundProvider } from '../src/ayq-ui/ayq-ground-provider.tsx';
 import { ayqOpenWindow, ayqPress } from './ayq-react.ts';
 
@@ -98,8 +98,8 @@ const DETAIL: AyqTransactionDetail = {
     importId: 'imp-1',
     counterpartyKey: 'TESTFUEL',
     counterpartyName: 'TESTFUEL 22',
-    resolvedBy: 'card descriptor',
-    kind: 'card payment',
+    resolvedBy: 'description',
+    kind: 'card-terminal',
     counterpartyIban: null,
     intermediary: null,
     mandateId: null,
@@ -180,6 +180,10 @@ function engineOver(rows: AyqLedgerRow[], total = rows.length) {
         return { row: ROWS[1], counterpartyKey: 'TESTFUEL', counterpartyName: 'TESTFUEL', pendingForCounterparty: 0 };
       case 'alias.create':
         return { aliases: [], recategorised: 0 };
+      case 'rules.impact':
+        return { rule: DETAIL.rule, filed: 4, byHand: 0, categoryExists: true };
+      case 'rules.remove':
+        return [];
       case 'settings.get':
       case 'settings.set':
         return { ground: 'light' };
@@ -259,7 +263,7 @@ test('the table shows the rows the engine answered, in the accepted columns', as
   assert.equal(rows.length, ROWS.length);
 
   const first = rows[0];
-  for (const column of ['date', 'payee', 'category', 'account', 'amount']) {
+  for (const column of ['date', 'payee', 'category', 'state', 'amount']) {
     assert.ok(
       first.querySelector(`[data-ayq-cell="${column}"]`),
       `the table has no ${column} column`,
@@ -272,7 +276,7 @@ test('the table shows the rows the engine answered, in the accepted columns', as
   // 04 A19: the amount is the engine's cents, formatted, and carries no colour.
   assert.equal(
     first.querySelector('[data-ayq-cell="amount"]')?.textContent,
-    ayqAmount(ROWS[0].amountCents),
+    ayqMoney(ROWS[0].amountCents),
   );
 
   await window.close();
@@ -350,6 +354,30 @@ test('a filter that is on is shown, and can be taken off', async () => {
   await window.close();
 });
 
+test('dates handed over by the shell are shown as the filter they are (03 §7.26)', async () => {
+  let filter: Record<string, unknown> = { from: '2026-07-01', categoryId: 'cat-1' };
+  const window = await ayqOpenWindow(engineOver(ROWS));
+  await window.render(
+    screen(next => {
+      filter = next;
+    }, filter),
+  );
+  const sent = window.asked.find(one => one.kind === 'transactions.list');
+  assert.deepEqual(
+    (sent?.filter as Record<string, unknown>).from,
+    '2026-07-01',
+    'the dates were not actually applied',
+  );
+  const dates = window.container.querySelector('[data-ayq-filter="dates"]');
+  assert.ok(dates, 'the dates are applied and the screen does not say so');
+  assert.match(dates.textContent ?? '', /from/);
+  assert.ok(window.container.querySelector('[data-ayq-filter="category"]'));
+  await ayqPress(window.container.querySelector('[data-ayq-filter-remove="dates"]'));
+  assert.equal(filter.from, undefined);
+  assert.equal(filter.categoryId, 'cat-1', 'taking the dates off left the category on');
+  await window.close();
+});
+
 test('clearing takes every filter off at once', async () => {
   let filter: Record<string, unknown> = { uncategorised: true, search: 'fuel' };
   const window = await ayqOpenWindow(engineOver(ROWS));
@@ -387,7 +415,8 @@ test('choosing a row opens the evidence, the provenance and the decisions', asyn
 
   assert.match(said, /TESTFUEL/);
   // The evidence behind the counterparty (03 §3.5), not a name and a shrug.
-  assert.match(said, /card descriptor/);
+  assert.ok(said.includes(ayqText('reason.resolvedBy.description')));
+  assert.ok(said.includes(ayqText('reason.kind.card-terminal')));
   assert.match(said, /PMNT\/CCRD\/POSD/);
   assert.match(said, /TESTFUEL 22/);
   // Who decided the category, and every decision before it.
@@ -398,6 +427,42 @@ test('choosing a row opens the evidence, the provenance and the decisions', asyn
   );
   assert.match(said, /Utilities/, 'the decision that was overruled is not shown');
 
+  await window.close();
+});
+
+test('the rule that filed a row is named there, with what it did, and can be removed there', async () => {
+  const window = await ayqOpenWindow(engineOver(ROWS));
+  await window.render(screen());
+  await ayqPress(
+    window.container.querySelector('[data-ayq-table="register"] tbody tr[data-ayq-row="t-2"]'),
+  );
+  const pane = window.container.querySelector('[data-ayq-detail="t-2"]');
+  assert.ok(pane);
+  const card = pane.querySelector('[data-ayq-rule-card="rule-1"]');
+  assert.ok(card, 'the rule is not inspectable where it is seen (A7)');
+  assert.match(card.textContent ?? '', /TESTFUEL files into Groceries/);
+  assert.match(
+    card.querySelector('[data-ayq-rule-impact]')?.textContent ?? '',
+    /filed 4 transactions/,
+  );
+
+  await ayqPress(card.querySelector('[data-ayq-action="rule-remove"]'));
+  assert.match(
+    card.querySelector('[data-ayq-rule-remove-consequence]')?.textContent ?? '',
+    /nothing is re-filed/,
+  );
+  assert.equal(window.asked.filter(one => one.kind === 'rules.remove').length, 0);
+  await ayqPress(card.querySelector('[data-ayq-action="rule-remove-confirm"]'));
+  assert.deepEqual(
+    window.asked.filter(one => one.kind === 'rules.remove').map(one => one.ruleId),
+    ['rule-1'],
+  );
+  // Removing the rule did not re-file the row, or change anything else.
+  assert.ok(
+    !window.asked.some(
+      one => one.kind === 'transaction.categorise' || one.kind === 'rules.correct',
+    ),
+  );
   await window.close();
 });
 
@@ -478,6 +543,55 @@ test('a page is not the whole ledger, and says so', async () => {
     1000,
     'showing more asked for a bigger page rather than a second one',
   );
+
+  await window.close();
+});
+
+test('AYQ\'s own filing is shown as AYQ\'s, with its reason in the catalogue\'s words (04 A24)', async () => {
+  const base = engineOver(ROWS);
+  const window = await ayqOpenWindow((request: Asked) =>
+    request.kind === 'transaction.detail'
+      ? {
+          ...DETAIL,
+          decisions: [
+            {
+              source: 'auto',
+              categoryName: 'Groceries',
+              at: '2026-09-09T09:00:00.000Z',
+              reason: { code: 'counterparty', counterparty: 'TESTFUEL' },
+            },
+            {
+              source: 'auto',
+              categoryName: 'Bank fees',
+              at: '2026-09-10T09:00:00.000Z',
+              // What a version 9 store held in words this AYQ does not know.
+              reason: { code: 'legacy', legacyText: 'SOMETHING ONLY THE ENGINE WROTE' },
+            },
+          ],
+        }
+      : base(request),
+  );
+  await window.render(screen());
+  await ayqPress(
+    window.container.querySelector('[data-ayq-table="register"] tbody tr[data-ayq-row="t-2"]'),
+  );
+  const pane = window.container.querySelector('[data-ayq-detail="t-2"]');
+  assert.ok(pane);
+  const lines = [...pane.querySelectorAll('[data-ayq-decision="auto"]')].map(
+    one => one.textContent ?? '',
+  );
+  assert.equal(lines.length, 2);
+  // Oldest last: the history reads newest first.
+  assert.match(lines[1], new RegExp(ayqText('detail.by.ayq')));
+  assert.doesNotMatch(lines[1], new RegExp(ayqText('detail.by.you')));
+  assert.ok(
+    lines[1].includes(
+      ayqText('reason.filing.counterparty', { counterparty: 'TESTFUEL' }),
+    ),
+  );
+  // Stored English is evidence, never the screen's words.
+  assert.ok(lines[0].includes(ayqText('reason.filing.legacy')));
+  assert.doesNotMatch(pane.textContent ?? '', /SOMETHING ONLY THE ENGINE WROTE/);
 
   await window.close();
 });

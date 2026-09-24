@@ -274,10 +274,82 @@ test('the totals are available funds and what is held in total', async () => {
   await window.close();
 });
 
+test('the detail states each fact under its own label, and the two dates apart', async () => {
+  const window = await ayqOpenWindow(engine(VIEW));
+  await window.render(screen);
+  const rows = window.container.querySelectorAll(
+    '[data-ayq-table="accounts"] tbody tr',
+  );
+  await ayqPress(rows[1]);
+  const detail = window.container.querySelector('[data-ayq-account-detail="acc-2"]');
+  assert.ok(detail, 'the account did not open');
+
+  const fact = (mark: string): Element | null =>
+    detail.querySelector(`[data-ayq-detail-${mark}]`);
+  assert.equal(fact('counts')?.textContent, ayqText('accounts.counts.yes'));
+  assert.equal(fact('statements')?.textContent, ayqDate('2026-08-31'));
+
+  // Last successful import and bank data through are two facts, and stay two
+  // elements even here, where they fall one day apart.
+  const lastImport = fact('last-import');
+  const bankThrough = fact('bank-through');
+  assert.ok(lastImport && bankThrough);
+  assert.notEqual(lastImport, bankThrough);
+  assert.equal(lastImport.getAttribute('data-ayq-detail-last-import'), '2026-09-01T09:14:00.000Z');
+  assert.equal(bankThrough.getAttribute('data-ayq-detail-bank-through'), '2026-08-31');
+  assert.equal(bankThrough.textContent, ayqDate('2026-08-31'));
+
+  // The balance rests on its anchor, and the anchor says whose it is.
+  assert.equal(fact('balance')?.getAttribute('data-ayq-detail-balance'), '41200');
+  assert.equal(
+    detail.querySelector('[data-ayq-anchor-source]')?.getAttribute('data-ayq-anchor-source'),
+    'manual',
+  );
+
+  // Nothing here configures the account: the switch is Settings' alone.
+  assert.equal(detail.querySelector('[data-ayq-funds-switch]'), null);
+  await window.close();
+});
+
+test('with no anchor the balance is Unknown and setting one is offered', async () => {
+  const bare: AyqAccountSummary = {
+    ...SAVINGS,
+    balanceCents: null,
+    anchor: null,
+    anchorHistory: [],
+  };
+  const window = await ayqOpenWindow(
+    engine({ ...VIEW, accounts: [EVERYDAY, JOINT, bare] }),
+  );
+  await window.render(screen);
+  const rows = window.container.querySelectorAll(
+    '[data-ayq-table="accounts"] tbody tr',
+  );
+  await ayqPress(rows[2]);
+  const detail = window.container.querySelector('[data-ayq-account-detail="acc-3"]');
+  assert.ok(detail);
+  assert.equal(
+    detail.querySelector('[data-ayq-detail-balance]')?.getAttribute('data-ayq-detail-balance'),
+    'unknown',
+    'four imported movements are not a balance',
+  );
+  assert.ok(detail.querySelector('[data-ayq-no-anchor]'));
+  assert.equal(
+    detail.querySelector('[data-ayq-action="account-anchor"]')?.textContent,
+    ayqText('balance.set.title'),
+  );
+  assert.equal(
+    detail.querySelector('[data-ayq-detail-statements]')?.textContent,
+    ayqText('accounts.statements.none'),
+  );
+  await window.close();
+});
+
 test('Settings keeps only the switch, and it reaches the engine', async () => {
   const window = await ayqOpenWindow(engine(VIEW));
   let changed = 0;
   let opened = 0;
+  const openedOne: string[] = [];
   await window.render(
     <AyqGroundProvider>
       <AyqSettingsAccounts
@@ -290,21 +362,32 @@ test('Settings keeps only the switch, and it reaches the engine', async () => {
         onOpenAccounts={() => {
           opened += 1;
         }}
+        onOpenAccount={accountId => {
+          openedOne.push(accountId);
+        }}
       />
     </AyqGroundProvider>,
   );
 
-  const columns = [
-    ...window.container.querySelectorAll('[data-ayq-table="settings-accounts"] thead th'),
-  ].map(one => one.textContent);
-  assert.deepEqual(
-    columns,
-    [
-      ayqText('accounts.column.name'),
-      ayqText('accounts.column.counts'),
-      ayqText('accounts.column.balance'),
-    ],
-    'Settings shows more than the switch it is supposed to keep',
+  // One row per account, each carrying the switch and the way to the detail
+  // (template r003), and nothing else.
+  const rows = [
+    ...window.container.querySelectorAll('[data-ayq-pane="settings-accounts"] [data-ayq-setting-row]'),
+  ];
+  assert.equal(rows.length, 3, 'Settings does not list every account');
+  for (const row of rows) {
+    assert.ok(row.querySelector('[data-ayq-funds-switch]'), 'a row has no switch');
+    assert.ok(row.querySelector('[data-ayq-action^="open-account-"]'), 'a row has no way to the detail');
+  }
+  // No operational evidence here: not a balance, not a date, not a verdict.
+  assert.equal(
+    window.container.querySelector('[data-ayq-pane="settings-accounts"] [data-ayq-figure]'),
+    null,
+    'a balance is operational evidence and belongs on the Accounts screen (A34)',
+  );
+  assert.ok(
+    !(window.container.querySelector('[data-ayq-pane="settings-accounts"]')?.textContent ?? '')
+      .includes(ayqMoney(EVERYDAY.balanceCents ?? 0)),
   );
 
   await ayqPress(window.container.querySelector('[data-ayq-funds-switch="acc-3"]'));
@@ -314,7 +397,10 @@ test('Settings keeps only the switch, and it reaches the engine', async () => {
   assert.equal(sent[0].countsTowardFunds, true);
   assert.equal(changed, 1, 'available funds changed and the shell was told');
 
-  // And it points at the screen that holds the rest (03 §8).
+  // And it points at the screen that holds the rest (03 §8) — for one
+  // account, and for all of them.
+  await ayqPress(window.container.querySelector('[data-ayq-action="open-account-acc-2"]'));
+  assert.deepEqual(openedOne, ['acc-2']);
   await ayqPress(window.container.querySelector('[data-ayq-action="open-accounts"]'));
   assert.equal(opened, 1);
 

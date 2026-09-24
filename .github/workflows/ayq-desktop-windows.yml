@@ -373,13 +373,39 @@ jobs:
           }
           Write-Host "and then learned one: $($Matches[1])"
 
+      # Gathering rows in the Register (04 A36; 03 §4.7–§4.9). The bar over
+      # two ticked rows must state that count as a count of rows shown, must
+      # offer no "whole filter" scope while no filter is on, and filing through
+      # it must leave the redrawn table carrying the category and the bar gone.
+      # The capture is taken with three rows ticked again, so the bar is on it.
+      - name: Bulk selection states its scope before it acts
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-bulk-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml `
+            --bulk `
+            --screenshot "${{ runner.temp }}\ayq-desktop-bulk.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'the bulk bar did not hold on the window' }
+          if ($said -notmatch 'bulk: held') {
+            throw 'the run did not check the bulk bar at all'
+          }
+          if ($said -notmatch 'bulk filed as ([^:]+): (\d+) filed') {
+            throw 'the run did not file a selection through the bar'
+          }
+          Write-Host "filed two ticked rows as $($Matches[1]): $($Matches[2])"
+
       # Reports, which is not built. Two things that has to mean, on the
       # packaged application: nothing on the screen that could be read as an
       # answer, and no reason invented for it being empty. The second is the one
       # worth checking — a screen that blames a person's data for being empty
       # tells them something untrue, and that is the sentence that gets written
       # when somebody fills an empty page.
-      - name: Reports says it is not built, and blames nothing
+      - name: Reports draws spending by category, and its route into the Register is the real filter
         working-directory: ayq/ayq-desktop
         shell: pwsh
         timeout-minutes: 10
@@ -395,12 +421,13 @@ jobs:
           if ($said -notmatch 'Reports: held') {
             throw 'the run did not check Reports at all'
           }
-          if ($said -notmatch 'reports: (\d+) figures, (\d+) tables, (\d+) chips, (\d+) charts') {
+          if ($said -notmatch 'reports: (\d+) figures, (\d+) tables, (\d+) chips, (\d+) charts, (\d+) category rows') {
             throw 'the run did not count what Reports draws'
           }
-          # A budget with transactions in it, so "it drew nothing" is a decision
-          # and not an accident of there being nothing to draw.
-          Write-Host "Reports drew $($Matches[1]) figures and $($Matches[2]) tables on a budget that holds transactions"
+          if ($said -notmatch 'the Register opened on (category|uncategorised) with (\d+) rows; Reports said (\d+)') {
+            throw 'the run did not follow a category into the Register'
+          }
+          Write-Host "Reports drew $($Matches[2]) rows behind its category; the Register opened on the same filter"
 
       # A file that is not a statement. The import has to refuse it, say which
       # file and why, and leave the budget exactly as empty as it found it.
@@ -721,7 +748,7 @@ jobs:
       # decision the owner had made is still there afterwards — including the
       # two things a migration is most likely to quietly invent: a coverage
       # start date version 7 never recorded, and an anchor nobody ever set.
-      - name: A version 7 store is brought to version 9, and loses nothing
+      - name: A version 7 store is brought to version 11, and loses nothing
         working-directory: ayq/ayq-desktop
         shell: pwsh
         timeout-minutes: 12
@@ -732,13 +759,13 @@ jobs:
             --seed-store test/fixtures/ayq-v7-store.json
           if ($LASTEXITCODE -ne 0) { throw 'AYQ did not open over a version 7 store' }
 
-          $kept = Get-ChildItem $env:AYQ_DATA_DIR -Filter 'ayq-store.before-v7-to-v9.json'
+          $kept = Get-ChildItem $env:AYQ_DATA_DIR -Filter 'ayq-store.before-v7-to-v11.json'
           if (-not $kept) { throw '03 §5.3: no copy was kept before the shape changed' }
           Write-Host "kept before migrating: $($kept.Name), $($kept.Length) bytes"
 
           $store = Get-Content (Join-Path $env:AYQ_DATA_DIR 'ayq-store.json') -Raw |
             ConvertFrom-Json
-          if ($store.version -ne 9) { throw "the store is version $($store.version)" }
+          if ($store.version -ne 11) { throw "the store is version $($store.version)" }
           if ($store.rules.Count -ne 1) { throw 'a rule was lost' }
           if ($store.aliases.Count -ne 1) { throw 'an alias was lost' }
           if ($store.planned.Count -ne 1) { throw 'a planned record was lost' }
@@ -792,6 +819,50 @@ jobs:
             throw 'the Plan did not say what its suggestions rest on'
           }
           Write-Host "Plan suggestions averaged over $($Matches[1]) complete months"
+
+      # 04 A38 and 03 §12 on the window: Create backup now, pressed; the budget
+      # and the AYQ store both changed; a set mixing another backup's store and
+      # a set sealed by a newer AYQ both refused with the state untouched; and
+      # the backup restored through Settings → Data & Backup, confirmation and
+      # all, with both halves back. Synthetic statement only (06 §5.4).
+      - name: Data & Backup, made, refused and restored
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-backup-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --import-once `
+            --backup `
+            --screenshot "${{ runner.temp }}\ayq-desktop-backup.png" 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'backup and restore did not hold' }
+          if ($said -notmatch 'Data & Backup: held') {
+            throw 'the run did not check Data & Backup at all'
+          }
+          if ($said -notmatch 'refused mixed and newer with the state intact') {
+            throw 'the run did not offer the sets that must be refused'
+          }
+
+      # 010 with 013's corrections, on the window: Needs attention draws the
+      # engine's groups in its order, the rail counts groups, no identifier is
+      # shown, and a row's action opens where its condition is dealt with.
+      - name: Needs attention, on Today
+        working-directory: ayq/ayq-desktop
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          AYQ_DATA_DIR: ${{ runner.temp }}\ayq-attention-budget
+        run: |
+          $said = & node start.mjs --smoke --require-host "electron utilityProcess" `
+            --import ../ayq-camt/test/fixtures/ayq-abn-month.xml --import-once `
+            --attention 2>&1 | Out-String
+          Write-Host $said
+          if ($LASTEXITCODE -ne 0) { throw 'Needs attention did not hold' }
+          if ($said -notmatch 'Needs attention: held') {
+            throw 'the run did not check Needs attention at all'
+          }
 
       # The product, as a person would get it: an installer, installed, and the
       # installed application driving itself through the same acceptance.
@@ -1026,6 +1097,21 @@ jobs:
           }
           Write-Host "installed : $exe"
 
+          # 06 §9.3: Actual Budget's MIT notice travels with the product. About
+          # states that it does, so the installed tree has to hold it (029 §5).
+          $notice = Join-Path $target 'resources\licenses\Actual-Budget-LICENSE.txt'
+          if (-not (Test-Path $notice)) {
+            throw "the installer carries no Actual Budget licence notice at $notice"
+          }
+          # The file carries the MIT grant and Actual's copyright line; it has no
+          # 'MIT License' heading, so the grant itself is what is looked for.
+          $noticeText = Get-Content $notice -Raw
+          if ($noticeText -notmatch 'Permission is hereby granted, free of charge' -or
+              $noticeText -notmatch 'Copyright James Long') {
+            throw 'the Actual Budget licence notice is not the MIT notice'
+          }
+          Write-Host "notice    : $notice"
+
           # A GUI subsystem binary writes nothing to this console, so each run
           # is judged by its exit code and the report it leaves behind.
           #
@@ -1172,6 +1258,7 @@ jobs:
             ${{ runner.temp }}\ayq-desktop-accounts.png
             ${{ runner.temp }}\ayq-desktop-today.png
             ${{ runner.temp }}\ayq-desktop-review.png
+            ${{ runner.temp }}\ayq-desktop-bulk.png
             ${{ runner.temp }}\ayq-desktop-reports.png
             ${{ runner.temp }}\ayq-desktop-balance.png
             ${{ runner.temp }}\ayq-desktop-suggest.png

@@ -333,7 +333,9 @@ test('success is claimed only for a file that is there at the size written; the 
   mkdirSync(asDirectory);
   const answer = await send({ id: 'snapshot-blocked', kind: 'snapshot.export', path: asDirectory, today: TODAY }, dataDir);
   assert.equal(answer.ok, false);
-  assert.ok(!answer.ok && answer.message.length > 0, 'the failure says why');
+  // A code the renderer words, and the engine's reason for a developer.
+  assert.equal(!answer.ok && answer.code, 'unexpected');
+  assert.ok(!answer.ok && answer.detail.length > 0, 'the failure says why');
   assert.deepEqual(await readdir(blocked), ['snapshot.json'], 'no temporary file beside the target');
   assert.ok(statSync(asDirectory).isDirectory(), 'the obstacle is untouched');
 });

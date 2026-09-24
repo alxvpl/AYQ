@@ -24,6 +24,8 @@ await build({
   platform: 'browser',
   target: 'chrome120',
   jsx: 'automatic',
+  // The mark's vector master comes in as text and is drawn inline.
+  loader: { '.svg': 'text' },
   // React reads this to choose its development or production build. The
   // renderer has no `process`, so the value is baked in rather than looked up
   // — and `ayq-boundary.test.ts` requires that nothing reads `process` at all.

@@ -309,6 +309,7 @@ export async function ayqCounterpartyDetail(
       firstDate: variant.firstDate,
       lastDate: variant.lastDate,
       aliased: aliases.has(variant.key),
+      aliasId: aliases.get(variant.key)?.id ?? null,
     }))
     .sort((left, right) => {
       // The counterparty's own key first; then the biggest of what was moved in.
@@ -325,5 +326,13 @@ export async function ayqCounterpartyDetail(
   });
   const recent: AyqLedgerRow[] = ledger.rows;
 
-  return { counterparty, variants, recurring, recent };
+  return {
+    counterparty,
+    variants,
+    recurring,
+    recent,
+    rules: store.rules.filter(rule => rule.counterpartyKey === key),
+    ownerNamed:
+      (store.counterpartyNames[key]?.displayName ?? '').trim() !== '',
+  };
 }

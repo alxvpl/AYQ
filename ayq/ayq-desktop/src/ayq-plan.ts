@@ -60,6 +60,7 @@ import {
   type AyqPlanOccurrenceRecord,
   type AyqStore,
 } from './ayq-store.ts';
+import { AyqEngineError } from './ayq-error.ts';
 
 export function ayqPlan(dataDir: string, today: string): AyqPlan {
   const store = ayqReadStore(dataDir);
@@ -199,7 +200,7 @@ export async function ayqUsePlanSuggestions(
 ): Promise<AyqPlanSheet> {
   const sheet = await ayqPlanSheet(dataDir, ayqToday(), month);
   if (!sheet.editable) {
-    throw new Error(`Actual does not keep a budget month for ${month}`);
+    throw new AyqEngineError('month-not-kept', `Actual does not keep a budget month for ${month}`, { month });
   }
 
   const wanted =
@@ -225,25 +226,25 @@ export async function ayqUsePlanSuggestions(
 
 function validate(draft: AyqPlanDraft): void {
   if (draft.name.trim() === '') {
-    throw new Error('a planned payment needs a name');
+    throw new AyqEngineError('plan-needs-name', 'a planned payment needs a name');
   }
   if (!Number.isInteger(draft.amountCents) || draft.amountCents <= 0) {
-    throw new Error('a planned payment needs an amount above zero, in cents');
+    throw new AyqEngineError('plan-needs-amount', 'a planned payment needs an amount above zero, in cents');
   }
   if (!AYQ_DATE.test(draft.startDate)) {
-    throw new Error('a planned payment needs a start date as YYYY-MM-DD');
+    throw new AyqEngineError('plan-needs-start', 'a planned payment needs a start date as YYYY-MM-DD');
   }
   if (draft.endDate != null) {
-    if (!AYQ_DATE.test(draft.endDate)) throw new Error('an end date is YYYY-MM-DD');
+    if (!AYQ_DATE.test(draft.endDate)) throw new AyqEngineError('plan-bad-end', 'an end date is YYYY-MM-DD');
     if (draft.endDate < draft.startDate) {
-      throw new Error('an end date cannot be before the start date');
+      throw new AyqEngineError('plan-end-before-start', 'an end date cannot be before the start date');
     }
   }
   if (
     !Number.isFinite(draft.recurrence.interval) ||
     draft.recurrence.interval < 1
   ) {
-    throw new Error('an interval is a whole number of periods, at least one');
+    throw new AyqEngineError('plan-bad-interval', 'an interval is a whole number of periods, at least one');
   }
 }
 
@@ -283,7 +284,7 @@ export function ayqSavePlan(
 
   if (draft.id !== undefined) {
     const existing = store.planned.find(one => one.id === draft.id);
-    if (!existing) throw new Error('no such planned payment');
+    if (!existing) throw new AyqEngineError('plan-not-found', 'no such planned payment');
     Object.assign(existing, fields);
     ayqWriteStore(dataDir, store);
     return existing;
@@ -315,7 +316,7 @@ export function ayqSetPlanState(
 ): void {
   const store = ayqReadStore(dataDir);
   const record = store.planned.find(one => one.id === recordId);
-  if (!record) throw new Error('no such planned payment');
+  if (!record) throw new AyqEngineError('plan-not-found', 'no such planned payment');
   record.state = state;
   record.updatedAt = now;
   // Accepting an offer makes it a person's decision, and the record has to say
@@ -337,7 +338,7 @@ export function ayqRemovePlan(dataDir: string, recordId: string): void {
   const before = store.planned.length;
   store.planned = store.planned.filter(one => one.id !== recordId);
   if (store.planned.length === before) {
-    throw new Error('no such planned payment');
+    throw new AyqEngineError('plan-not-found', 'no such planned payment');
   }
   // Its occurrences go with it: a decision about an occurrence of a record that
   // no longer exists is a row nothing will ever read again.
@@ -378,9 +379,9 @@ function occurrenceOf(
   dueDate: string,
 ): AyqPlannedRecord {
   const record = store.planned.find(one => one.id === recordId);
-  if (!record) throw new Error('no such planned payment');
+  if (!record) throw new AyqEngineError('plan-not-found', 'no such planned payment');
   if (!ayqIsOccurrenceOf(record, dueDate)) {
-    throw new Error('that payment does not fall on that date');
+    throw new AyqEngineError('plan-not-on-date', 'that payment does not fall on that date');
   }
   return record;
 }
@@ -391,7 +392,7 @@ export function ayqReschedule(
   dueDate: string,
   to: string,
 ): void {
-  if (!AYQ_DATE.test(to)) throw new Error('a date is YYYY-MM-DD');
+  if (!AYQ_DATE.test(to)) throw new AyqEngineError('plan-bad-date', 'a date is YYYY-MM-DD');
   const store = ayqReadStore(dataDir);
   const record = occurrenceOf(store, recordId, dueDate);
   // Moving it back to where the rhythm put it is not a reschedule, and is
@@ -720,7 +721,8 @@ export async function ayqApplyMatch(
       !(one.recordId === recordId && one.dueDate === dueDate),
   );
   if (taken) {
-    throw new Error(
+    throw new AyqEngineError(
+      'plan-already-matched',
       'that transaction is already matched to another expected payment',
     );
   }

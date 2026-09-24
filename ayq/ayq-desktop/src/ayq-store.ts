@@ -32,12 +32,16 @@ import type {
   AyqAliasRecord,
   AyqCategoryRule,
   AyqDecision,
+  AyqFilingReason,
   AyqGround,
+  AyqImportProblemCode,
   AyqImportRecord,
   AyqPlannedRecord,
   AyqProvenance,
   AyqSettings,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
+
+import { AyqEngineError } from './ayq-error.ts';
 
 /**
  * What has been decided about one occurrence of a planned record.
@@ -254,8 +258,17 @@ const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
  *      a migration that went looking for transactions to file would be setting
  *      a category, which §5.7 forbids it to do. The shape widens; the filing
  *      happens afterwards, when the application runs.
+ *  10  the reasons AYQ records become codes the interface words (04 A24):
+ *      an automatic filing's reason, and why a chosen file could not be
+ *      imported. Every sentence version 9 could have written is recognised
+ *      and becomes its code; anything else is kept word for word as
+ *      `legacy` evidence and is never shown as it stands. No decision, no
+ *      count and no category changes — representation only (§5.7).
+ *  11  a file an import could not use may carry `handledAt`: the owner has
+ *      dealt with it in Import history (013 §1b). The shape widens; nothing
+ *      already written is marked, because nobody has marked it.
  */
-export const AYQ_STORE_VERSION = 9;
+export const AYQ_STORE_VERSION = 11;
 
 export type AyqStore = {
   version: number;
@@ -552,7 +565,90 @@ const AYQ_MIGRATIONS: readonly AyqMigration[] = [
     // counterparties, which §5.7 forbids a migration to do just as firmly.
     change: store => ({ ...store, counterpartyFoldVersion: 0 }),
   },
+  {
+    to: 10,
+    what: 'recorded reasons as codes (04 A24)',
+    // Representation, not meaning (§5.7). Each decision keeps its source, its
+    // category and its moment; each import record keeps every count. Only the
+    // English a version 9 AYQ wrote is replaced by the code it stood for.
+    change: store => ({
+      ...store,
+      decisions: Object.fromEntries(
+        Object.entries(record(store.decisions)).map(([key, history]) => [
+          key,
+          array(history).map(one => ayqReasonOfV9Decision(one as AyqRaw)),
+        ]),
+      ),
+      imports: array(store.imports).map(one => {
+        const held = one as AyqRaw;
+        return Array.isArray(held.problems)
+          ? { ...held, problems: held.problems.map(ayqProblemOfV9) }
+          : held;
+      }),
+    }),
+  },
+  {
+    to: 11,
+    what: 'import problems the owner has marked as handled (013 §1b)',
+    // A widening and nothing else: no problem in an older store has been
+    // marked, so none is (§5.7).
+    change: store => store,
+  },
 ];
+
+/**
+ * The three filing reasons version 9 wrote, word for word.
+ *
+ * These are the only sentences `ayq-filing.ts` ever produced (build 006 to
+ * 0.4.0); the table is what makes the migration a translation of a known
+ * vocabulary rather than a guess at what prose meant.
+ */
+const V9_FILING_REASONS: ReadonlyArray<[string, AyqFilingReason]> = [
+  ['the bank\u2019s own charge', { code: 'bank-charge' }],
+  ['interest charged by the bank', { code: 'bank-interest' }],
+];
+const V9_COUNTERPARTY_REASON = /^the counterparty is (.+)$/s;
+
+/** One version 9 decision, with its `because` sentence turned into a code. */
+export function ayqReasonOfV9Decision(decision: AyqRaw): AyqRaw {
+  if (typeof decision !== 'object' || decision === null) return decision;
+  if (!('because' in decision)) return decision;
+  const { because, ...rest } = decision;
+  if (typeof because !== 'string') return rest;
+  const known = V9_FILING_REASONS.find(([said]) => said === because)?.[1];
+  const counterparty = V9_COUNTERPARTY_REASON.exec(because)?.[1];
+  const reason: AyqFilingReason =
+    known ??
+    (counterparty === undefined
+      ? // Not a sentence version 9 wrote. Kept as it is, as evidence, and never
+        // read as a decision about anything.
+        { code: 'legacy', legacyText: because }
+      : { code: 'counterparty', counterparty });
+  return { ...rest, reason };
+}
+
+/** The import-problem sentences version 9 wrote, word for word. */
+const V9_IMPORT_PROBLEMS: ReadonlyArray<[string, AyqImportProblemCode]> = [
+  ['it holds no CAMT.053 entries', 'no-entries'],
+  ['it is not a CAMT.053 document', 'not-camt'],
+  ['it is no longer there', 'gone'],
+  ['AYQ is not allowed to read it', 'not-allowed'],
+  ['it is a folder, not a file', 'folder'],
+];
+
+/** One version 9 import problem, with its `reason` sentence turned into a code. */
+export function ayqProblemOfV9(problem: unknown): unknown {
+  if (typeof problem !== 'object' || problem === null) return problem;
+  const held = problem as AyqRaw;
+  if (!('reason' in held)) return held;
+  const { reason, ...rest } = held;
+  const code = V9_IMPORT_PROBLEMS.find(([said]) => said === reason)?.[1];
+  // A file the importer could not read for any other reason carried Node's own
+  // message. It is kept as it was, and never shown.
+  return code === undefined
+    ? { ...rest, code: 'legacy', legacyText: String(reason) }
+    : { ...rest, code };
+}
 
 /**
  * The import id evidence carried up from version 7 is filed under.
@@ -608,10 +704,12 @@ export function ayqMigrate(raw: unknown): AyqStore {
     // Refused rather than migrated downwards (§5.6). Losing somebody's aliases
     // and rules to a downgrade is not an acceptable failure, and a shape this
     // code has never seen cannot be read safely by guessing.
-    throw new Error(
+    throw new AyqEngineError(
+      'store-newer',
       `this budget's AYQ store is version ${from}, and this AYQ knows ` +
         `version ${AYQ_STORE_VERSION}. A newer AYQ wrote it; upgrade rather ` +
         'than overwrite it.',
+      { found: from, known: AYQ_STORE_VERSION },
     );
   }
 
@@ -758,24 +856,38 @@ export function ayqReadStore(dataDir: string): AyqStore {
  */
 export function ayqKeepBeforeMigrating(dataDir: string, from: number): string {
   const path = ayqStorePath(dataDir);
-  const kept = join(dataDir, `ayq-store.before-v${from}-to-v${AYQ_STORE_VERSION}.json`);
+  let kept = join(dataDir, `ayq-store.before-v${from}-to-v${AYQ_STORE_VERSION}.json`);
   // A file, specifically. Anything else standing at that name — a directory, a
   // dangling link — is not a copy of anybody's store, and treating it as one
   // would let the migration run with no copy at all.
-  if (existsSync(kept) && statSync(kept).isFile()) return kept;
+  //
+  // And a copy of *this* store. After a restore the store about to migrate is
+  // the backup's, not the one an earlier launch copied under this name (03
+  // §12.5, 034 §2): that earlier copy is left exactly where it is, and this
+  // store gets one of its own beside it.
+  if (existsSync(kept) && statSync(kept).isFile()) {
+    if (sameBytes(kept, path)) return kept;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    kept = join(
+      dataDir,
+      `ayq-store.before-v${from}-to-v${AYQ_STORE_VERSION}.${stamp}.json`,
+    );
+  }
 
   try {
     // Copied, not moved: the store AYQ is about to read from stays where it is,
     // so an interruption here leaves the old shape intact and readable (§5.5).
     copyFileSync(path, kept);
   } catch (error) {
-    throw new Error(
+    throw new AyqEngineError(
+      'store-copy-failed',
       `this budget's AYQ store is version ${from} and has to be brought to ` +
         `version ${AYQ_STORE_VERSION}, and AYQ could not first keep a copy of ` +
         `it at ${kept} (${
           error instanceof Error ? error.message : String(error)
         }). The store has not been changed. Make that directory writable, or ` +
         'copy the file aside yourself, and open AYQ again.',
+      { found: from, known: AYQ_STORE_VERSION },
     );
   }
   process.stderr.write(
@@ -783,6 +895,15 @@ export function ayqKeepBeforeMigrating(dataDir: string, from: number): string {
       `${AYQ_STORE_VERSION}\n`,
   );
   return kept;
+}
+
+/** Whether two files hold the same bytes; false when either cannot be read. */
+function sameBytes(a: string, b: string): boolean {
+  try {
+    return readFileSync(a).equals(readFileSync(b));
+  } catch {
+    return false;
+  }
 }
 
 /**

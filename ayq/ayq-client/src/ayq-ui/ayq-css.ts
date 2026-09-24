@@ -65,5 +65,29 @@ export function ayqBorderTop(
   };
 }
 
+export function ayqBorderRight(
+  colour: string,
+  width = 'var(--ayq-hairline)',
+  style: 'solid' | 'dashed' = 'solid',
+): AyqEdgeBorder {
+  return {
+    borderRightWidth: width,
+    borderRightStyle: style,
+    borderRightColor: colour,
+  };
+}
+
+export function ayqBorderLeft(
+  colour: string,
+  width = 'var(--ayq-hairline)',
+  style: 'solid' | 'dashed' = 'solid',
+): AyqEdgeBorder {
+  return {
+    borderLeftWidth: width,
+    borderLeftStyle: style,
+    borderLeftColor: colour,
+  };
+}
+
 /** No border at all, written the same way. */
 export const AYQ_NO_BORDER: AyqEdgeBorder = ayqBorder('transparent', '0', 'solid');

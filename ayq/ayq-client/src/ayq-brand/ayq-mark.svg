@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="AYQ">
+  <!--
+    The AYQ mark: the vector master (06 §3.6; 04 A26 as the owner decided it).
+
+    Everything drawn from this file - the application icon, the About mark and
+    the brand in the title bar - is drawn from these shapes and no other copy.
+    The raster the design supplied (96 px, a transparent slit at the foot of
+    the field, alpha never reaching 255 along its edges) was the reference;
+    this is the source.
+
+    The vocabulary is kept small on purpose, so that the icon can be
+    rasterised without an SVG engine: one rounded square, then filled
+    polygons and rounded rectangles in flat colours, drawn in order and
+    clipped to the field. No gradients, strokes, text or transforms.
+  -->
+  <rect id="field" x="2" y="2" width="92" height="92" rx="26" fill="#0a8ad4"/>
+  <polygon id="shade" fill="#0261a1" points="26,78 44,68 50,68 52,70 60,88 72,95 20,95"/>
+  <polygon id="stroke" fill="#0b3760" points="11,11 20,10 95,55 95,60 83,70 62,58 57,58 26,78 26,33"/>
+  <polygon id="frame-top" fill="#0a2340" points="36,26 47,26 53,31 33,33"/>
+  <polygon id="frame-left" fill="#0a2340" points="30,33 34,33 34,59 30,59"/>
+  <polygon id="frame-foot" fill="#0a2340" points="32,59 34,59 39,64 50,65 44,69 38,65"/>
+  <rect id="ring" x="36" y="37" width="23" height="23" rx="3.5" fill="#1ea0e6"/>
+  <rect id="aperture" x="37" y="38" width="21" height="21" rx="3" fill="#10f5fa"/>
+</svg>

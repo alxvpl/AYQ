@@ -4,10 +4,10 @@
 // is listed, by the canonical counterparty it is keyed on (03 §4.1) and the
 // category name it keeps (§4.2); verifiable — a rule naming a category this
 // budget does not have files nothing, and says so, rather than looking like it
-// works; correctable — the category is changed on the Categories tab, and the
-// rules move with it; reversible — a rule can be taken away, and what it already
-// filed stays where it is, because that was still a decision about those
-// transactions.
+// works; correctable — where a rule files is changed here, with what that
+// re-files stated first; reversible — a rule can be taken away, and what it
+// already filed stays where it is, because that was still a decision about
+// those transactions.
 //
 // "Apply the rules now" exists because a rule written after an import has
 // nothing to act on until somebody asks, and 03 §4.4 bounds what applying may
@@ -25,6 +25,7 @@ import { ayqBorder } from '../ayq-ui/ayq-css.ts';
 import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
+import { AyqRuleCard } from './ayq-rule-card.tsx';
 
 const useStyles = makeStyles({
   bar: {
@@ -61,6 +62,8 @@ export function AyqSettingsRules({
   const [categories, setCategories] = useState<readonly AyqCategory[]>([]);
   const [said, setSaid] = useState<string | null>(null);
   const [round, setRound] = useState(0);
+  /** The rule opened for inspection, correction or removal. */
+  const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -96,17 +99,6 @@ export function AyqSettingsRules({
 
   const has = (name: string): boolean =>
     categories.some(one => one.name.toLowerCase() === name.toLowerCase());
-
-  const forget = (ruleId: string): void => {
-    void (async () => {
-      const answer = await ayqAsk({ kind: 'rules.remove', ruleId });
-      if (!answer.ok) throw new Error(answer.message);
-      setSaid(ayqText('rules.removed'));
-      again();
-    })().catch((error: unknown) => {
-      onFailure(error instanceof Error ? error.message : String(error));
-    });
-  };
 
   const apply = (): void => {
     void (async () => {
@@ -157,19 +149,21 @@ export function AyqSettingsRules({
       ),
     },
     {
-      id: 'remove',
-      header: ayqText('rules.column.remove'),
+      id: 'inspect',
+      header: ayqText('rules.column.inspect'),
       cell: row => (
         <AyqButton
           size="small"
-          mark={`rule-forget-${row.id}`}
-          onClick={() => forget(row.id)}
+          mark={`rule-inspect-${row.id}`}
+          onClick={() => setOpenId(one => (one === row.id ? null : row.id))}
         >
-          {ayqText('rules.remove')}
+          {ayqText('rules.inspect')}
         </AyqButton>
       ),
     },
   ];
+
+  const open = rules.find(one => one.id === openId) ?? null;
 
   return (
     <>
@@ -190,8 +184,24 @@ export function AyqSettingsRules({
           columns={columns}
           rows={rules}
           keyOf={row => row.id}
+          selected={openId}
+          onSelect={row => setOpenId(row.id)}
           empty={ayqText('rules.empty')}
         />
+        {open === null ? null : (
+          <div className={styles.body}>
+            <AyqRuleCard
+              rule={open}
+              categories={categories}
+              onFailure={onFailure}
+              onDone={what => {
+                setOpenId(null);
+                setSaid(what);
+                again();
+              }}
+            />
+          </div>
+        )}
         {said === null ? null : (
           <div className={styles.body}>
             <p className={styles.said} data-ayq-rules-said="">

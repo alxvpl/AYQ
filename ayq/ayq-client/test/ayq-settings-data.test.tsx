@@ -1,4 +1,5 @@
-// Settings › Data: the analytical snapshot export (03 §13).
+// Settings › Data & Backup, its last pane: the analytical snapshot export
+// (03 §13; its place decided in 027).
 //
 // The renderer asks two things and touches no file: where (the host's save
 // dialog) and then the export (the engine). What comes back is counts and a
@@ -7,9 +8,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { AyqSnapshotExport } from '../src/ayq-ipc-contract.ts';
+import type { AyqBackupOverview, AyqSnapshotExport } from '../src/ayq-ipc-contract.ts';
 import { AyqSettingsData, ayqLocalDate } from '../src/ayq-screens/ayq-settings-data.tsx';
-import { AYQ_SETTINGS_TABS } from '../src/ayq-screens/ayq-settings.tsx';
+import { AYQ_SETTINGS_TABS, AyqSettingsScreen } from '../src/ayq-screens/ayq-settings.tsx';
 import { ayqText } from '../src/ayq-strings.ts';
 import { AyqGroundProvider } from '../src/ayq-ui/ayq-ground-provider.tsx';
 import { ayqOpenWindow, ayqPress } from './ayq-react.ts';
@@ -42,10 +43,51 @@ function screen(onFailure: (message: string) => void = message => {
   );
 }
 
-test('Data is a Settings tab, and its words are catalogue entries', () => {
-  const tabs = AYQ_SETTINGS_TABS.map(one => one.id);
-  assert.ok(tabs.includes('data'), 'Settings has no Data tab');
-  assert.equal(ayqText('settings.tab.data'), 'Data');
+test('the export is the last pane of Data & Backup, and there is no Data tab (027)', async () => {
+  assert.deepEqual(
+    AYQ_SETTINGS_TABS.map(one => one.id),
+    ['appearance', 'accounts', 'categories', 'rules', 'backup', 'about'],
+  );
+  const overview = {
+    backups: [],
+    latestBackupId: null,
+    lastAttempt: null,
+    lastAutomaticAttempt: null,
+    automatic: { everyHours: 24, kept: 10 },
+  } satisfies AyqBackupOverview;
+  const window = await ayqOpenWindow((request: Record<string, unknown>) => {
+    if (request.kind === 'settings.get') return { ground: 'light' };
+    if (request.kind === 'backup.overview') return overview;
+    return undefined;
+  });
+  await window.render(
+    <AyqGroundProvider>
+      <AyqSettingsScreen
+        tab="backup"
+        onFailure={message => {
+          throw new Error(message);
+        }}
+        onChanged={() => undefined}
+        onOpenAccounts={() => undefined}
+        onOpenAccount={() => undefined}
+      />
+    </AyqGroundProvider>,
+  );
+  await new Promise(resolve => setTimeout(resolve, 20));
+
+  const panes = [...window.container.querySelectorAll('[data-ayq-pane]')].map(one =>
+    one.getAttribute('data-ayq-pane'),
+  );
+  assert.ok(panes.length > 1, `the backup panes come first: ${panes.join(', ')}`);
+  assert.equal(panes[panes.length - 1], 'snapshot');
+  // The tab keeps its name and its line; the pane its heading and its sentence, once.
+  const whole = window.container.textContent ?? '';
+  assert.equal(window.container.querySelector('h1')?.textContent, ayqText('settings.tab.backup'));
+  assert.ok(whole.includes(ayqText('settings.backup.blurb')));
+  assert.ok(whole.includes(ayqText('snapshot.title')));
+  assert.equal(whole.split(ayqText('snapshot.blurb')).length - 1, 1);
+
+  await window.close();
 });
 
 test('the export asks where, then asks the engine for exactly that path, and says what was written', async () => {

@@ -32,6 +32,7 @@ import type {
   AyqSummary,
 } from './ayq-ipc-contract.ts';
 import { AyqAccountsScreen } from './ayq-screens/ayq-accounts.tsx';
+import { AyqCounterpartyScreen } from './ayq-screens/ayq-counterparty.tsx';
 import { AyqPlanScreen } from './ayq-screens/ayq-plan.tsx';
 import { AyqReportsScreen } from './ayq-screens/ayq-reports.tsx';
 import { AyqReviewScreen } from './ayq-screens/ayq-review.tsx';
@@ -50,18 +51,20 @@ import { AyqNotice } from './ayq-ui/ayq-notice.tsx';
 import { AyqRail } from './ayq-ui/ayq-rail.tsx';
 import { AyqScreen } from './ayq-ui/ayq-screen.tsx';
 import { AyqStatusBar } from './ayq-ui/ayq-status-bar.tsx';
+import { AyqTitleBar } from './ayq-ui/ayq-title-bar.tsx';
 
 const useStyles = makeStyles({
   window: {
     height: '100%',
     display: 'grid',
     gridTemplateColumns: `${AYQ_METRIC.railWidth}px minmax(0, 1fr)`,
-    gridTemplateRows: `minmax(0, 1fr) var(--ayq-status-height)`,
+    gridTemplateRows: `${AYQ_METRIC.titleBarHeight}px minmax(0, 1fr) var(--ayq-status-height)`,
     backgroundColor: 'var(--ayq-ground)',
     overflow: 'hidden',
   },
   middle: {
     gridColumn: '2',
+    gridRow: '2',
     display: 'flex',
     flexDirection: 'column',
     minHeight: '0',
@@ -77,6 +80,11 @@ export function AyqApplication(): ReactNode {
   const [settingsTab, setSettingsTab] = useState<AyqSettingsTab>('appearance');
   /** Which account's detail Today opened, if it opened one (7 §7.3). */
   const [account, setAccount] = useState<string | null>(null);
+  /** Which counterparty's page is open, and where it was opened from (A37). */
+  const [counterparty, setCounterparty] = useState<{
+    key: string;
+    from: AyqDestination;
+  } | null>(null);
   const [status, setStatus] = useState<AyqEngineStatus | null>(null);
   const [summary, setSummary] = useState<AyqSummary | null>(null);
   // Two different things, and conflating them would be a defect rather than an
@@ -96,12 +104,41 @@ export function AyqApplication(): ReactNode {
   /** What the Register's own answer said the budget holds; null until it has. */
   const [ledgerTotal, setLedgerTotal] = useState<number | null>(null);
 
-  const reload = useCallback(() => setRound(one => one + 1), []);
+  /** Something changed data: the status bar and what needs attention read again. */
+  const reload = useCallback(() => {
+    setRound(one => one + 1);
+    setAttentionRound(one => one + 1);
+  }, []);
   /** The last thing the shell's own read failed with, so it can be taken down. */
   const lastFailure = useRef<string | null>(null);
   // A screen that has finished drawing has changed what the window is holding,
   // and the attributes below are read off that.
   const say = useCallback((message: string) => setNotice(message), []);
+
+  // How many attention groups hold, for the rail (013 §5).
+  //
+  // Asked again only when something may have changed them — a screen saying
+  // it changed data — and taken from Today's own answer whenever Today draws.
+  // Not on every move along the rail: attention reads the whole plan and every
+  // account, and on a large budget asking it on each click queued the screen
+  // the person had just opened behind it (the Register took 16 s instead of 1).
+  // A failure here says nothing on its own: Today asks the same question and
+  // reports what it could not read.
+  const [attentionGroups, setAttentionGroups] = useState(0);
+  const [attentionRound, setAttentionRound] = useState(0);
+  useEffect(() => {
+    // The first answer is Today's: the window opens on Today, which asks.
+    if (attentionRound === 0) return;
+    let live = true;
+    void (async () => {
+      const answered = await ayqAsk({ kind: 'attention' });
+      if (!live || !answered.ok || answered.kind !== 'attention') return;
+      setAttentionGroups(answered.result.groups.length);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [attentionRound]);
 
   // What is true of the window, whichever screen is open.
   useEffect(() => {
@@ -194,12 +231,25 @@ export function AyqApplication(): ReactNode {
           setDestination('settings');
           setSettingsTab('rules');
         }}
+        onOpenCounterparty={key => {
+          setCounterparty({ key, from: 'register' });
+          setDestination('counterparty');
+        }}
         onFailure={say}
         onLoaded={ledgerLoaded}
       />
     );
   } else if (destination === 'import') {
-    body = <AyqImportScreen onImported={reload} onFailure={say} />;
+    body = (
+      <AyqImportScreen
+        onImported={reload}
+        onFailure={say}
+        onOpenAccount={accountId => {
+          setAccount(accountId);
+          setDestination('accounts');
+        }}
+      />
+    );
   } else if (destination === 'settings') {
     body = (
       <AyqSettingsScreen
@@ -207,6 +257,10 @@ export function AyqApplication(): ReactNode {
         onFailure={say}
         onChanged={reload}
         onOpenAccounts={() => setDestination('accounts')}
+        onOpenAccount={accountId => {
+          setAccount(accountId);
+          setDestination('accounts');
+        }}
       />
     );
   } else if (destination === 'review') {
@@ -217,7 +271,29 @@ export function AyqApplication(): ReactNode {
           setFilter({ counterpartyKey });
           setDestination('register');
         }}
+        onManage={key => {
+          setCounterparty({ key, from: 'review' });
+          setDestination('counterparty');
+        }}
         onChanged={reload}
+      />
+    );
+  } else if (destination === 'counterparty' && counterparty !== null) {
+    // A secondary surface, like Accounts: reached from a transaction or from
+    // Review, never from the rail, and it offers the way back to where it was
+    // opened from (04 A37).
+    body = (
+      <AyqCounterpartyScreen
+        key={counterparty.key}
+        counterpartyKey={counterparty.key}
+        onFailure={say}
+        onChanged={reload}
+        onOpenRegister={counterpartyKey => {
+          setFilter({ counterpartyKey });
+          setDestination('register');
+        }}
+        onOpenKey={key => setCounterparty({ key, from: counterparty.from })}
+        onBack={() => setDestination(counterparty.from)}
       />
     );
   } else if (destination === 'accounts') {
@@ -258,27 +334,41 @@ export function AyqApplication(): ReactNode {
           setAccount(accountId);
           setDestination('accounts');
         }}
+        onOpenBackup={() => {
+          setDestination('settings');
+          setSettingsTab('backup');
+        }}
+        onAttention={groups => setAttentionGroups(groups)}
         round={round}
       />
     );
   } else {
     body = (
       <AyqReportsScreen
-        onOpenRegister={() => {
-          setFilter({});
+        accounts={summary?.accounts ?? []}
+        onOpenRegister={chosen => {
+          // The real filter, not a claim that one was applied (03 §7.26).
+          setFilter(chosen);
           setDestination('register');
         }}
+        onFailure={say}
       />
     );
   }
 
   return (
     <div className={styles.window} data-ayq-window="">
+      <AyqTitleBar />
       <AyqRail
         current={destination}
+        // How many conditions need attention — groups, not records (013 §5) —
+        // on Today, where they are.
+        waiting={{ today: attentionGroups }}
         open={next => {
           setDestination(next);
-          reload();
+          // A move, not a change: the status bar reads again, attention does
+          // not (see attentionRound above).
+          setRound(one => one + 1);
         }}
       />
       <div className={styles.middle}>
@@ -289,7 +379,11 @@ export function AyqApplication(): ReactNode {
         />
         <AyqScreen
           name={destination}
-          title={ayqText(AYQ_DESTINATION_LABEL[destination])}
+          title={
+            destination === 'counterparty'
+              ? ''
+              : ayqText(AYQ_DESTINATION_LABEL[destination])
+          }
           blurb={
             AYQ_DESTINATION_BLURB[destination] === undefined
               ? undefined
@@ -302,7 +396,7 @@ export function AyqApplication(): ReactNode {
           {body}
         </AyqScreen>
       </div>
-      <AyqStatusBar status={status} summary={summary} failure={failure} />
+      <AyqStatusBar summary={summary} />
     </div>
   );
 }
