@@ -22,13 +22,13 @@ const manifest = JSON.parse(
 
 const base = { productName: 'AYQ', version: '0.4.1', ayq: { build: '013' } };
 
-test('the manifest is the release: AYQ Personal Finances 0.4.1 (Build 013)', () => {
+test('the manifest is the release: AYQ Personal Finances 0.4.1 (Build 014)', () => {
   assert.deepEqual(ayqRelease(), {
     product: 'AYQ Personal Finances',
     version: '0.4.1',
-    build: '013',
-    identification: 'AYQ Personal Finances 0.4.1 (Build 013)',
-    fileName: 'AYQ-0.4.1-b013.exe',
+    build: '014',
+    identification: 'AYQ Personal Finances 0.4.1 (Build 014)',
+    fileName: 'AYQ-0.4.1-b014.exe',
   });
 });
 
