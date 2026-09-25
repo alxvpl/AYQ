@@ -1448,6 +1448,11 @@ export type AyqPlanSuggested = {
  */
 export type AyqAbout = {
   productName: string;
+  /**
+   * The full identification, "<product> <version> (Build NNN)" (06 §3.11) —
+   * composed where the installer's name is, never on the renderer.
+   */
+  identification: string;
   tagline: string;
   author: string;
   copyright: string;

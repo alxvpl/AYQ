@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { ayqBuildInfo } from '../ayq-build-info.mjs';
 import { ayqRelease, releaseIdentity } from '../ayq-release.mjs';
 
 const here = new URL('..', import.meta.url);
@@ -21,14 +22,23 @@ const manifest = JSON.parse(
 
 const base = { productName: 'AYQ', version: '0.4.1', ayq: { build: '013' } };
 
-test('the manifest is the release: AYQ Personal Finances 0.4.1 (Build 013)', () => {
+test('the manifest is the release: AYQ Personal Finances 0.4.1 (Build 014)', () => {
   assert.deepEqual(ayqRelease(), {
     product: 'AYQ Personal Finances',
     version: '0.4.1',
-    build: '013',
-    identification: 'AYQ Personal Finances 0.4.1 (Build 013)',
-    fileName: 'AYQ-0.4.1-b013.exe',
+    build: '014',
+    identification: 'AYQ Personal Finances 0.4.1 (Build 014)',
+    fileName: 'AYQ-0.4.1-b014.exe',
   });
+});
+
+test('About is stamped with the same identification the installer is named from (06 §3.8, §3.11)', () => {
+  const stamped = ayqBuildInfo();
+  assert.equal(stamped.identification, ayqRelease().identification);
+  assert.equal(
+    stamped.identification,
+    `AYQ Personal Finances ${stamped.productVersion} (Build ${stamped.buildNumber})`,
+  );
 });
 
 test('the file name is exactly <product>-<semver>-bNNN.exe, with nothing else in it (06 §3.5)', () => {

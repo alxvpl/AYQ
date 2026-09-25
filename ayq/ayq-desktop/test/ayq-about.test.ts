@@ -59,6 +59,7 @@ test('a build with no stamp says so rather than looking like a release', () => {
   assert.equal(said.revision, null);
   assert.equal(said.buildDate, 'unbuilt');
   assert.equal(said.productVersion, '0.0.0-dev');
+  assert.equal(said.identification, 'AYQ Personal Finances 0.0.0-dev (Build dev)');
 });
 
 test('only links that are really declared are offered', () => {
@@ -206,6 +207,7 @@ test('About answers facts, and no sentence a person reads (04 A24)', () => {
     'development',
     'electronVersion',
     'engine',
+    'identification',
     'links',
     'nodeVersion',
     'productName',

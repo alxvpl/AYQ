@@ -16,6 +16,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { releaseIdentity } from './ayq-release.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 
 /** The commit this was built from, or null when git cannot say. */
@@ -53,6 +55,10 @@ export function ayqBuildInfo() {
   return {
     productVersion: String(manifest.version),
     buildNumber: String(manifest.ayq?.build ?? ''),
+    // "<product> <version> (Build NNN)" (06 §3.11), from the same function the
+    // installer's file name comes from, so About and the file cannot disagree
+    // and the form is written in one place only.
+    identification: releaseIdentity(manifest).identification,
     // ISO 8601 in UTC, to the second. The instant the bundle was built, which
     // for a packaged build is the instant CI built the artefact.
     buildDate: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
