@@ -1,0 +1,627 @@
+/* AYQ Analyses — the stylesheet.
+   Every colour and face, and every shared length, is a role from src/ui/tokens.ts, rendered onto
+   the document root as a custom property at start (applyCssVariables). No rule
+   here carries a colour of its own; test/tokens.test.ts holds it to that. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--size-body);
+}
+
+/* Focus is the accent's geometry, on every focusable element alike. */
+:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 1px;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    'rail body'
+    'rail status';
+  height: 100%;
+}
+
+/* Rail — the dark ground, never behind figures (A2 decision K-2). One dark
+   neutral shared with the primary button; the accent marks the active
+   destination as a bar of fill and a label in the on-dark value. */
+.rail {
+  grid-area: rail;
+  background: var(--dark-ground);
+  color: var(--dark-ink);
+  border-right: 1px solid var(--dark-edge);
+  padding: 12px 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Settings: utility navigation at the rail footer, outside the analytical
+   group and its order (r002 §3.1, §11.1). */
+.rail-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--dark-edge);
+}
+
+.rail .wordmark {
+  display: block;
+  font-size: var(--size-caption);
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 16px;
+  color: var(--dark-ink);
+}
+
+.rail ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* A tile: the icon above the label, centred (extraction J-A3). */
+.rail-item {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  background: transparent;
+  padding: 8px 2px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: var(--size-caption);
+  line-height: 1.2;
+  cursor: pointer;
+  border-radius: var(--radius);
+  color: inherit;
+}
+
+.rail-item svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.rail-item:hover {
+  background: var(--rail-hover);
+}
+
+.rail-item.active {
+  box-shadow: inset var(--marker-width) 0 0 var(--accent);
+  background: var(--rail-active);
+  color: var(--rail-current);
+  font-weight: 600;
+}
+
+/* The third kind of rail item (r002 §3.2, resolving D-1): a destination not in
+   this version. Its label and icon keep the ordinary rail ink — muting is not
+   a permitted carrier of unavailability, and the muted token measures below
+   4.5:1 — and the tile is drawn as a placeholder: a dashed outline in the
+   muted token, which is non-text geometry and clears 3:1 on the ground and on
+   the hover wash. It is a navigable placeholder, not a disabled control, so
+   it hovers and focuses like any other tile. */
+.rail-item.unavailable {
+  color: var(--dark-ink);
+  border: 1px dashed var(--dark-ink-muted);
+  padding: 7px 1px 5px;
+}
+
+/* Current beats unavailable, for foreground and wash alike (PC-A2-10, 017A):
+   the tile you are standing on keeps the current treatment whether or not the
+   destination exists in this version, hovered or focused or not. The body
+   says "Not in this version."; the rail says where you are. */
+.rail-item.active.unavailable,
+.rail-item.active.unavailable:hover {
+  color: var(--rail-current);
+  background: var(--rail-active);
+}
+
+/* One scroller per screen. */
+.body {
+  grid-area: body;
+  overflow: auto;
+  padding: 0 var(--body-inset);
+}
+
+.status-bar {
+  grid-area: status;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 4px var(--body-inset);
+  min-height: var(--status-height);
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.centred-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  height: 100%;
+  text-align: center;
+}
+
+.centred-block h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.centred-block.invalid h1,
+.invalid-title {
+  color: var(--error);
+}
+
+/* Settings (r002 §11): one section about the active snapshot. */
+.settings {
+  max-width: 640px;
+  padding-top: 16px;
+}
+
+.settings h1 {
+  font-size: 20px;
+  margin: 0 0 16px;
+}
+
+.settings h2 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.settings p {
+  margin: 4px 0;
+}
+
+.settings-name {
+  font-weight: 600;
+}
+
+.settings-refused {
+  color: var(--error);
+}
+
+.settings-actions {
+  display: flex;
+  gap: var(--gap);
+  margin-top: 16px;
+}
+
+.context-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ground);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--gap);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.period-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-static {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.context-coverage {
+  margin-left: auto;
+}
+
+/* The limited marker in the attention tone; the date stays ordinary (PC7). */
+.coverage-label {
+  white-space: pre;
+}
+
+.coverage-attention {
+  color: var(--attention);
+}
+
+/* The flyout is bounded by the viewport and scrolls in itself, so it never
+   overflows the document and the window never grows a second scrollbar
+   beside the body's (040 §3). The positioning layer sets the exact
+   max-height for the space available; this is the ceiling it cannot exceed. */
+.coverage-flyout {
+  max-width: 420px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  font-size: var(--size-secondary);
+}
+
+.coverage-flyout p {
+  margin: 4px 0;
+}
+
+.coverage-accounts,
+.coverage-reconciliation {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.coverage-note {
+  color: var(--secondary);
+}
+
+.explore-body {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.result {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 16px;
+}
+
+.figure {
+  font-variant-numeric: var(--figures);
+}
+
+.headline {
+  font-size: var(--size-headline);
+  margin: 0;
+}
+
+.secondary {
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.scope {
+  margin: 4px 0 8px;
+}
+
+.coverage-sentence {
+  margin: 4px 0;
+  color: var(--attention);
+}
+
+.comparison {
+  display: flex;
+  gap: 16px;
+  margin: 4px 0;
+}
+
+.comparison.unavailable {
+  color: var(--secondary);
+}
+
+.state-line {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.state-detail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--secondary);
+  font-size: var(--size-secondary);
+}
+
+.exclusion-line {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 8px 0 16px;
+  padding: 0;
+}
+
+.exclusion-item {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.chart-frame {
+  width: 100%;
+}
+
+.chart {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+/* A result the chart cannot draw is stated in its place (r004 §8.2): ordinary
+   text, no state tone — nothing is wrong with the result. */
+.chart-too-large {
+  margin: 8px 0 16px;
+  color: var(--secondary);
+}
+
+table.rows {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.rows th,
+table.rows td {
+  height: var(--row-height);
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+table.rows th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+table.rows th button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+}
+
+table.rows th.numeric,
+table.rows td.numeric {
+  text-align: right;
+}
+
+/* An ordering indicator, not a selection: neutral foreground (PC9). */
+.sort-direction {
+  margin-left: 4px;
+  color: inherit;
+}
+
+table.rows tbody tr {
+  cursor: pointer;
+}
+
+table.rows tbody tr:hover {
+  background: var(--row-hover);
+}
+
+/* The selected row: a neutral wash and a bar of the accent, never the accent
+   as a fill and never a state tone (extraction J-D5; A2 decision K-5). */
+table.rows tbody tr.selected {
+  background: var(--selection);
+  box-shadow: inset var(--marker-width) 0 0 var(--accent);
+}
+
+.detail-pane {
+  flex: 0 0 var(--detail-pane-width);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  position: sticky;
+  top: 96px;
+}
+
+.detail-pane header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.detail-pane h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.detail-total {
+  font-size: 20px;
+}
+
+/* Five columns, the control gap between every pair, the amount in the
+   ledger treatment (PC8). The date and amount tracks are fixed so every
+   row and the column header share one set of column edges; the three text
+   columns split the rest. Text wraps inside its column; it never runs into
+   the next one. */
+.detail-columns,
+.detail-row-main {
+  display: grid;
+  grid-template-columns: 6em 6em minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--gap);
+  font-size: var(--size-secondary);
+  overflow-wrap: break-word;
+}
+
+.detail-columns > :nth-child(2),
+.detail-row-main > :nth-child(2) {
+  text-align: right;
+  font-variant-numeric: var(--figures);
+}
+
+.detail-columns {
+  color: var(--secondary);
+  padding: 8px 0 4px;
+}
+
+.detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.detail-row {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+}
+
+.detail-row-evidence {
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.detail-row-evidence p {
+  margin: 2px 0;
+}
+
+.detail-row-evidence .label {
+  font-weight: 600;
+}
+
+/* Fixed costs › Expected now (DS r006 §16). One plain surface, the body's
+   own ground. The attention tone is carried only by .attention-text, on the
+   names of Missing, Not imported yet and Can't tell (§16.2); the conformance
+   suite measures it on the surfaces below. */
+.fixed-costs {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 16px 0 24px;
+}
+
+.fixed-costs h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+}
+
+/* The two quiet triggers (DS r007 §16.3, §16.11): plain buttons, no control
+   padding, so "As of" starts exactly where the title does and "Data
+   through" reads as supporting detail. */
+.fc-as-of,
+.fc-coverage-trigger {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.fc-coverage-trigger {
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.fc-as-of:hover,
+.fc-coverage-trigger:hover {
+  text-decoration: underline;
+}
+
+.fc-explainer {
+  max-width: 420px;
+}
+
+.fc-explainer p {
+  margin: 0;
+}
+
+.fc-summary {
+  font-size: 16px;
+  margin: 12px 0 16px;
+}
+
+.fc-state {
+  margin: 12px 0;
+}
+
+.fc-group h2 {
+  font-size: 16px;
+  margin: 16px 0 4px;
+}
+
+.fc-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fc-row {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0;
+}
+
+.fc-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 8em 8em minmax(0, 2fr);
+  gap: var(--gap);
+  overflow-wrap: break-word;
+}
+
+.fc-amount {
+  text-align: right;
+}
+
+.fc-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.fc-reading {
+  font-weight: 600;
+}
+
+.attention-text {
+  color: var(--attention);
+}
+
+.fc-secondary {
+  margin: 2px 0 0;
+  font-size: var(--size-secondary);
+  color: var(--secondary);
+}
+
+.fc-actions {
+  display: flex;
+  gap: var(--gap);
+  margin-top: 4px;
+}
+
+.fc-not-shown {
+  margin-top: 16px;
+}
+
+/* Settings → About (DS r007 §11.2, §11.4): the second section, plain text. */
+.settings-about {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.settings-about p {
+  margin: 4px 0;
+}

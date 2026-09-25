@@ -104,6 +104,7 @@ import {
   ayqUnmatch,
 } from './ayq-plan.ts';
 import { ayqToday } from './ayq-plan-series.ts';
+import { ayqExportAnalyticalSnapshot } from './ayq-snapshot.ts';
 import { ayqSaveSettings, ayqSettings } from './ayq-preferences.ts';
 import { ayqRecurring } from './ayq-recurring.ts';
 import {
@@ -1333,6 +1334,20 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
           budgetId: budget.budgetId,
           budgetName: BUDGET_NAME,
         }),
+      };
+
+    case 'snapshot.export':
+      return {
+        id,
+        ok: true,
+        kind: 'snapshot.export',
+        result: await ayqExportAnalyticalSnapshot(
+          dataDir,
+          budget.budgetId,
+          ayqToday(request.today),
+          aboutThisBuild(),
+          request.path,
+        ),
       };
 
     default:

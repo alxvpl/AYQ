@@ -52,6 +52,7 @@ import {
   type AyqRequestBody,
   type AyqResponse,
   type AyqResults,
+  type AyqSnapshotTarget,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 // The token module itself, so that the acceptance run compares the screen
 // against the product's own declared values rather than against a second copy
@@ -272,6 +273,40 @@ async function pickCamtFile(): Promise<AyqPickedFile> {
   return { paths: chosen.canceled ? [] : chosen.filePaths };
 }
 
+/**
+ * Asks where the analytical snapshot should be written (03 §13.10).
+ *
+ * The host's job for the same reason as the picker above: the renderer has no
+ * filesystem and the engine has no window. A dismissed dialog is a null path,
+ * and nothing is written. AYQ_SMOKE_SNAPSHOT names the target in smoke mode,
+ * where no dialog can be answered.
+ */
+async function pickSnapshotTarget(suggestedName: string): Promise<AyqSnapshotTarget> {
+  const smokeTarget = process.env.AYQ_SMOKE_SNAPSHOT ?? '';
+  if (process.env.AYQ_SMOKE === '1' && smokeTarget !== '') {
+    return { path: smokeTarget };
+  }
+
+  // The offered location is AYQ's own local folder, never Documents: on a
+  // machine where Documents is a cloud-synced folder (OneDrive's known-folder
+  // move), a file offered there would be uploaded the moment it is written,
+  // and "stays on this computer" would be a lie by default. The owner may
+  // still choose anywhere.
+  const offered = join(app.getPath('userData'), 'exports');
+  mkdirSync(offered, { recursive: true });
+  const chosen = await dialog.showSaveDialog({
+    title: 'Export analytical snapshot',
+    defaultPath: join(offered, suggestedName),
+    filters: [
+      { name: 'AYQ analytical snapshot', extensions: ['json'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    properties: ['createDirectory', 'showOverwriteConfirmation'],
+  });
+
+  return { path: chosen.canceled || !chosen.filePath ? null : chosen.filePath };
+}
+
 /** The native controls' colours for a ground: the rail's surface and ink. */
 function titleBarOverlay(resolved: 'light' | 'dark'): {
   color: string;
@@ -290,7 +325,7 @@ function titleBarOverlay(resolved: 'light' | 'dark'): {
 let titleBarPainted: 'light' | 'dark' | null = null;
 
 async function ask(request: AyqRequest): Promise<AyqResponse> {
-  // The two requests the host answers itself, because they are about this
+  // The three requests the host answers itself, because they are about this
   // window and not about the budget. Everything else is relayed untouched.
   if (request?.kind === 'window.ground') {
     const resolved = request.resolved === 'dark' ? 'dark' : 'light';
@@ -303,6 +338,25 @@ async function ask(request: AyqRequest): Promise<AyqResponse> {
     }
     return { id: request.id, ok: true, kind: 'window.ground', result: { applied } };
   }
+  if (request?.kind === 'snapshot.pickTarget') {
+    try {
+      return {
+        id: request.id,
+        ok: true,
+        kind: 'snapshot.pickTarget',
+        result: await pickSnapshotTarget(request.suggestedName),
+      };
+    } catch (error) {
+      return {
+        id: request.id,
+        ok: false,
+        kind: 'error',
+        code: 'picker-failed',
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   if (request?.kind === 'import.pick') {
     try {
       return {
@@ -1699,6 +1753,70 @@ async function balanceShown(window: BrowserWindow): Promise<string> {
  * copied text that carries the full revision, the ISO timestamp and the safe
  * fields and none of the forbidden ones (§12.4).
  */
+/**
+ * Exports the analytical snapshot through the screen (03 §13): Settings › Data &
+ * Backup, the snapshot pane's button, and the renderer's own reported outcome — then the file itself,
+ * read back and validated by the contract, with no figure of it printed.
+ * Returns '' when it held, otherwise what went wrong.
+ */
+async function snapshotExported(window: BrowserWindow, target: string): Promise<string> {
+  if (!(await openDestination(window, 'settings'))) {
+    return 'Settings never opened';
+  }
+
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const pressed = await window.webContents.executeJavaScript(
+      `(() => {
+        const tab = document.querySelector('[data-ayq-screen-tab="backup"]');
+        if (!tab) return false;
+        tab.click();
+        return true;
+      })()`,
+    );
+    if (pressed === true) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  let pressed = false;
+  while (Date.now() < deadline) {
+    pressed = await window.webContents.executeJavaScript(
+      `(() => {
+        const button = document.querySelector('[data-ayq-action="snapshot-export"]');
+        if (!button) return false;
+        button.click();
+        return true;
+      })()`,
+    );
+    if (pressed) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!pressed) return 'the export button never appeared';
+
+  let state = '';
+  while (Date.now() < deadline) {
+    state = await dataset(window, 'ayqSnapshotState');
+    if (state === 'done' || state === 'error' || state === 'cancelled') break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (state !== 'done') return `the screen reported ${state || 'nothing'}`;
+
+  const summary = JSON.parse(await dataset(window, 'ayqSnapshotSummary')) as { path: string; transactions: number };
+  if (summary.path !== target) return `written to an unexpected path`;
+
+  // The file, as AYQ Analyses would read it: the same validator, the same
+  // refusal. Nothing of its content is printed — only that it validates.
+  const { validateAnalyticalSnapshot } = await import('../../ayq-analytical-contract/src/index.ts');
+  const { readFileSync: read } = await import('node:fs');
+  try {
+    const snapshot = validateAnalyticalSnapshot(JSON.parse(read(target, 'utf8')));
+    if (snapshot.meta.counts.transactions !== summary.transactions) return 'the summary disagrees with the file';
+  } catch (error) {
+    return `the file does not validate: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return '';
+}
+
 async function aboutShown(window: BrowserWindow): Promise<string> {
   if (!(await openDestination(window, 'settings'))) {
     return 'Settings never opened';
@@ -3880,6 +3998,20 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     );
   }
 
+  // 03 §13: the analytical snapshot, exported through the screen to the path
+  // the run names, and read back through the contract.
+  const snapshotTarget = process.env.AYQ_SMOKE_SNAPSHOT ?? '';
+  let snapshot = 'not asked';
+  let snapshotOk = true;
+  if (snapshotTarget !== '') {
+    const wrong = await snapshotExported(window, snapshotTarget);
+    snapshot = wrong === '' ? 'held' : wrong;
+    snapshotOk = wrong === '';
+    process.stdout.write(
+      `[ayq-smoke] snapshot export: ${snapshotOk ? 'held' : `FAILED: ${wrong}`}\n`,
+    );
+  }
+
   // 9 §9.1 and 10 §10.3: what history is allowed to suggest, and what it is
   // allowed to do with the suggestion.
   const suggestAsked = process.env.AYQ_SMOKE_SUGGEST === '1';
@@ -3995,6 +4127,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
     aboutOk &&
     backupOk &&
     attentionOk &&
+    snapshotOk &&
     suggestOk &&
     pagedOk;
 
@@ -4049,6 +4182,8 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
           backupOk,
           attention,
           attentionOk,
+          snapshot,
+          snapshotOk,
           suggest,
           suggestOk,
           pagedOk,
@@ -4085,7 +4220,7 @@ async function runSmoke(window: BrowserWindow): Promise<void> {
       categoryOk ? 'ok' : 'failed'
     } upcoming=${upcomingOk ? 'ok' : 'failed'} plan=${
       planOk ? 'ok' : 'failed'
-    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} attention=${attention} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
+    } grounds=${grounds} shell=${shell} register=${register} accounts=${accountsState} today=${today} review=${review} reports=${reports} balance=${balance} about=${about} backup=${backup} attention=${attention} snapshot=${snapshot} suggest=${suggest} window=${windowOk ? windowOpenedFrom : 'wrong'}\n`,
   );
 
   // Held open on request, so a second launch can be started while this one is

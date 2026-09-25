@@ -180,6 +180,13 @@ if (has('backup')) env.AYQ_SMOKE_BACKUP = '1';
 // and the review row opening Review (010, 013).
 if (has('attention')) env.AYQ_SMOKE_ATTENTION = '1';
 
+// `--snapshot <file>` opens Settings → Data & Backup, exports the analytical snapshot
+// through the screen to that file (the host's save dialog is answered with
+// it), and requires the file to validate under the contract (03 §13). Only a
+// synthetic budget is ever exported here.
+const snapshot = flag('snapshot');
+if (snapshot) env.AYQ_SMOKE_SNAPSHOT = resolve(snapshot);
+
 // `--suggest` asks Upcoming to suggest and requires only the exact, regular
 // series to appear (9 §9.1), then reads the Plan's historical suggestions and
 // requires the basis to be stated rather than implied (10 §10.3).

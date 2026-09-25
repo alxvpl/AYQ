@@ -99,6 +99,24 @@ const EN = {
   'import.outcome.nothing': 'nothing else',
   'import.files': '{count} files',
 
+  'snapshot.title': 'Analytical snapshot',
+  'snapshot.blurb':
+    'One file of what AYQ holds — accounts, transactions, categories, ' +
+    'expectations and the forecast — in the shape AYQ Analyses reads. It is ' +
+    'written where you choose and stays on this computer. Nothing is sent ' +
+    'anywhere.',
+  'snapshot.note':
+    'No IBAN, mandate, bank reference or raw bank description is in it.',
+  'snapshot.action': 'Export analytical snapshot…',
+  'snapshot.suggestedName': 'ayq-analytical-snapshot-{date}.json',
+  'snapshot.waiting': 'Choose where to write it…',
+  'snapshot.writing': 'Writing the snapshot…',
+  'snapshot.cancelled': 'No file chosen; nothing was written.',
+  'snapshot.done':
+    'Written: {accounts} accounts, {transactions} transactions, ' +
+    '{counterparties} counterparties. {path}',
+  'snapshot.failed': 'The export failed. {reason}',
+
   'store.damaged':
     'AYQ could not read what it had kept beside this budget, so its rules and ' +
     'the record of where each name came from are gone. Your transactions are ' +

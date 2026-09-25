@@ -27,10 +27,31 @@ import type {
   AyqPlanOccurrence,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
-import { ayqDaysBetween } from './ayq-dates.ts';
+import { ayqAddDays, ayqDaysBetween } from './ayq-dates.ts';
 
 /** Within this many days, a match may be applied without asking. */
 export const AYQ_MATCH_WINDOW_DAYS = 7;
+
+/** One closed range of transaction dates, both ends inclusive. */
+export type AyqMatchWindow = { from: string; through: string };
+
+/**
+ * The automatic matching date window of one expected payment: every
+ * transaction date on which a match may be applied without asking, centred on
+ * the date the payment is expected — its effective date, which is the moved
+ * date when it was rescheduled.
+ *
+ * This is the one source of that window. The matcher qualifies a pair by it
+ * below, and the analytical snapshot states its end and whether statement
+ * coverage spans it (A2 specification r001 §5.4–§5.5), so the two cannot come
+ * to disagree and nothing outside this file repeats its width.
+ */
+export function ayqAutomaticMatchWindow(expectedDate: string): AyqMatchWindow {
+  return {
+    from: ayqAddDays(expectedDate, -AYQ_MATCH_WINDOW_DAYS),
+    through: ayqAddDays(expectedDate, AYQ_MATCH_WINDOW_DAYS),
+  };
+}
 
 /** Within this many, it may be offered. */
 export const AYQ_MATCH_OFFER_DAYS = 14;
@@ -109,14 +130,21 @@ export type AyqMatchInput = {
   refused: Map<string, Set<string>>;
 };
 
-/** Whether a pair meets the three conditions an automatic match is built on. */
-function qualifies(found: {
-  identified: boolean;
-  exact: boolean;
-  daysApart: number;
-}): boolean {
+/**
+ * Whether a pair meets the three conditions an automatic match is built on:
+ * identified, the exact amount, and a transaction date inside the expected
+ * payment's automatic matching window.
+ */
+function qualifies(
+  found: { identified: boolean; exact: boolean },
+  window: AyqMatchWindow,
+  candidate: AyqMatchCandidate,
+): boolean {
   return (
-    found.identified && found.exact && found.daysApart <= AYQ_MATCH_WINDOW_DAYS
+    found.identified &&
+    found.exact &&
+    candidate.date >= window.from &&
+    candidate.date <= window.through
   );
 }
 
@@ -138,6 +166,7 @@ function ambiguity(input: AyqMatchInput): {
     const key = `${occurrence.recordId} ${occurrence.dueDate}`;
     const record = input.recordKeys.get(occurrence.recordId);
     const refused = input.refused.get(key) ?? new Set<string>();
+    const window = ayqAutomaticMatchWindow(occurrence.effectiveDate);
 
     for (const candidate of input.candidates) {
       // A transaction already spoken for, or one a person has said is not this
@@ -151,7 +180,7 @@ function ambiguity(input: AyqMatchInput): {
         record?.key ?? null,
         record?.mandateId ?? null,
       );
-      if (found === null || !qualifies(found)) continue;
+      if (found === null || !qualifies(found, window, candidate)) continue;
 
       perOccurrence.set(key, (perOccurrence.get(key) ?? 0) + 1);
       perTransaction.set(
@@ -187,6 +216,7 @@ export function ayqProposeMatches(input: AyqMatchInput): AyqMatchProposal[] {
     const refused =
       input.refused.get(`${occurrence.recordId} ${occurrence.dueDate}`) ??
       new Set<string>();
+    const window = ayqAutomaticMatchWindow(occurrence.effectiveDate);
 
     let best: AyqMatchProposal | null = null;
     for (const candidate of input.candidates) {
@@ -216,7 +246,7 @@ export function ayqProposeMatches(input: AyqMatchInput): AyqMatchProposal[] {
         // The narrow rule of §7.16, and every part of it is required: the three
         // conditions above, and being the only pair that meets them.
         confident:
-          qualifies(found) &&
+          qualifies(found, window, candidate) &&
           (perOccurrence.get(`${occurrence.recordId} ${occurrence.dueDate}`) ??
             0) === 1 &&
           (perTransaction.get(candidate.transactionId) ?? 0) === 1,

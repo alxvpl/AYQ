@@ -4,7 +4,8 @@
 // toward available funds (03 §7.6), the categories (the only place they are
 // created, renamed, grouped or archived), the rules that will act from now on
 // (04 A7), the ground the window is drawn in (A23), backing up and restoring
-// the whole of it (A38), and which build this is (12 §12).
+// the whole of it (A38) and, beside it, what AYQ writes out for AYQ Analyses
+// (03 §13), and which build this is (12 §12).
 //
 // About is a tab here and nowhere else. It is not a rail destination, and the
 // version and build number it carries appear on no other screen — a product
@@ -30,6 +31,7 @@ import { AyqAppearanceScreen } from './ayq-appearance.tsx';
 import { AyqSettingsAccounts } from './ayq-settings-accounts.tsx';
 import { AyqSettingsBackup } from './ayq-settings-backup.tsx';
 import { AyqSettingsCategories } from './ayq-settings-categories.tsx';
+import { AyqSettingsData } from './ayq-settings-data.tsx';
 import { AyqSettingsRules } from './ayq-settings-rules.tsx';
 
 export type AyqSettingsTab =
@@ -178,7 +180,13 @@ export function AyqSettingsScreen({
   if (tab === 'appearance') {
     section = <AyqAppearanceScreen />;
   } else if (tab === 'backup') {
-    section = <AyqSettingsBackup onFailure={onFailure} onChanged={onChanged} />;
+    // 04 A38, then the analytical snapshot as its last pane (03 §13; 027).
+    section = (
+      <>
+        <AyqSettingsBackup onFailure={onFailure} onChanged={onChanged} />
+        <AyqSettingsData onFailure={onFailure} />
+      </>
+    );
   } else if (tab === 'about') {
     section = <AyqAboutScreen onFailure={onFailure} />;
   } else if (tab === 'accounts') {

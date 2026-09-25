@@ -13,7 +13,13 @@ import type {
   AyqMatchCandidate,
   AyqPlanOccurrence,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
-import { ayqProposeMatches, type AyqMatchInput } from '../src/ayq-match.ts';
+import { ayqAddDays, ayqDaysBetween } from '../src/ayq-dates.ts';
+import {
+  AYQ_MATCH_WINDOW_DAYS,
+  ayqAutomaticMatchWindow,
+  ayqProposeMatches,
+  type AyqMatchInput,
+} from '../src/ayq-match.ts';
 
 function expected(
   over: Partial<AyqPlanOccurrence> = {},
@@ -305,4 +311,53 @@ test('a near miss does not make an exact pair ambiguous', () => {
   assert.equal(proposals.length, 1);
   assert.equal(proposals[0].transactionId, 'txn-1');
   assert.equal(proposals[0].confident, true, 'only qualifying pairs count toward §7.16');
+});
+
+// The automatic matching window is one helper, and the matcher applies it
+// (A2 P1 R002 §6). The analytical snapshot states its end from the same
+// helper, so a window the snapshot reports is exactly the one the matcher
+// used — proven here at both ends, for ordinary, month-end, leap-day,
+// year-end and rescheduled occurrences.
+
+test('the matcher applies exactly the automatic matching window: both ends match, a day past either does not (T15)', () => {
+  const cases: Array<[dueDate: string, effectiveDate: string]> = [
+    ['2026-06-30', '2026-06-30'],
+    ['2026-01-31', '2026-01-31'],
+    ['2028-02-29', '2028-02-29'],
+    ['2026-12-28', '2026-12-28'],
+    ['2026-06-30', '2026-07-10'],
+  ];
+  for (const [dueDate, effectiveDate] of cases) {
+    const window = ayqAutomaticMatchWindow(effectiveDate);
+    assert.equal(window.from, ayqAddDays(effectiveDate, -AYQ_MATCH_WINDOW_DAYS));
+    assert.equal(window.through, ayqAddDays(effectiveDate, AYQ_MATCH_WINDOW_DAYS));
+    for (let offset = -12; offset <= 12; offset += 1) {
+      const date = ayqAddDays(effectiveDate, offset);
+      const [found] = propose(
+        [expected({ dueDate, effectiveDate })],
+        [actual({ date, counterpartyKey: 'testenergie' })],
+        { recordKeys: KEYED },
+      );
+      const inside = date >= window.from && date <= window.through;
+      assert.equal(found?.confident ?? false, inside, `${effectiveDate} ${offset >= 0 ? '+' : ''}${offset}`);
+      // The rule before the helper existed, stated independently: at most
+      // AYQ_MATCH_WINDOW_DAYS whole days from the effective date. The helper
+      // changes nothing about which pairs qualify.
+      assert.equal(inside, Math.abs(ayqDaysBetween(effectiveDate, date)) <= AYQ_MATCH_WINDOW_DAYS);
+    }
+  }
+});
+
+test('a rescheduled occurrence is matched around its moved date, not the date the rhythm put it on (P1-C1)', () => {
+  const moved = expected({ dueDate: '2026-06-30', effectiveDate: '2026-07-10' });
+  const window = ayqAutomaticMatchWindow(moved.effectiveDate);
+  assert.deepEqual(window, { from: '2026-07-03', through: '2026-07-17' });
+  const at = (date: string) =>
+    propose([moved], [actual({ date, counterpartyKey: 'testenergie' })], { recordKeys: KEYED })[0]?.confident ?? false;
+  assert.equal(at('2026-07-17'), true, 'the last day of the window');
+  assert.equal(at('2026-07-18'), false, 'the day after it');
+  assert.equal(at('2026-07-03'), true, 'the first day of the window');
+  // One day after the due date would qualify if the window were centred on
+  // the due date; it is ten days before the moved date.
+  assert.equal(at('2026-07-01'), false, 'one day after the due date, outside the moved window');
 });

@@ -1,0 +1,44 @@
+# The AYQ analytical snapshot contract, proved on Windows: the executable 1.0
+# validator, its type model and the synthetic contract fixtures F01–F27.
+#
+# A passing run is implementation evidence for the contract package only; it
+# authorises no producer or consumer wiring.
+
+name: AYQ analytical contract
+
+on:
+  push:
+    branches: [claude/ayq-develop, 'claude/ayq-analytical-**']
+    paths:
+      - 'ayq/ayq-analytical-contract/**'
+      - '.github/workflows/ayq-analytical-contract.yml'
+  pull_request:
+    paths:
+      - 'ayq/ayq-analytical-contract/**'
+      - '.github/workflows/ayq-analytical-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: test, typecheck, build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ayq/ayq-analytical-contract
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Test
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build

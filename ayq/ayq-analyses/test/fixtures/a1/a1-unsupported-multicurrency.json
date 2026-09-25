@@ -1,0 +1,232 @@
+{
+  "meta": {
+    "contractVersion": "1.0",
+    "snapshotId": "snap-a1-unsupported-multicurrency",
+    "generatedAt": "2026-03-05T06:00:00Z",
+    "budgetKey": "budget-synthetic",
+    "producer": {
+      "productVersion": "0.3.1",
+      "buildNumber": 7,
+      "commitSha": "0000000000000000000000000000000000000000"
+    },
+    "currencies": [
+      "EUR",
+      "USD"
+    ],
+    "coverage": {
+      "reliabilityBoundary": "2026-03-04",
+      "reliabilityBoundaryBasis": [
+        "acc-daily"
+      ]
+    },
+    "counts": {
+      "accounts": 2,
+      "transactions": 3,
+      "counterparties": 5,
+      "categories": 3,
+      "uncategorisedTransactions": 1,
+      "unresolvedCounterparties": 0,
+      "counterpartyNotApplicable": 1,
+      "expectedOccurrences": 0
+    }
+  },
+  "accounts": [
+    {
+      "accountKey": "acc-daily",
+      "name": "Everyday account",
+      "type": "current",
+      "displayIdentifier": "NL…0708",
+      "countsTowardAvailableFunds": true,
+      "currency": "EUR",
+      "statementCoverage": {
+        "coverageStartDate": "2025-01-01",
+        "lastStatementDate": "2026-03-04",
+        "bankClosingBalance": {
+          "amount": 250000,
+          "currency": "EUR"
+        }
+      },
+      "absoluteBalance": {
+        "state": "known",
+        "amount": {
+          "amount": 250000,
+          "currency": "EUR"
+        }
+      },
+      "reconciliation": {
+        "state": "agrees",
+        "ledgerBalanceAtCoverageDate": {
+          "amount": 250000,
+          "currency": "EUR"
+        },
+        "difference": {
+          "amount": 0,
+          "currency": "EUR"
+        }
+      }
+    },
+    {
+      "accountKey": "acc-usd",
+      "name": "Dollar account",
+      "type": "current",
+      "displayIdentifier": "US…4417",
+      "countsTowardAvailableFunds": false,
+      "currency": "USD",
+      "statementCoverage": {
+        "coverageStartDate": "2025-01-01",
+        "lastStatementDate": "2026-03-04",
+        "bankClosingBalance": {
+          "amount": 120000,
+          "currency": "USD"
+        }
+      },
+      "absoluteBalance": {
+        "state": "known",
+        "amount": {
+          "amount": 120000,
+          "currency": "USD"
+        }
+      },
+      "reconciliation": {
+        "state": "agrees",
+        "ledgerBalanceAtCoverageDate": {
+          "amount": 120000,
+          "currency": "USD"
+        },
+        "difference": {
+          "amount": 0,
+          "currency": "USD"
+        }
+      }
+    }
+  ],
+  "counterparties": [
+    {
+      "counterpartyKey": "cp-superstore",
+      "displayName": "Superstore"
+    },
+    {
+      "counterpartyKey": "cp-northwind",
+      "displayName": "Northwind Energy"
+    },
+    {
+      "counterpartyKey": "cp-harbour",
+      "displayName": "Harbour Café"
+    },
+    {
+      "counterpartyKey": "cp-employer",
+      "displayName": "Meridian Studios"
+    },
+    {
+      "counterpartyKey": "cp-overseas",
+      "displayName": "Overseas Supplies"
+    }
+  ],
+  "categoryGroups": [
+    {
+      "categoryGroupId": "grp-daily",
+      "name": "Daily living"
+    },
+    {
+      "categoryGroupId": "grp-home",
+      "name": "Home & bills"
+    }
+  ],
+  "categories": [
+    {
+      "categoryId": "cat-groceries",
+      "name": "Groceries",
+      "categoryGroupId": "grp-daily"
+    },
+    {
+      "categoryId": "cat-eating",
+      "name": "Eating out",
+      "categoryGroupId": "grp-daily"
+    },
+    {
+      "categoryId": "cat-utilities",
+      "name": "Utilities",
+      "categoryGroupId": "grp-home"
+    }
+  ],
+  "transactions": [
+    {
+      "transactionKey": "f06-t01",
+      "accountKey": "acc-daily",
+      "bookingDate": "2026-02-05",
+      "amount": {
+        "amount": -4000,
+        "currency": "EUR"
+      },
+      "transactionClass": "card_payment",
+      "counterparty": {
+        "state": "identified",
+        "counterpartyKey": "cp-superstore"
+      },
+      "category": {
+        "state": "categorised",
+        "categoryId": "cat-groceries",
+        "source": "learned_rule",
+        "ruleKey": "rule-001"
+      },
+      "evidenceText": "Superstore, Amsterdam"
+    },
+    {
+      "transactionKey": "f06-t02",
+      "accountKey": "acc-usd",
+      "bookingDate": "2026-02-11",
+      "amount": {
+        "amount": -7000,
+        "currency": "USD"
+      },
+      "transactionClass": "card_payment",
+      "counterparty": {
+        "state": "identified",
+        "counterpartyKey": "cp-overseas"
+      },
+      "category": {
+        "state": "categorised",
+        "categoryId": "cat-groceries",
+        "source": "learned_rule",
+        "ruleKey": "rule-001"
+      },
+      "evidenceText": "Overseas Supplies"
+    },
+    {
+      "transactionKey": "f06-t03",
+      "accountKey": "acc-daily",
+      "bookingDate": "2026-02-19",
+      "amount": {
+        "amount": -2500,
+        "currency": "EUR"
+      },
+      "transactionClass": "cash_withdrawal",
+      "counterparty": {
+        "state": "not_applicable"
+      },
+      "category": {
+        "state": "uncategorised"
+      },
+      "evidenceText": "Cash withdrawal"
+    }
+  ],
+  "categoryPlans": [],
+  "expectationRecords": [],
+  "expectedOccurrences": [],
+  "forecast": {
+    "state": "available",
+    "kind": "canonical_ayq_forecast",
+    "asOfDate": "2026-03-05",
+    "horizonMonths": 12,
+    "horizonEnd": "2027-03-04",
+    "currency": "EUR",
+    "basisAccountKeys": [
+      "acc-daily"
+    ],
+    "openingPosition": {
+      "amount": 250000,
+      "currency": "EUR"
+    },
+    "series": []
+  }
+}

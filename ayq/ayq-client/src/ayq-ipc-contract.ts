@@ -1014,6 +1014,29 @@ export type AyqSpending = {
  */
 export type AyqPickedFile = { paths: string[] };
 
+/* ------------------------------------------------------- analytical snapshot
+
+   The one file AYQ writes for AYQ Analyses (03 §13): an explicit local export
+   of what the budget already holds, in the executable contract 1.1 shape, to a
+   file the owner chooses. Local only; nothing is uploaded anywhere.         */
+
+/** Where the owner chose to write the snapshot; null when the dialog was dismissed. */
+export type AyqSnapshotTarget = { path: string | null };
+
+/**
+ * What the export came to. Counts and a location — the answer carries no
+ * figure from the owner's money, so a screen or a log that repeats it says
+ * nothing about the finances.
+ */
+export type AyqSnapshotExport = {
+  path: string;
+  generatedAt: string;
+  accounts: number;
+  transactions: number;
+  counterparties: number;
+  bytes: number;
+};
+
 /* ------------------------------------------------------- plan and forecast
 
    What is expected to happen, as against what has happened. A planned or
@@ -1621,6 +1644,8 @@ export type AyqResults = {
   'import.pick': AyqPickedFile;
   'window.ground': { applied: boolean };
   'import.camt': AyqImportSummary;
+  'snapshot.pickTarget': AyqSnapshotTarget;
+  'snapshot.export': AyqSnapshotExport;
   'plan.list': AyqPlan;
   'plan.save': AyqPlan;
   'plan.setState': AyqPlan;
@@ -1894,6 +1919,21 @@ export type AyqRequestBody =
       resolved: 'light' | 'dark';
     }
   | { kind: 'import.camt'; paths: string[] }
+  | {
+      /** Asks the host where the snapshot should be written (a save dialog). */
+      kind: 'snapshot.pickTarget';
+      /** A suggested file name; the owner may change it. */
+      suggestedName: string;
+    }
+  | {
+      /**
+       * Writes one contract-1.0 analytical snapshot of the open budget to
+       * `path` (03 §13). Validated before it is written; written atomically.
+       */
+      kind: 'snapshot.export';
+      path: string;
+      today?: string;
+    }
   | {
       /**
        * Every planned and recurring record, with what they come to by date.
