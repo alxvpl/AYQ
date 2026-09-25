@@ -882,28 +882,32 @@ jobs:
         # the one explanation that fitted the crash — is ruled out.
         run: npm run package
 
-      # The delivery number, taken from the installer's own file name rather
-      # than from a second place that could disagree with it. It is a label on
-      # what was handed over and nothing more: 06_RELEASE is still INCOMPLETE,
-      # so there is no tag, no release and no change to the app's version.
+      # The release file, named from the manifest (06_RELEASE r005 §3.5, §3.8):
+      # exactly <product>-<semver>-bNNN.exe, and nothing else in release/. The
+      # name is computed from package.json here, not read back from whatever
+      # electron-builder happened to write, so a stray or misnamed installer
+      # stops the run instead of being delivered.
       - name: Name the delivery
         id: delivery
         working-directory: ayq/ayq-desktop
         shell: pwsh
         run: |
-          $setup = Get-ChildItem 'release' -Filter '*-setup.exe' | Select-Object -First 1
-          if (-not $setup) { throw 'electron-builder produced no installer' }
-          if ($setup.Name -match 'build-(\d{3})') {
-            $number = $Matches[1]
-          } else {
-            throw "the installer is not named for a delivery: $($setup.Name)"
+          $manifest = Get-Content 'package.json' -Raw | ConvertFrom-Json
+          $number = $manifest.ayq.build
+          $file = "$($manifest.productName)-$($manifest.version)-b$number.exe"
+          $found = @(Get-ChildItem 'release' -Filter '*.exe' |
+            Where-Object { $_.Name -notlike '__uninstaller*' })
+          if ($found.Count -ne 1 -or $found[0].Name -ne $file) {
+            throw "expected exactly $file in release/, found: $(($found | ForEach-Object Name) -join ', ')"
           }
+          $setup = $found[0]
           $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
-          Write-Host "AYQ build $number"
+          Write-Host "AYQ Personal Finances $($manifest.version) (Build $number)"
           Write-Host "file   : $($setup.Name)"
           Write-Host "size   : $($setup.Length) bytes"
           Write-Host "sha256 : $hash"
           "number=$number" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "file=$file"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "sha256=$hash"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "size=$($setup.Length)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -927,15 +931,13 @@ jobs:
           $env:AYQ_EXPECT_BUILD = $manifest.ayq.build
           Write-Host "About must say version $env:AYQ_EXPECT_VERSION build $env:AYQ_EXPECT_BUILD"
 
-          $setup = Get-ChildItem 'ayq\ayq-desktop\release' -Filter '*-setup.exe' |
-            Select-Object -First 1
-          if (-not $setup) { throw 'electron-builder produced no installer' }
+          # The exact release file the delivery step named from the manifest,
+          # so the file name, package metadata and About cannot drift apart.
+          $setup = Get-Item "ayq\ayq-desktop\release\${{ steps.delivery.outputs.file }}"
           Write-Host "installer : $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
-
-          # And the installer's own name must agree with the manifest, so the
-          # two places a delivery number appears cannot drift apart.
-          if ($setup.Name -notmatch "build-$env:AYQ_EXPECT_BUILD-") {
-            throw "the installer is named $($setup.Name) but the manifest says build $env:AYQ_EXPECT_BUILD"
+          $expected = "$($manifest.productName)-$env:AYQ_EXPECT_VERSION-b$env:AYQ_EXPECT_BUILD.exe"
+          if ($setup.Name -ne $expected) {
+            throw "the installer is named $($setup.Name) but the manifest says $expected"
           }
 
           # /S is NSIS's silent switch and /D names the directory. The
@@ -1232,11 +1234,12 @@ jobs:
           Invoke-Installed 'after a restart  :'
 
       - name: Upload the installer
-        if: always()
+        # Only the exact release file: with no name, the path would be all of release/.
+        if: always() && steps.delivery.outputs.file != ''
         uses: actions/upload-artifact@v4
         with:
           name: ayq-build-${{ steps.delivery.outputs.number }}-windows-installer
-          path: ayq/ayq-desktop/release/*-setup.exe
+          path: ayq/ayq-desktop/release/${{ steps.delivery.outputs.file }}
           if-no-files-found: warn
 
       - name: Upload the window capture
