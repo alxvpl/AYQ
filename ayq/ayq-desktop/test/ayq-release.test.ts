@@ -67,7 +67,10 @@ test('no second source: the build config names no artifact and packaging takes t
   );
   const packaging = readFileSync(new URL('package.mjs', here), 'utf8');
   assert.match(packaging, /import \{ ayqRelease \} from '\.\/ayq-release\.mjs'/);
-  assert.match(packaging, /artifactName: release\.fileName/);
+  assert.match(packaging, /win: \{ artifactName: release\.fileName \}/);
+  // electron-builder merges the config it is given into package.json's own,
+  // concatenating arrays; passing the build block again would double them.
+  assert.doesNotMatch(packaging, /\.\.\.manifest\.build/);
   // One build number is packaged once (06 §3.6).
   assert.match(packaging, /if \(existsSync\(join\(out, release\.fileName\)\)\)/);
   // Nothing that packages or stamps the build writes the version or build.

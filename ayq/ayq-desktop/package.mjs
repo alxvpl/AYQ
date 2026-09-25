@@ -27,10 +27,13 @@ if (existsSync(join(out, release.fileName))) {
   );
 }
 
+// Only the override. electron-builder reads package.json's "build" itself and
+// deep-merges this into it, concatenating arrays: handing it the whole build
+// block again doubles extraResources, and the two copies of the Actual licence
+// then collide (EBUSY) in win-unpacked.
 const config = {
-  ...manifest.build,
   // The one exact release file name (06 §3.5), from the manifest.
-  win: { ...manifest.build.win, artifactName: release.fileName },
+  win: { artifactName: release.fileName },
 };
 
 await build({
