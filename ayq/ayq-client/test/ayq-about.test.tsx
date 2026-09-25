@@ -42,6 +42,7 @@ const TECHNICAL = [
 
 const ABOUT: AyqAbout = {
   productName: 'AYQ Personal Finances',
+  identification: 'AYQ Personal Finances 0.2.0 (Build 005)',
   tagline: 'Local-first personal finance application for Windows',
   author: 'Plamen Alexandrov',
   copyright: '© 2026 Plamen Alexandrov. All rights reserved.',
@@ -104,6 +105,8 @@ test('About says which build this is, in the words 06 §3.6 fixes', async () => 
     '';
 
   assert.equal(said('author'), 'Plamen Alexandrov');
+  // 06 §3.11: the full identification is on the screen, as the engine sent it.
+  assert.equal(said('identification'), 'AYQ Personal Finances 0.2.0 (Build 005)');
   assert.equal(said('version'), '0.2.0');
   assert.equal(said('build'), '005');
   assert.equal(said('architecture'), 'Windows x64');

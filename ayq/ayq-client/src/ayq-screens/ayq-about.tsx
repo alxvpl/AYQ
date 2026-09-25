@@ -49,6 +49,10 @@ const useStyles = makeStyles({
     fontSize: 'var(--ayq-size-heading)',
   },
   tagline: { margin: '0', color: 'var(--ayq-ink-quiet)' },
+  identification: {
+    margin: `${AYQ_METRIC.space.medium}px 0 0`,
+    fontVariantNumeric: AYQ_TYPE.figures,
+  },
   identity: {
     display: 'flex',
     gap: `${AYQ_METRIC.space.wide}px`,
@@ -148,6 +152,14 @@ export function AyqAboutScreen({
             <div>
               <h2 className={styles.name}>{about.productName}</h2>
               <p className={styles.tagline}>{about.tagline}</p>
+              {/* The full identification 06 §3.11 requires, exactly as the
+                engine composed it from the release metadata. */}
+              <p
+                className={styles.identification}
+                data-ayq-about="identification"
+              >
+                {about.identification}
+              </p>
             </div>
           </div>
 

@@ -1879,6 +1879,11 @@ async function aboutShown(window: BrowserWindow): Promise<string> {
   if (seen.build !== expectedBuild) {
     return `About says build ${seen.build}, expected ${expectedBuild}`;
   }
+  // 06 §3.11: the full identification, in the one form the canon fixes.
+  const expectedIdentification = `AYQ Personal Finances ${expectedVersion} (Build ${expectedBuild})`;
+  if (seen.identification !== expectedIdentification) {
+    return `About says "${seen.identification ?? '(nothing)'}", expected "${expectedIdentification}"`;
+  }
   if (seen.author !== 'Plamen Alexandrov') return `About says author ${seen.author}`;
   if (seen.copyright !== '\u00a9 2026 Plamen Alexandrov. All rights reserved.') {
     return `About says copyright ${seen.copyright}`;

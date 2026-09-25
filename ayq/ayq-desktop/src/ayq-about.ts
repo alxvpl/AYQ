@@ -53,6 +53,8 @@ export const AYQ_COPYRIGHT = '© 2026 Plamen Alexandrov. All rights reserved.';
 type AyqCompiledBuild = {
   productVersion: string;
   buildNumber: string;
+  /** "<product> <version> (Build NNN)", from ayq-release.mjs (06 §3.11). */
+  identification: string;
   buildDate: string;
   revision: string | null;
   architecture: string;
@@ -76,6 +78,7 @@ function compiled(): AyqCompiledBuild {
   return {
     productVersion: '0.0.0-dev',
     buildNumber: 'dev',
+    identification: `${AYQ_PRODUCT_NAME} 0.0.0-dev (Build dev)`,
     buildDate: 'unbuilt',
     revision: null,
     architecture: process.arch,
@@ -152,6 +155,7 @@ export function ayqAbout(input: AyqAboutInput): AyqAbout {
     copyright: AYQ_COPYRIGHT,
     productVersion: build.productVersion,
     buildNumber: build.buildNumber,
+    identification: build.identification,
     buildDate: build.buildDate,
     architecture: arch,
     revision: build.revision,
