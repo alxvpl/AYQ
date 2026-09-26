@@ -29,6 +29,7 @@ import {
 import { join } from 'node:path';
 
 import type {
+  AyqAccountKind,
   AyqAliasRecord,
   AyqCategoryRule,
   AyqDecision,
@@ -112,6 +113,14 @@ export type AyqBalanceAnchor = {
   /** The bank stated it, or the owner did. */
   source: 'bank' | 'manual';
   createdAt: string;
+  /**
+   * Which end of a statement a bank anchor came from, since version 12.
+   *
+   * The opening balance of an account's earliest statement is what its
+   * technical starting balance is built on (PF-006 F3). Absent on anchors
+   * written before version 12 and on manual ones: not recorded is unknown.
+   */
+  kind?: 'opening' | 'closing';
 };
 
 /**
@@ -139,6 +148,28 @@ export type AyqCoverageEvidence = {
   /** Base name only, never a full path. */
   file: string | null;
   readAt: string;
+  /**
+   * The masked IBAN the statement itself reported on, since version 12.
+   *
+   * What lets reconciliation refuse to agree over statements of more than one
+   * account (PF-006 F6). Absent on evidence written before version 12: an
+   * older import did not record it, and it is not guessed from a file name.
+   */
+  statementAccount?: string | null;
+};
+
+/**
+ * What AYQ knows about the kind of one account (CL_002 D8, PF-006 F2).
+ *
+ * The five properties as the owner's answer filled them, plus when. An account
+ * created by an import before the owner has answered carries a profile whose
+ * `template` is null: that is the question still waiting, and it is asked once.
+ */
+export type AyqAccountProfile = AyqAccountKind & {
+  /** When the profile was first written: the import that created the account. */
+  createdAt: string;
+  /** When the owner answered, or null while the question is still waiting. */
+  decidedAt: string | null;
 };
 
 /**
@@ -267,8 +298,14 @@ const GROUNDS: readonly AyqGround[] = ['light', 'dark', 'system'];
  *  11  a file an import could not use may carry `handledAt`: the owner has
  *      dealt with it in Import history (013 §1b). The shape widens; nothing
  *      already written is marked, because nobody has marked it.
+ *  12  the kind of each account (CL_002 D8, PF-006 F2), which end of a
+ *      statement a bank anchor came from, and which account a statement
+ *      reported on. An older store gains an empty profile table: nobody has
+ *      said what kind any account is, and a migration does not decide it
+ *      (§5.7). Anchors and evidence already written keep exactly what they
+ *      hold; the two new fields are absent on them, which reads as unknown.
  */
-export const AYQ_STORE_VERSION = 11;
+export const AYQ_STORE_VERSION = 12;
 
 export type AyqStore = {
   version: number;
@@ -295,6 +332,13 @@ export type AyqStore = {
   occurrences: AyqPlanOccurrenceRecord[];
   /** Keyed by Actual's account id, since version 3. */
   accountFlags: Record<string, AyqAccountFlags>;
+  /**
+   * The kind of each account, keyed by Actual's account id, since version 12.
+   *
+   * Absent for an account nobody has been asked about — every account a store
+   * held before version 12 — which is not the same as "other".
+   */
+  accountProfiles: Record<string, AyqAccountProfile>;
   /** What the owner chose about the interface, since version 5. */
   settings: AyqSettings;
   /**
@@ -364,6 +408,7 @@ function empty(): AyqStore {
     planned: [],
     occurrences: [],
     accountFlags: {},
+    accountProfiles: {},
     settings: { ...AYQ_DEFAULT_SETTINGS },
     anchors: [],
     evidence: [],
@@ -594,6 +639,18 @@ const AYQ_MIGRATIONS: readonly AyqMigration[] = [
     // marked, so none is (§5.7).
     change: store => store,
   },
+  {
+    to: 12,
+    what: 'account kinds, anchor ends and statement accounts (PF-006)',
+    // An empty profile table, because no account in an older store has been
+    // given a kind — and choosing one here would be the migration deciding
+    // something (§5.7). The accounts keep their "counts toward available
+    // funds" flags and their default exactly as before. Anchors and evidence
+    // are not touched: which end of a statement an anchor came from, and which
+    // account a statement reported on, were never recorded, so they stay
+    // unrecorded rather than being inferred from dates or file names.
+    change: store => ({ ...store, accountProfiles: record(store.accountProfiles) }),
+  },
 ];
 
 /**
@@ -735,6 +792,10 @@ export function ayqMigrate(raw: unknown): AyqStore {
     accountFlags: record(held.accountFlags) as unknown as Record<
       string,
       AyqAccountFlags
+    >,
+    accountProfiles: record(held.accountProfiles) as unknown as Record<
+      string,
+      AyqAccountProfile
     >,
     settings: ayqNormaliseSettings(held.settings),
     anchors: array(held.anchors) as AyqBalanceAnchor[],

@@ -36,6 +36,9 @@ const EVERYDAY: AyqAccountSummary = {
   balanceCents: 128450,
   transactionCount: 212,
   countsTowardFunds: true,
+  kind: null,
+  kindWanted: false,
+  mixedStatements: false,
   anchor: anchor(128450, '2026-09-11'),
   anchorHistory: [anchor(128450, '2026-09-11')],
   lastImportAt: '2026-09-11T09:14:00.000Z',
@@ -57,6 +60,9 @@ const JOINT: AyqAccountSummary = {
   balanceCents: 41200,
   transactionCount: 40,
   countsTowardFunds: true,
+  kind: null,
+  kindWanted: false,
+  mixedStatements: false,
   anchor: anchor(41200, '2026-08-31', 'manual'),
   anchorHistory: [anchor(41200, '2026-08-31', 'manual')],
   lastImportAt: '2026-09-01T09:14:00.000Z',
@@ -78,6 +84,9 @@ const SAVINGS: AyqAccountSummary = {
   balanceCents: 900000,
   transactionCount: 4,
   countsTowardFunds: false,
+  kind: null,
+  kindWanted: false,
+  mixedStatements: false,
   anchor: anchor(900000, '2026-06-30'),
   anchorHistory: [anchor(900000, '2026-06-30')],
   lastImportAt: null,
@@ -125,6 +134,7 @@ const VIEW: AyqAccountsView = {
   reliableTo: '2026-08-31',
   countedWithoutCoverage: 0,
   countedWithoutAnchor: 0,
+  locked: [],
 };
 
 const screen = (

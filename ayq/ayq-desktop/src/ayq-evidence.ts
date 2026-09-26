@@ -128,6 +128,28 @@ export function ayqClosingEvidence(
   return found;
 }
 
+/**
+ * Whether the statements AYQ holds for one account reported on more than one
+ * account (PF-006 F6).
+ *
+ * Read from what each statement said it was about, recorded since store
+ * version 12. Evidence written before that recorded nothing, so it cannot
+ * prove a mix and is not treated as one — it is not guessed at from a file
+ * name.
+ */
+export function ayqStatementsMixed(
+  store: AyqStore,
+  accountId: string,
+  accountName: string,
+): boolean {
+  for (const one of store.evidence) {
+    if (one.accountId !== accountId) continue;
+    const said = one.statementAccount ?? null;
+    if (said !== null && said !== accountName) return true;
+  }
+  return false;
+}
+
 /** When an account last had a successful import, from the import records (§6.1). */
 export function ayqLastSuccessfulImport(
   store: AyqStore,

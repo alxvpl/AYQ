@@ -42,11 +42,17 @@ import type {
   TransactionCounterparty,
 } from '../../ayq-analytical-contract/src/index.ts';
 import { validateAnalyticalSnapshot } from '../../ayq-analytical-contract/src/index.ts';
-import type { AyqAbout, AyqPlan, AyqPlannedRecord, AyqSnapshotExport } from '../../ayq-client/src/ayq-ipc-contract.ts';
+import type {
+  AyqAbout,
+  AyqAccountKind,
+  AyqPlan,
+  AyqPlannedRecord,
+  AyqSnapshotExport,
+} from '../../ayq-client/src/ayq-ipc-contract.ts';
 
 import { ayqCanonicalKey } from './ayq-aliases.ts';
-import { ayqAccountedFor, ayqActiveAnchor } from './ayq-anchors.ts';
-import { ayqBankDataThrough, ayqClosingEvidence, ayqCovers, ayqProvenIntervals, type AyqInterval } from './ayq-evidence.ts';
+import { ayqActiveAnchor } from './ayq-anchors.ts';
+import { ayqBankDataThrough, ayqCovers, ayqProvenIntervals, type AyqInterval } from './ayq-evidence.ts';
 import { ayqCountsTowardFunds, ayqIsInternalTransfer, ayqOwnAccountNames } from './ayq-funds.ts';
 import { ayqAccounts } from './ayq-ledger.ts';
 import { ayqAutomaticMatchWindow } from './ayq-match.ts';
@@ -106,6 +112,21 @@ function accountKeyOf(accountId: string): string {
 function displayIdentifierOf(name: string): string | null {
   const match = /^AYQ ([A-Z]{2}…[A-Z0-9]{4})$/.exec(name.trim());
   return match ? match[1] : null;
+}
+
+/** The contract's account type for the kind the owner gave, or `unknown`. */
+function contractTypeOf(kind: AyqAccountKind | null): ContractAccount['type'] {
+  switch (kind?.template) {
+    case 'payment':
+      return 'current';
+    case 'savings':
+      return 'savings';
+    case 'term-deposit':
+    case 'other':
+      return 'other';
+    default:
+      return 'unknown';
+  }
 }
 
 /**
@@ -379,30 +400,30 @@ export async function ayqBuildAnalyticalSnapshot(
     const coverageStartDate = reaching?.from;
 
     // Reconciliation, only where the bank stated a closing balance at the
-    // coverage date and AYQ can account for the movements up to it; at any
+    // coverage date, for this account's own statements (PF-006 F6); at any
     // earlier statement date it is not "at the coverage date" and stays
-    // unavailable rather than being restated.
-    const closing = ayqClosingEvidence(store, summary.id);
+    // unavailable rather than being restated. The same answer the screens
+    // give, read from the same account summary rather than computed twice.
+    const agreed = summary.reconciliation;
     let bankClosingBalance: Money | undefined;
     let reconciliation: ContractAccount['reconciliation'] = { state: 'unavailable' };
-    if (closing !== null && closing.closingBalanceCents !== null && closing.toDate === through) {
-      const accounted = await ayqAccountedFor(store, summary.id, closing.toDate);
-      if (accounted !== null) {
-        const difference = closing.closingBalanceCents - accounted.accountedCents;
-        bankClosingBalance = money(closing.closingBalanceCents);
-        reconciliation = {
-          state: difference === 0 ? 'agrees' : 'differs',
-          ledgerBalanceAtCoverageDate: money(accounted.accountedCents),
-          difference: money(difference),
-        };
-      }
+    if (agreed !== null && agreed.asOf === through) {
+      bankClosingBalance = money(agreed.statementBalanceCents);
+      reconciliation = {
+        state: agreed.agrees ? 'agrees' : 'differs',
+        ledgerBalanceAtCoverageDate: money(agreed.ledgerBalanceCents),
+        difference: money(agreed.differenceCents),
+      };
     }
 
     const anchor = ayqActiveAnchor(store, summary.id);
     accounts.push({
       accountKey: accountKeyById.get(summary.id)!,
       name: summary.name,
-      type: 'unknown',
+      // The contract's four words, from the kind the owner gave (PF-006 F2). A
+      // term deposit is "other": the contract has no word for locked money, and
+      // calling it savings would say it can be spent after a transfer.
+      type: contractTypeOf(summary.kind),
       displayIdentifier: identifier,
       countsTowardAvailableFunds: ayqCountsTowardFunds(store, summary.id),
       currency: CURRENCY,

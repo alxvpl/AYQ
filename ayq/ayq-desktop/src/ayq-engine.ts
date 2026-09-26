@@ -78,6 +78,7 @@ import {
   ayqCounterpartyDetail,
 } from './ayq-counterparties.ts';
 import { ayqSetAccountFlag } from './ayq-funds.ts';
+import { ayqIsAccountTemplate, ayqSetAccountKind } from './ayq-account-kind.ts';
 import {
   ayqAccounts,
   ayqDetail,
@@ -686,6 +687,44 @@ async function answer(request: AyqRequest): Promise<AyqResponse> {
         kind: 'accounts.setFlag',
         result: await ayqAccounts(dataDir),
       };
+
+    case 'accounts.setKind': {
+      // The owner's answer about one account (PF-006 F2). Checked before
+      // anything is written: a kind AYQ does not know, or a date that is not
+      // a day, changes nothing.
+      const lockedUntil = request.lockedUntil ?? null;
+      if (
+        !ayqIsAccountTemplate(request.template) ||
+        (lockedUntil !== null && !/^\d{4}-\d{2}-\d{2}$/.test(lockedUntil))
+      ) {
+        throw new AyqEngineError(
+          'account-kind-invalid',
+          `not a kind of account: ${String(request.template)}`,
+        );
+      }
+      const known = (await api.getAccounts()).some(
+        account => account.id === request.accountId,
+      );
+      if (!known) {
+        throw new AyqEngineError(
+          'account-not-found',
+          `no account ${request.accountId} in this budget`,
+        );
+      }
+      ayqSetAccountKind(
+        dataDir,
+        request.accountId,
+        request.template,
+        lockedUntil,
+        new Date().toISOString(),
+      );
+      return {
+        id,
+        ok: true,
+        kind: 'accounts.setKind',
+        result: await ayqAccounts(dataDir),
+      };
+    }
 
     case 'accounts.setBalance':
     case 'accounts.reanchor': {

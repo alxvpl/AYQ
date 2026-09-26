@@ -22,7 +22,9 @@
 // show up in the Register, in the category totals and in the year's spending,
 // and would be indistinguishable from a real one.
 //
-// The arithmetic, for an active anchor of `A` on day `D`:
+// The arithmetic, for the anchor the row is built on — `A` on day `D`, which
+// is the account's own earliest statement opening, or the owner's correction
+// when that is what stands (`ayqStartingBasis`):
 //
 //     M = the signed sum of every non-starting transaction dated on or before D
 //     technical starting balance = A - M
@@ -41,6 +43,7 @@
 
 import api from '@actual-app/api';
 
+import { ayqClosingEvidence, ayqStatementsMixed } from './ayq-evidence.ts';
 import { ayqSettle } from './ayq-settle.ts';
 import {
   ayqId,
@@ -289,71 +292,128 @@ export async function ayqApplyAnchor(anchor: AyqBalanceAnchor): Promise<void> {
 }
 
 /**
- * Re-states the active anchor for one account, if it has one.
+ * The anchor an account's technical starting balance is built on (PF-006 F3).
  *
- * Called after every import that added anything (§4.3). When all the new
- * movements fall after the anchor's day the arithmetic above lands on the same
- * technical figure and nothing is written; when any of them falls on or before
- * it, the figure changes and the anchor stays true at its own date. Both cases
- * are the same code, which is why neither can be forgotten.
+ * The opening balance of the account's own earliest statement: what the bank
+ * said the account held before the first movement AYQ has for it. Every later
+ * movement is then added by the ledger itself, so the ledger's figure on the
+ * day of the newest statement is a real answer to "do the statements explain
+ * how the account got here" — which reconciliation asks — rather than the
+ * newest bank figure written back into the ledger and read out again.
+ *
+ * Earlier versions built the row on the newest anchor. That made agreement
+ * true by construction, and when one account had been given another
+ * account's statements, it carried that other account's balance into this
+ * one's opening figure.
+ *
+ * An owner's correction still stands where he made it (03 §10.7): when the
+ * anchor that stands is manual, the row is built on it, as before. Only this
+ * account's own anchors are considered, ever.
+ */
+export function ayqStartingBasis(
+  store: AyqStore,
+  accountId: string,
+): AyqBalanceAnchor | null {
+  const active = ayqActiveAnchor(store, accountId);
+  if (active === null || active.source === 'manual') return active;
+
+  let earliest: AyqBalanceAnchor | null = null;
+  for (const anchor of store.anchors) {
+    if (anchor.accountId !== accountId || anchor.source !== 'bank') continue;
+    if (
+      earliest === null ||
+      anchor.coverageDate < earliest.coverageDate ||
+      // Two readings of one day: the statement's own opening is the one F3 names.
+      (anchor.coverageDate === earliest.coverageDate &&
+        anchor.kind === 'opening' &&
+        earliest.kind !== 'opening')
+    ) {
+      earliest = anchor;
+    }
+  }
+  return earliest;
+}
+
+/**
+ * Writes the account's technical starting balance from its starting basis.
+ *
+ * Called after every import that added anything (§4.3) and after a balance is
+ * set by hand. Importing older history moves the basis back to the older
+ * statement's opening; importing newer history leaves it where it is and lets
+ * the new movements move the ledger. Both are the same code.
  */
 export async function ayqReapplyAnchor(
   dataDir: string,
   accountId: string,
 ): Promise<AyqBalanceAnchor | null> {
-  const anchor = ayqActiveAnchor(ayqReadStore(dataDir), accountId);
+  const anchor = ayqStartingBasis(ayqReadStore(dataDir), accountId);
   if (anchor === null) return null;
   await ayqApplyAnchor(anchor);
   return anchor;
 }
 
 /**
- * Whether the movements AYQ holds account for what the bank says it holds.
+ * An account's absolute balance: the anchor that stands, plus every movement
+ * AYQ holds after its day (03 §10.1, §10.6).
  *
- * This is the question 03 §8 asks, and after build 005 it is no longer the
- * question "does the balance on the screen equal the bank's figure" — because
- * §4.2 makes that true by construction. Anchoring writes Actual's technical
- * starting balance so the balance at the anchor's day *is* the anchor; asking
- * afterwards whether they agree is asking a number whether it equals itself.
- *
- * So reconciliation is asked of the movements instead, between two things the
- * bank itself said:
- *
- *     the balance the bank stated at an earlier point
- *   + every movement AYQ holds between that point and this one
- *   = what AYQ can account for here
- *
- * and the difference from the bank's own closing figure is what is stated. A
- * difference means statements are missing over that interval — which is a fact
- * about AYQ's evidence and not about the account, and it is exactly the fact
- * §8.3 says to state and leave standing. Nothing is written to close it (§8.2):
- * the way to close one is to import what is missing.
- *
- * Null when there is no earlier bank reading to measure from, because then
- * there is no interval and nothing to check.
+ * Null when the account has no anchor, because then there is no balance AYQ is
+ * entitled to state (§10.5).
  */
-export async function ayqAccountedFor(
+export async function ayqAnchoredBalance(
   store: AyqStore,
   accountId: string,
-  closingDate: string,
-): Promise<{ accountedCents: number; fromDate: string } | null> {
-  const earlier = store.anchors
-    .filter(
-      anchor =>
-        anchor.accountId === accountId && anchor.coverageDate < closingDate,
-    )
-    .sort((left, right) => (left.coverageDate < right.coverageDate ? -1 : 1))
-    .at(-1);
-  if (earlier === undefined) return null;
+): Promise<number | null> {
+  const anchor = ayqActiveAnchor(store, accountId);
+  if (anchor === null) return null;
+  const after = await ayqMovementsBetween(accountId, anchor.coverageDate, '9999-12-31');
+  return anchor.amountCents + after;
+}
 
-  const moved = await ayqMovementsBetween(
-    accountId,
-    earlier.coverageDate,
-    closingDate,
-  );
+/** What reconciliation found for one account, as the ledger and the renderer need it. */
+export type AyqReconciled = {
+  asOf: string;
+  statementBalanceCents: number;
+  ledgerBalanceCents: number;
+  differenceCents: number;
+  agrees: boolean;
+  file: string | null;
+  readAt: string;
+};
+
+/**
+ * Whether this account's ledger equals the closing balance of its own newest
+ * statement (03 §8.2, PF-006 F6).
+ *
+ * The ledger is Actual's own balance on the statement's closing day: the
+ * opening balance of the account's earliest statement plus every movement AYQ
+ * holds up to that day. When statements are missing in between, the two
+ * differ, and the difference is stated and left standing (§8.3).
+ *
+ * Null when the bank stated no closing balance for this account (§8.2), and
+ * null when the account's statements reported on more than one account: data
+ * mixed from several IBANs is never shown as agreeing with anything.
+ */
+export async function ayqReconcile(
+  store: AyqStore,
+  accountId: string,
+  accountName: string,
+): Promise<AyqReconciled | null> {
+  if (ayqStatementsMixed(store, accountId, accountName)) return null;
+  const closing = ayqClosingEvidence(store, accountId);
+  if (closing === null || closing.closingBalanceCents === null) return null;
+
+  // The day as a string, for the reason given in `ayqApplyAnchor`.
+  const asCutoff = closing.toDate as unknown as Date;
+  const ledger = (await api.getAccountBalance(accountId, asCutoff)) ?? 0;
+  const difference = closing.closingBalanceCents - ledger;
   return {
-    accountedCents: earlier.amountCents + moved,
-    fromDate: earlier.coverageDate,
+    asOf: closing.toDate,
+    statementBalanceCents: closing.closingBalanceCents,
+    ledgerBalanceCents: ledger,
+    differenceCents: difference,
+    agrees: difference === 0,
+    file: closing.file,
+    readAt: closing.readAt,
   };
 }
 

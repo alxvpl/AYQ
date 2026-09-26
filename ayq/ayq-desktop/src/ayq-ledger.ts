@@ -28,18 +28,21 @@ import type {
   AyqTransactionMatch,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqAccountKind, ayqKindWanted } from './ayq-account-kind.ts';
 import { ayqCanonicalKey } from './ayq-aliases.ts';
 import { ayqDisplayName } from './ayq-names.ts';
 import {
-  ayqAccountedFor,
   ayqActiveAnchor,
+  ayqAnchoredBalance,
   ayqAnchorHistory,
+  ayqReconcile,
 } from './ayq-anchors.ts';
 import {
   ayqBankDataThrough,
-  ayqClosingEvidence,
   ayqLastSuccessfulImport,
+  ayqStatementsMixed,
 } from './ayq-evidence.ts';
+import { ayqMaskIban } from './ayq-mask.ts';
 import {
   ayqAvailableFunds,
   ayqTotalHeld,
@@ -211,6 +214,7 @@ function toRow(
   store: AyqStore,
   row: AyqQueriedRow,
   source: AyqCategorySource,
+  ownNames: Set<string>,
 ): AyqLedgerRow {
   const provenance = store.provenance[ayqRowKey(row)];
   const canonical = ayqCanonicalKey(
@@ -218,6 +222,17 @@ function toRow(
     provenance?.counterpartyKey,
     provenance?.counterpartyName,
   );
+  // PF-006 F4: the other side of a movement between two of the owner's own
+  // accounts, named, so the row says where the money went rather than looking
+  // like a payment to a stranger.
+  const counter = ayqMaskIban(provenance?.counterpartyIban ?? null);
+  const transferWith =
+    ownNames.size >= 2 &&
+    counter !== null &&
+    counter !== row.account &&
+    ayqIsInternalTransfer(ownNames, provenance)
+      ? counter
+      : null;
   return {
     id: String(row.id),
     date: String(row.date),
@@ -229,7 +244,13 @@ function toRow(
     categoryId: row.categoryId ?? null,
     categorySource: row.categoryId ? source : null,
     cleared: row.cleared === true,
+    transferWith,
   };
+}
+
+/** The names of the accounts the budget holds, read once per question. */
+async function ownAccountNames(): Promise<Set<string>> {
+  return new Set((await api.getAccounts()).map(account => account.name));
 }
 
 type AyqCategoryTotal = { name: string; cents: number; count: number };
@@ -438,6 +459,7 @@ export async function ayqLedger(
   filter: AyqLedgerFilter = {},
 ): Promise<AyqLedger> {
   const store = ayqReadStore(dataDir);
+  const ownNames = await ownAccountNames();
   const limit = filter.limit ?? AYQ_LEDGER_LIMIT;
   const conditions = conditionsOf(filter);
 
@@ -459,7 +481,7 @@ export async function ayqLedger(
     matching.sort(compareRows);
     return {
       ...totalsOf(matching, reversals(store)),
-      rows: matching.slice(0, limit).map(row => toRow(store, row, source(row))),
+      rows: matching.slice(0, limit).map(row => toRow(store, row, source(row), ownNames)),
       shown: Math.min(matching.length, limit),
     };
   }
@@ -529,7 +551,7 @@ export async function ayqLedger(
   const expenseCents = -Number(outgoing.data ?? 0) - reversedCents;
 
   return {
-    rows: (page.data ?? []).map(row => toRow(store, row, source(row))),
+    rows: (page.data ?? []).map(row => toRow(store, row, source(row), ownNames)),
     total: Number(total.data ?? 0),
     shown: (page.data ?? []).length,
     incomeCents,
@@ -675,6 +697,7 @@ export async function ayqDetail(
   if (!found) throw new AyqEngineError('transaction-not-found', `no transaction ${transactionId} in this budget`);
 
   const store = ayqReadStore(dataDir);
+  const ownNames = await ownAccountNames();
   const key = ayqRowKey(found);
   // Canonical, so the rule the pane offers to show is the one that would
   // actually act on this transaction rather than one written against a variant
@@ -687,7 +710,7 @@ export async function ayqDetail(
     ) ?? null;
 
   return {
-    row: toRow(store, found, ayqStandingDecision(store, key)?.source ?? null),
+    row: toRow(store, found, ayqStandingDecision(store, key)?.source ?? null, ownNames),
     importedPayee: found.imported_payee ?? null,
     notes: found.notes ?? null,
     importedId: found.imported_id ?? null,
@@ -793,32 +816,20 @@ export async function ayqAccounts(
     // balance AYQ is entitled to state: what Actual holds for it is the sum of
     // whatever movements happen to have been imported, and that is not money
     // in the bank. §5 makes Unknown a real state precisely so this line can
-    // return null instead of a number nobody can act on.
-    const balanceCents =
-      anchor === null ? null : ((await api.getAccountBalance(account.id)) ?? 0);
+    // return null instead of a number nobody can act on. With an anchor, it is
+    // the anchor plus what moved after it (03 §10.1).
+    const balanceCents = await ayqAnchoredBalance(store, account.id);
 
-    // Reconciliation, only where the bank stated a closing balance, and asked
-    // of the *movements* rather than of the balance (see `ayqAccountedFor`).
-    // The comparison is at the day the statement closed, not today: the bank
-    // said what it held on the 31st.
-    const closing = ayqClosingEvidence(store, account.id);
-    let reconciliation: AyqReconciliation | null = null;
-    if (closing !== null && closing.closingBalanceCents !== null) {
-      const accounted = await ayqAccountedFor(store, account.id, closing.toDate);
-      if (accounted !== null) {
-        const difference =
-          closing.closingBalanceCents - accounted.accountedCents;
-        reconciliation = {
-          asOf: closing.toDate,
-          statementBalanceCents: closing.closingBalanceCents,
-          ledgerBalanceCents: accounted.accountedCents,
-          differenceCents: difference,
-          agrees: difference === 0,
-          file: closing.file,
-          readAt: closing.readAt,
-        };
-      }
-    }
+    // Reconciliation, only where the bank stated a closing balance for this
+    // account's own statements, and never over statements of several accounts
+    // (see `ayqReconcile`). The comparison is at the day the statement closed,
+    // not today: the bank said what it held on the 31st.
+    const mixedStatements = ayqStatementsMixed(store, account.id, account.name);
+    const reconciliation: AyqReconciliation | null = await ayqReconcile(
+      store,
+      account.id,
+      account.name,
+    );
 
     accounts.push({
       id: account.id,
@@ -831,6 +842,9 @@ export async function ayqAccounts(
       lastImportAt: ayqLastSuccessfulImport(store, account.id),
       bankDataThrough: ayqBankDataThrough(store, account.id),
       reconciliation,
+      kind: ayqAccountKind(store, account.id),
+      kindWanted: ayqKindWanted(store, account.id),
+      mixedStatements,
     });
   }
   return accounts;

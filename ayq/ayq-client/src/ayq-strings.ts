@@ -279,6 +279,9 @@ const EN = {
     'That file is no longer in the import history.',
   'error.anchor-disagrees':
     'The balance could not be applied: the budget does not agree with it.',
+  'error.account-not-found': 'That account is no longer in the budget.',
+  'error.account-kind-invalid':
+    'That is not a kind of account AYQ knows, or the date is not a date.',
   'settings.backup.blurb':
     "A backup is the budget and AYQ's own records together, from one moment. " +
     'Restoring one puts both back.',
@@ -398,6 +401,7 @@ const EN = {
   'register.all.accounts': 'All accounts',
   'register.all.categories': 'All categories',
   'register.category.none': 'Uncategorised',
+  'register.category.transfer': 'Transfer · {account}',
   'register.column.date': 'Date',
   'register.column.counterparty': 'Counterparty',
   'register.column.category': 'Category',
@@ -488,6 +492,10 @@ const EN = {
   'today.account.setBalance': 'Set account balance',
   'today.account.agrees': 'Agrees with the bank',
   'today.account.differs': 'Differs from the bank by {amount}',
+  'today.account.mixed': 'Statements of more than one account — not compared',
+  'today.locked': 'Term deposit {account} · {state}',
+  'today.locked.until': 'locked until {date}',
+  'today.locked.noDate': 'locked',
   'today.noPosition':
     'Available funds are unknown, so there is no position to project forward. ' +
     'What is planned and expected is still on Upcoming and Plan.',
@@ -993,6 +1001,26 @@ const EN = {
     'out of available funds; it is never income or expense.',
   'settings.accounts.open': 'Open Accounts',
   'settings.accounts.kind': 'Bank account',
+
+  'kind.question': 'What kind of account is {account}?',
+  'kind.question.note':
+    'AYQ asks this once. The answer decides whether its money counts toward ' +
+    'available funds. You can change it later in Settings → Accounts.',
+  'kind.payment': 'Payment account',
+  'kind.payment.note': 'Your money, to spend now',
+  'kind.savings': 'Savings you can withdraw any time',
+  'kind.savings.note': 'Your money, to spend after a transfer',
+  'kind.term-deposit': 'Term deposit',
+  'kind.term-deposit.note': 'Your money, locked until the end of the term',
+  'kind.other': 'Other — decide later',
+  'kind.other.note': 'Not counted in available funds until you decide',
+  'kind.label': 'Kind of account',
+  'kind.withState': '{kind}, {state}',
+  'kind.unknown': 'Not said yet',
+  'kind.lockedUntil': 'Locked until',
+  'kind.lockedUntil.placeholder': 'YYYY-MM-DD',
+  'kind.lockedUntil.hint': 'The last day of the term. Leave it empty if you do not know it.',
+  'kind.lockedUntil.invalid': 'That is not a date. Write it as YYYY-MM-DD.',
   'settings.accounts.openOne': 'Open account details',
 
   'detail.none': 'Choose a transaction to see what is behind it.',

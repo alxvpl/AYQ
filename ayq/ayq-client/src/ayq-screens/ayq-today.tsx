@@ -175,6 +175,16 @@ const useStyles = makeStyles({
     fontSize: 'var(--ayq-size-small)',
     color: 'var(--ayq-ink-faint)',
   },
+  // PF-006 F5: a term deposit is held and not available, so it has its own
+  // line under the total rather than a place in either figure's arithmetic.
+  locked: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: `${AYQ_METRIC.space.ten}px`,
+    padding: `${AYQ_METRIC.space.small}px ${AYQ_METRIC.panePadding}px`,
+    fontSize: 'var(--ayq-size-small)',
+    color: 'var(--ayq-ink-faint)',
+  },
   note: { color: 'var(--ayq-ink-faint)', fontSize: 'var(--ayq-size-small)' },
   waiting: {
     listStyle: 'none',
@@ -519,6 +529,15 @@ export function AyqTodayScreen({
                         {ayqText('today.account.setBalance')}
                       </AyqButton>
                     </span>
+                  ) : account.mixedStatements ? (
+                    // F6: data mixed from several accounts is never shown as
+                    // agreeing with the bank, and is not compared at all.
+                    <span data-ayq-agrees="mixed">
+                      <AyqStateChip
+                        state="operational"
+                        label={ayqText('today.account.mixed')}
+                      />
+                    </span>
                   ) : account.reconciliation === null ? null : (
                     <span
                       data-ayq-agrees={String(account.reconciliation.agrees)}
@@ -545,6 +564,27 @@ export function AyqTodayScreen({
               <span>{ayqText('accounts.footer.held')}</span>
               <AyqFigure cents={accounts.totalBalanceCents} />
             </div>
+            {accounts.locked.map(locked => (
+              <div
+                key={locked.accountId}
+                className={styles.locked}
+                data-ayq-locked={locked.accountId}
+                data-ayq-locked-until={locked.lockedUntil ?? ''}
+              >
+                <span>
+                  {ayqText('today.locked', {
+                    account: locked.accountName,
+                    state:
+                      locked.lockedUntil === null
+                        ? ayqText('today.locked.noDate')
+                        : ayqText('today.locked.until', {
+                            date: ayqDate(locked.lockedUntil),
+                          }),
+                  })}
+                </span>
+                <AyqFigure cents={locked.balanceCents} />
+              </div>
+            ))}
           </div>
         </div>
       </AyqPane>

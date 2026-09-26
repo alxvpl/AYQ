@@ -30,6 +30,9 @@ const ACCOUNTS: AyqAccountSummary[] = [
     balanceCents: 128450,
     transactionCount: 3,
     countsTowardFunds: true,
+    kind: null,
+    kindWanted: false,
+    mixedStatements: false,
   },
 ];
 
@@ -62,6 +65,7 @@ const ROWS: AyqLedgerRow[] = [
     categoryId: null,
     categorySource: null,
     cleared: true,
+    transferWith: null,
   },
   {
     id: 't-2',
@@ -74,6 +78,7 @@ const ROWS: AyqLedgerRow[] = [
     categoryId: 'cat-groceries',
     categorySource: 'rule',
     cleared: true,
+    transferWith: null,
   },
   {
     id: 't-3',
@@ -86,6 +91,7 @@ const ROWS: AyqLedgerRow[] = [
     categoryId: 'cat-salary',
     categorySource: 'manual',
     cleared: true,
+    transferWith: null,
   },
 ];
 

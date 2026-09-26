@@ -62,6 +62,42 @@ export type AyqReconciliation = {
   readAt: string;
 };
 
+/**
+ * The kinds of account AYQ can name today (CL_002 D12, PF-006 F2).
+ *
+ *   payment       a payment account: own money, spendable now
+ *   savings       free-access savings: own money, spendable after a transfer
+ *   term-deposit  a term deposit: own money, locked until the end of the term
+ *   other         the owner will decide later; not counted until he does
+ *
+ * Templates, not the model: each fills the five properties of `AyqAccountKind`,
+ * and a later template is a new entry here with no change to what an account
+ * carries (D9).
+ */
+export type AyqAccountTemplate = 'payment' | 'savings' | 'term-deposit' | 'other';
+
+/**
+ * What kind of account one is: the five properties of CL_002 D8.
+ *
+ * Null in a property means AYQ has not been told. `template` is null while the
+ * question an import asked about a new account is still waiting.
+ */
+export type AyqAccountKind = {
+  template: AyqAccountTemplate | null;
+  /** Whose money: the owner's, shared with another person, or someone else's. */
+  ownership: 'own' | 'shared' | 'others' | null;
+  /** Money held, or money owed. */
+  nature: 'money' | 'debt' | null;
+  /** When it can be spent: now, after a transfer, locked until a date, long-term. */
+  access: 'now' | 'after-transfer' | 'locked' | 'long-term' | null;
+  /** YYYY-MM-DD for a locked account whose end date is known; null otherwise. */
+  lockedUntil: string | null;
+  /** An exact amount, or a market value that changes. */
+  value: 'exact' | 'market' | null;
+  /** ISO 4217, as the statements stated it. */
+  currency: string | null;
+};
+
 /** An account as the renderer sees it. */
 export type AyqAccountSummary = {
   id: string;
@@ -92,8 +128,36 @@ export type AyqAccountSummary = {
   lastImportAt: string | null;
   /** How far the bank's own movements reach. Not the same as above. */
   bankDataThrough: string | null;
-  /** Only where the bank stated a closing balance. */
+  /**
+   * Only where the bank stated a closing balance for this account's own
+   * statements — and never over statements of more than one account.
+   */
   reconciliation: AyqReconciliation | null;
+  /**
+   * The account's kind, or null for an account nobody has been asked about —
+   * every account a store held before version 12.
+   */
+  kind: AyqAccountKind | null;
+  /** Whether an import created this account and the owner has not said what kind it is. */
+  kindWanted: boolean;
+  /**
+   * Whether the statements AYQ holds for this account reported on more than
+   * one account. Reconciliation is then withheld (PF-006 F6).
+   */
+  mixedStatements: boolean;
+};
+
+/**
+ * Money in one locked account, shown on its own line on Today (PF-006 F5).
+ * Not part of available funds.
+ */
+export type AyqLockedMoney = {
+  accountId: string;
+  accountName: string;
+  /** Null when the account's balance is unknown. */
+  balanceCents: number | null;
+  /** YYYY-MM-DD, or null when the end of the term is not known. */
+  lockedUntil: string | null;
 };
 
 /**
@@ -154,8 +218,13 @@ export type AyqAccountsView = {
    * account it left out.
    */
   availableFundsCents: number | null;
-  /** Every account, counted or not. Null when any of them is unknown. */
+  /**
+   * The owner's own money in every account, counted or not (PF-006 F5). Null
+   * when any of them is unknown.
+   */
   totalBalanceCents: number | null;
+  /** Term deposits and anything else locked, each on its own line. */
+  locked: AyqLockedMoney[];
   /** How many counted accounts have no anchor, and so no known balance. */
   countedWithoutAnchor: number;
   /**
@@ -268,6 +337,11 @@ export type AyqLedgerRow = {
   categorySource: AyqCategorySource;
   /** Booked rather than pending, as the statement said. */
   cleared: boolean;
+  /**
+   * The other account of the owner's this money moved to or from, when it is an
+   * internal transfer (03 §7.6, PF-006 F4). Null for every other transaction.
+   */
+  transferWith: string | null;
 };
 
 /** What to show. Everything is optional; nothing means "the newest of all". */
@@ -936,6 +1010,31 @@ export type AyqImportSummary = AyqImportRecord & {
   budgetName: string;
   /** Counted by the engine after the import. */
   transactionCountAfter: number;
+  /**
+   * One line per account the files reported on (PF-006 F1).
+   *
+   * The record fields above are the whole import added up; `accountId` is the
+   * first of these, and `accountName` lists them all. Each account has its own
+   * import record in the history.
+   */
+  accounts: AyqImportAccountOutcome[];
+};
+
+/** What one import did to one account. Counts and the masked name only. */
+export type AyqImportAccountOutcome = {
+  importId: string;
+  accountId: string;
+  accountName: string;
+  /** Whether this import is what created the account. */
+  created: boolean;
+  records: number;
+  imported: number;
+  duplicates: number;
+  balanceWanted: boolean;
+  anchoredAt: string | null;
+  anchorEstablished: boolean;
+  /** Whether AYQ is still waiting for the owner to say what kind it is. */
+  kindWanted: boolean;
 };
 
 export type AyqSummary = {
@@ -1611,6 +1710,7 @@ export type AyqResults = {
   'accounts.view': AyqAccountsView;
   today: AyqToday;
   'accounts.setFlag': AyqAccountSummary[];
+  'accounts.setKind': AyqAccountSummary[];
   'accounts.setBalance': AyqAccountsView;
   'accounts.reanchor': AyqAccountsView;
   'counterparty.setName': AyqCounterpartyDetail;
@@ -1696,6 +1796,20 @@ export type AyqRequestBody =
       kind: 'accounts.setFlag';
       accountId: string;
       countsTowardFunds: boolean;
+    }
+  | {
+      /**
+       * Says what kind of account one is (CL_001 D3, CL_002 D11, PF-006 F2).
+       *
+       * The owner's answer to the one question an import asks about a new
+       * account, or a later change in the account's settings. AYQ fills the
+       * five properties from the template; `lockedUntil` is only kept for a
+       * term deposit, and may be null when the end of the term is not known.
+       */
+      kind: 'accounts.setKind';
+      accountId: string;
+      template: AyqAccountTemplate;
+      lockedUntil?: string | null;
     }
   | {
       /**
@@ -2121,7 +2235,9 @@ export type AyqErrorCode =
   | 'month-not-kept'
   | 'plan-amount-invalid'
   | 'anchor-disagrees'
-  | 'import-problem-not-found';
+  | 'import-problem-not-found'
+  | 'account-not-found'
+  | 'account-kind-invalid';
 
 /** Bounded values a code's sentence may name: a file, a month, a version. */
 export type AyqErrorParams = Readonly<Record<string, string | number>>;
