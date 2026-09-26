@@ -748,7 +748,7 @@ jobs:
       # decision the owner had made is still there afterwards — including the
       # two things a migration is most likely to quietly invent: a coverage
       # start date version 7 never recorded, and an anchor nobody ever set.
-      - name: A version 7 store is brought to version 11, and loses nothing
+      - name: A version 7 store is brought to version 12, and loses nothing
         working-directory: ayq/ayq-desktop
         shell: pwsh
         timeout-minutes: 12
@@ -759,13 +759,13 @@ jobs:
             --seed-store test/fixtures/ayq-v7-store.json
           if ($LASTEXITCODE -ne 0) { throw 'AYQ did not open over a version 7 store' }
 
-          $kept = Get-ChildItem $env:AYQ_DATA_DIR -Filter 'ayq-store.before-v7-to-v11.json'
+          $kept = Get-ChildItem $env:AYQ_DATA_DIR -Filter 'ayq-store.before-v7-to-v12.json'
           if (-not $kept) { throw '03 §5.3: no copy was kept before the shape changed' }
           Write-Host "kept before migrating: $($kept.Name), $($kept.Length) bytes"
 
           $store = Get-Content (Join-Path $env:AYQ_DATA_DIR 'ayq-store.json') -Raw |
             ConvertFrom-Json
-          if ($store.version -ne 11) { throw "the store is version $($store.version)" }
+          if ($store.version -ne 12) { throw "the store is version $($store.version)" }
           if ($store.rules.Count -ne 1) { throw 'a rule was lost' }
           if ($store.aliases.Count -ne 1) { throw 'an alias was lost' }
           if ($store.planned.Count -ne 1) { throw 'a planned record was lost' }
@@ -787,6 +787,11 @@ jobs:
           if ($store.evidence[0].toDate -ne '2026-02-28') { throw 'the coverage date moved' }
           # 3 §3.1: a migration anchors nothing.
           if ($store.anchors.Count -ne 0) { throw 'the migration anchored an account' }
+          # PF-006 (store v12): a migration gives no account a kind (03 §5.7).
+          if ($null -eq $store.accountProfiles) { throw 'the store has no account kinds table' }
+          if (@($store.accountProfiles.PSObject.Properties).Count -ne 0) {
+            throw 'the migration decided the kind of an account'
+          }
           Write-Host ("store: version {0}, {1} evidence row(s) with no start, " +
             "{2} anchors, taxonomy marker {3}" -f $store.version,
             $store.evidence.Count, $store.anchors.Count, $store.starterTaxonomyVersion)
