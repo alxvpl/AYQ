@@ -159,7 +159,17 @@ export function AyqLedgerPane({
         id: 'category',
         header: ayqText('register.column.category'),
         cell: row =>
-          row.category === null ? (
+          row.category === null && row.transferWith !== null ? (
+            // 03 §7.6, PF-006 F4: money moved between two of the owner's own
+            // accounts is neither spending nor income, and nothing to file.
+            // The row names the other account instead.
+            <AyqStateChip
+              state="neutral"
+              label={ayqText('register.category.transfer', {
+                account: row.transferWith,
+              })}
+            />
+          ) : row.category === null ? (
             <AyqStateChip
               state="uncategorised"
               label={ayqText('register.category.none')}

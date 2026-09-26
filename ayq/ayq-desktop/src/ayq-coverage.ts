@@ -18,7 +18,7 @@ import type {
   AyqAccountsView,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
-import { ayqAvailableFunds, ayqTotalHeld } from './ayq-funds.ts';
+import { ayqAvailableFunds, ayqLockedMoney, ayqTotalHeld } from './ayq-funds.ts';
 import { ayqAccounts } from './ayq-ledger.ts';
 import { ayqReadStore } from './ayq-store.ts';
 import { ayqBankDataThrough, ayqClosingEvidence } from './ayq-evidence.ts';
@@ -76,6 +76,7 @@ export async function ayqAccountsView(
     coverage,
     availableFundsCents: ayqAvailableFunds(accounts),
     totalBalanceCents: ayqTotalHeld(accounts),
+    locked: ayqLockedMoney(accounts),
     countedWithoutAnchor: counted.filter(
       account => account.balanceCents === null,
     ).length,

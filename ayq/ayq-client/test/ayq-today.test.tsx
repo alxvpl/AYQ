@@ -27,6 +27,7 @@ const ROW = {
   categoryId: null,
   categorySource: null,
   cleared: true,
+  transferWith: null,
 };
 
 const TODAY: AyqToday = {
@@ -39,6 +40,9 @@ const TODAY: AyqToday = {
         balanceCents: 128450,
         transactionCount: 212,
         countsTowardFunds: true,
+        kind: null,
+        kindWanted: false,
+        mixedStatements: false,
         anchor: {
           amountCents: 128450,
           coverageDate: '2026-08-31',
@@ -71,6 +75,9 @@ const TODAY: AyqToday = {
         balanceCents: 41200,
         transactionCount: 40,
         countsTowardFunds: true,
+        kind: null,
+        kindWanted: false,
+        mixedStatements: false,
         anchor: {
           amountCents: 41200,
           coverageDate: '2026-08-31',
@@ -95,6 +102,9 @@ const TODAY: AyqToday = {
         balanceCents: 900000,
         transactionCount: 4,
         countsTowardFunds: false,
+        kind: null,
+        kindWanted: false,
+        mixedStatements: false,
         anchor: {
           amountCents: 900000,
           coverageDate: '2026-08-31',
@@ -120,6 +130,7 @@ const TODAY: AyqToday = {
     reliableTo: '2026-08-31',
     countedWithoutCoverage: 0,
     countedWithoutAnchor: 0,
+    locked: [],
   },
   lowest: { date: '2026-09-28', balanceCents: -17974 },
   monthEnd: { month: '2026-09', closingCents: 306026 },
@@ -449,6 +460,7 @@ function withUnknown(): AyqToday {
       availableFundsCents: null,
       totalBalanceCents: null,
       countedWithoutAnchor: 1,
+      locked: [],
     },
     // And with no position to start from, there is no position to project.
     lowest: null,

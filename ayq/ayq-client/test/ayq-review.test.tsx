@@ -89,6 +89,7 @@ const DETAIL: AyqCounterpartyDetail = {
       categoryId: null,
       categorySource: null,
       cleared: true,
+      transferWith: null,
     },
   ],
   rules: [],

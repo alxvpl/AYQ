@@ -8,7 +8,11 @@ import { makeStyles } from '@fluentui/react-components';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { ayqAsk } from '../ayq-bridge.ts';
-import type { AyqAccountSummary, AyqImportSummary } from '../ayq-ipc-contract.ts';
+import type {
+  AyqAccountSummary,
+  AyqAccountTemplate,
+  AyqImportSummary,
+} from '../ayq-ipc-contract.ts';
 import { ayqImportProblemText } from '../ayq-reasons.ts';
 import { ayqCount, ayqDate, ayqMoment, ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC, AYQ_TYPE } from '../ayq-tokens.ts';
@@ -18,6 +22,7 @@ import { AyqPane } from '../ayq-ui/ayq-pane.tsx';
 import { AyqScreenActions } from '../ayq-ui/ayq-screen.tsx';
 import { AyqStateChip } from '../ayq-ui/ayq-state-chip.tsx';
 import { AyqTable, type AyqColumn } from '../ayq-ui/ayq-table.tsx';
+import { AyqAccountKindQuestion } from './ayq-account-kind.tsx';
 import { AyqBalanceForm } from './ayq-balance-form.tsx';
 import { AyqImportHistory } from './ayq-import-history.tsx';
 
@@ -173,6 +178,23 @@ export function AyqImportScreen({
     },
   ];
   const unanchored = accounts.filter(account => account.anchor === null);
+  // CL_001 D3: an account an import created, whose kind the owner has not
+  // given yet. Asked here, once, until it is answered.
+  const unasked = accounts.filter(account => account.kindWanted);
+
+  const answer = useCallback(
+    (accountId: string, template: AyqAccountTemplate) => {
+      void (async () => {
+        const done = await ayqAsk({ kind: 'accounts.setKind', accountId, template });
+        if (!done.ok) throw new Error(done.message);
+        setRound(one => one + 1);
+        onImported();
+      })().catch((error: unknown) => {
+        onFailure(error instanceof Error ? error.message : String(error));
+      });
+    },
+    [onImported, onFailure],
+  );
 
   const run = useCallback(async (): Promise<void> => {
     setBusy(true);
@@ -224,13 +246,15 @@ export function AyqImportScreen({
       // §4.4: the files carried no balance from the bank and this account has
       // none from before, so AYQ cannot say what it holds. Asking is the only
       // honest option — and the import has already succeeded, so skipping the
-      // question costs nothing but the balance staying Unknown.
-      if (summary.balanceWanted) {
+      // question costs nothing but the balance staying Unknown. One account at
+      // a time, the first that needs it: a ZIP may have reported on several.
+      const needing = summary.accounts.find(one => one.balanceWanted);
+      if (needing !== undefined) {
         setWanted({
-          accountId: summary.accountId,
-          accountName: summary.accountName,
-          importId: summary.id,
-          coverageDate: summary.anchoredAt ?? new Date().toISOString().slice(0, 10),
+          accountId: needing.accountId,
+          accountName: needing.accountName,
+          importId: needing.importId,
+          coverageDate: needing.anchoredAt ?? new Date().toISOString().slice(0, 10),
         });
       }
     } catch (error) {
@@ -256,6 +280,14 @@ export function AyqImportScreen({
           {ayqText('import.action')}
         </AyqButton>
       </AyqScreenActions>
+
+      {unasked.map(account => (
+        <AyqAccountKindQuestion
+          key={account.id}
+          account={account}
+          onAnswer={template => answer(account.id, template)}
+        />
+      ))}
 
       <AyqPane mark="import-freshness" title={ayqText('import.freshness')}>
         <AyqTable

@@ -41,6 +41,9 @@ const SUMMARY = {
       balanceCents: 128450,
       transactionCount: 14,
       countsTowardFunds: true,
+      kind: null,
+      kindWanted: false,
+      mixedStatements: false,
     },
     {
       id: 'acc-2',
@@ -48,6 +51,9 @@ const SUMMARY = {
       balanceCents: 900000,
       transactionCount: 2,
       countsTowardFunds: false,
+      kind: null,
+      kindWanted: false,
+      mixedStatements: false,
     },
   ],
   totalBalanceCents: 1028450,
@@ -338,6 +344,7 @@ test('opening the Register republishes what the window is holding', async () => 
       categoryId: null,
       categorySource: null,
       cleared: true,
+      transferWith: null,
     },
   ];
   const window = await ayqOpenWindow(request =>

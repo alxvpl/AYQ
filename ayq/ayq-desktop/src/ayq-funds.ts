@@ -14,9 +14,11 @@
 
 import type {
   AyqAccountSummary,
+  AyqLockedMoney,
   AyqProvenance,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqHoldsOwnMoney, ayqKindCountsTowardFunds } from './ayq-account-kind.ts';
 import { ayqMaskIban } from './ayq-mask.ts';
 import { ayqReadStore, ayqWriteStore, type AyqStore } from './ayq-store.ts';
 
@@ -32,11 +34,20 @@ import { ayqReadStore, ayqWriteStore, type AyqStore } from './ayq-store.ts';
  */
 export const AYQ_DEFAULT_COUNTS_TOWARD_FUNDS = true;
 
+/**
+ * Whether one account's balance forms available funds.
+ *
+ * In order: the owner's own switch for this account (03 §7.6), then what the
+ * account's kind says (CL_002 D10), then the default for an account whose type
+ * is not known (§7.15). Setting a kind clears an earlier switch, so the switch
+ * only outranks the kind when it was used after it.
+ */
 export function ayqCountsTowardFunds(store: AyqStore, accountId: string): boolean {
   const flags = store.accountFlags[accountId];
-  return flags === undefined
-    ? AYQ_DEFAULT_COUNTS_TOWARD_FUNDS
-    : flags.countsTowardFunds;
+  if (flags !== undefined) return flags.countsTowardFunds;
+  return (
+    ayqKindCountsTowardFunds(store, accountId) ?? AYQ_DEFAULT_COUNTS_TOWARD_FUNDS
+  );
 }
 
 export function ayqSetAccountFlag(
@@ -69,13 +80,31 @@ export function ayqAvailableFunds(
   );
 }
 
-/** The same rule over every account, counted or not: total held (§5). */
+/**
+ * The same rule over every account of the owner's own money, counted or not:
+ * held in total (§5, PF-006 F5). Money owed and money that is someone else's
+ * are not held.
+ */
 export function ayqTotalHeld(accounts: AyqAccountSummary[]): number | null {
-  if (accounts.some(account => account.balanceCents === null)) return null;
-  return accounts.reduce(
-    (total, account) => total + (account.balanceCents ?? 0),
-    0,
-  );
+  const own = accounts.filter(account => ayqHoldsOwnMoney(account.kind));
+  if (own.some(account => account.balanceCents === null)) return null;
+  return own.reduce((total, account) => total + (account.balanceCents ?? 0), 0);
+}
+
+/**
+ * Every locked account, each with its own line (PF-006 F5): a term deposit is
+ * the owner's money and is not available funds, and when it unlocks is part of
+ * what it is.
+ */
+export function ayqLockedMoney(accounts: AyqAccountSummary[]): AyqLockedMoney[] {
+  return accounts
+    .filter(account => account.kind?.access === 'locked')
+    .map(account => ({
+      accountId: account.id,
+      accountName: account.name,
+      balanceCents: account.balanceCents,
+      lockedUntil: account.kind?.lockedUntil ?? null,
+    }));
 }
 
 /**

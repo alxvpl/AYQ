@@ -1,4 +1,5 @@
-// Settings → Accounts: one switch, and nothing else (03 §7.6, 04 A34).
+// Settings → Accounts: the account's kind and one switch (03 §7.6, 04 A34,
+// PF-006 F2).
 //
 // Which balances make up available funds is a setting, so it is here. What each
 // account holds, how far its statements reach and whether AYQ agrees with the
@@ -10,7 +11,8 @@ import { Checkbox, makeStyles } from '@fluentui/react-components';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 import { ayqAsk } from '../ayq-bridge.ts';
-import type { AyqAccountSummary } from '../ayq-ipc-contract.ts';
+import type { AyqAccountSummary, AyqAccountTemplate } from '../ayq-ipc-contract.ts';
+import { AyqAccountKindControl, ayqKindLabel } from './ayq-account-kind.tsx';
 import { ayqText } from '../ayq-strings.ts';
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
@@ -59,6 +61,29 @@ export function AyqSettingsAccounts({
     };
   }, [round, onFailure]);
 
+  // PF-006 F2: the kind of account, changed here after the one question an
+  // import asked. The engine fills the five properties from the template.
+  const kind = useCallback(
+    (accountId: string, template: AyqAccountTemplate, lockedUntil: string | null) => {
+      void (async () => {
+        const done = await ayqAsk({
+          kind: 'accounts.setKind',
+          accountId,
+          template,
+          lockedUntil,
+        });
+        if (!done.ok) {
+          onFailure(done.message);
+          return;
+        }
+        setAccounts(done.result as AyqAccountSummary[]);
+        setRound(one => one + 1);
+        onChanged();
+      })();
+    },
+    [onFailure, onChanged],
+  );
+
   const flag = useCallback(
     (accountId: string, counts: boolean) => {
       void (async () => {
@@ -94,8 +119,16 @@ export function AyqSettingsAccounts({
               key={account.id}
               mark={account.id}
               name={account.name}
-              note={ayqText('settings.accounts.kind')}
+              note={ayqKindLabel(account.kind)}
             >
+              <AyqAccountKindControl
+                // Keyed on what it shows, so a change made elsewhere resets it.
+                key={`${account.kind?.template ?? ''}-${account.kind?.lockedUntil ?? ''}`}
+                account={account}
+                onChange={(template, lockedUntil) =>
+                  kind(account.id, template, lockedUntil)
+                }
+              />
               <Checkbox
                 data-ayq-funds-switch={account.id}
                 checked={account.countsTowardFunds}

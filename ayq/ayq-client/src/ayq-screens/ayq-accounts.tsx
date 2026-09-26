@@ -31,6 +31,7 @@ import { ayqCount, ayqDate, ayqMoment, ayqMoney, ayqText } from '../ayq-strings.
 import { AYQ_METRIC } from '../ayq-tokens.ts';
 import { AyqButton } from '../ayq-ui/ayq-button.tsx';
 import { ayqBorderTop } from '../ayq-ui/ayq-css.ts';
+import { ayqKindLabel } from './ayq-account-kind.tsx';
 import { AyqBalanceForm } from './ayq-balance-form.tsx';
 import { AyqFigure } from '../ayq-ui/ayq-figure.tsx';
 import { AyqPane, AyqSplit } from '../ayq-ui/ayq-pane.tsx';
@@ -151,9 +152,24 @@ function AyqAccountDetail({
       )}
 
       <span className={styles.kicker}>{ayqText('accounts.detail.operational')}</span>
-      {/* Whether it forms available funds is stated here as a fact about the
-          money; changing it is configuration and stays at Settings → Accounts
-          (04 A34). */}
+      {/* The kind, and whether it forms available funds, are stated here as
+          facts about the money; changing either is configuration and stays at
+          Settings → Accounts (04 A34, PF-006 F2). */}
+      <Field label={ayqText('kind.label')}>
+        <span data-ayq-detail-kind={row.kind?.template ?? ''}>
+          {row.kind?.access === 'locked'
+            ? ayqText('kind.withState', {
+                kind: ayqKindLabel(row.kind),
+                state:
+                  row.kind.lockedUntil === null
+                    ? ayqText('today.locked.noDate')
+                    : ayqText('today.locked.until', {
+                        date: ayqDate(row.kind.lockedUntil),
+                      }),
+              })
+            : ayqKindLabel(row.kind)}
+        </span>
+      </Field>
       <Field label={ayqText('accounts.detail.counts')}>
         <span data-ayq-detail-counts={row.countsTowardFunds ? 'yes' : 'no'}>
           {ayqText(
@@ -190,7 +206,11 @@ function AyqAccountDetail({
 
       {/* Reconciliation, and only where the bank stated a figure to reconcile
           against (§5). */}
-      {row.reconciliation === null ? (
+      {row.mixedStatements ? (
+        <p className={styles.note} data-ayq-detail-mixed="">
+          {ayqText('today.account.mixed')}
+        </p>
+      ) : row.reconciliation === null ? (
         <p className={styles.note}>{ayqText('accounts.detail.nothing')}</p>
       ) : (
         <>

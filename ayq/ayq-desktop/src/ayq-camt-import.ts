@@ -22,12 +22,14 @@ import { ayqCollectTargets } from '../../ayq-camt/src/ayq-files.ts';
 import type { AyqBankEntry } from '../../ayq-camt/src/ayq-types.ts';
 import { ayqResolveCounterparty } from '../../ayq-camt/src/counterparty/ayq-resolve.ts';
 import type {
+  AyqImportAccountOutcome,
   AyqImportProblem,
   AyqImportRecord,
   AyqImportSummary,
   AyqProvenance,
 } from '../../ayq-client/src/ayq-ipc-contract.ts';
 
+import { ayqKindWanted, ayqNewAccountProfile } from './ayq-account-kind.ts';
 import { ayqAliasMap } from './ayq-aliases.ts';
 import { ayqMaskIban } from './ayq-mask.ts';
 import { ayqTransactionCount } from './ayq-ledger.ts';
@@ -40,48 +42,55 @@ import {
   ayqId,
   ayqReadStore,
   ayqWriteStore,
+  type AyqAccountProfile,
   type AyqCoverageEvidence,
 } from './ayq-store.ts';
 import { AyqEngineError } from './ayq-error.ts';
 
-/** The name the imported account gets: the statement's own IBAN, masked. */
-export function ayqMaskAccount(entries: AyqBankEntry[]): string {
-  for (const entry of entries) {
-    const masked = ayqMaskIban(entry.statement.accountIban);
-    if (masked !== null) return masked;
-  }
-  return 'AYQ imported account';
+/** What an account is called when its statement names no IBAN at all. */
+const AYQ_UNNAMED_ACCOUNT = 'AYQ imported account';
+
+/**
+ * The name one statement's account gets: that statement's own IBAN, masked.
+ *
+ * Only ever from the statement the entry came from (PF-006 F1). An earlier
+ * version named the whole import after the first entry it read, so a ZIP of
+ * several accounts' statements landed in one account called after whichever
+ * file sorted first.
+ */
+export function ayqAccountNameOf(entry: AyqBankEntry): string {
+  return ayqMaskIban(entry.statement.accountIban) ?? AYQ_UNNAMED_ACCOUNT;
 }
 
-/** The account by that name, created if the budget has not seen it before. */
 /**
- * The earliest opening balance the statements state, and the date it applies to.
+ * The entries of one import, one group per account the statements reported
+ * on, in name order so the same files always produce the same order.
  *
- * A statement carries the bank's own arithmetic: what the account held before
- * the first entry in it. Without that, an account's balance is the sum of
- * whatever period happened to be imported — a number that looks like a balance,
- * is presented like a balance, and is not one.
- *
- * The earliest is the one that matters: importing 2021 after 2026 must move the
- * starting point back, not add a second one.
+ * Order within a group is the order the files were read in, which is what the
+ * rest of the import already relies on.
  */
-function earliestOpening(
+export function ayqGroupByAccount(
   entries: AyqBankEntry[],
-): { cents: number; date: string } | null {
-  let found: { cents: number; date: string } | null = null;
-
+): Array<{ name: string; entries: AyqBankEntry[] }> {
+  const groups = new Map<string, AyqBankEntry[]>();
   for (const entry of entries) {
-    const opening = entry.statement.openingBalance;
-    if (!opening || opening.value === null) continue;
-    const date =
-      entry.statement.fromDate?.slice(0, 10) ?? entry.bookingDate.date;
-    if (date === null) continue;
-    if (found === null || date < found.date) {
-      found = { cents: Math.round(opening.value * 100), date };
-    }
+    const name = ayqAccountNameOf(entry);
+    const held = groups.get(name);
+    if (held === undefined) groups.set(name, [entry]);
+    else held.push(entry);
   }
+  return [...groups.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([name, grouped]) => ({ name, entries: grouped }));
+}
 
-  return found;
+/** The currency the statements state for their account, if any of them does. */
+function statedCurrency(entries: AyqBankEntry[]): string | null {
+  for (const entry of entries) {
+    const currency = entry.statement.accountCurrency ?? entry.statement.closingBalance?.currency;
+    if (typeof currency === 'string' && currency.length === 3) return currency;
+  }
+  return null;
 }
 
 /**
@@ -106,6 +115,7 @@ function coverageEvidence(
   accountId: string,
   importId: string,
   readAt: string,
+  statementAccount: string,
 ): AyqCoverageEvidence[] {
   const byStatement = new Map<string, AyqCoverageEvidence>();
 
@@ -134,6 +144,8 @@ function coverageEvidence(
             : null,
         file: statement.file,
         readAt,
+        // Which account the statement itself reported on (PF-006 F6).
+        statementAccount,
       });
       continue;
     }
@@ -162,8 +174,8 @@ function coverageEvidence(
  */
 function bankAnchors(
   entries: AyqBankEntry[],
-): Array<{ amountCents: number; coverageDate: string }> {
-  const found = new Map<string, number>();
+): Array<{ amountCents: number; coverageDate: string; kind: 'opening' | 'closing' }> {
+  const found = new Map<string, { amountCents: number; kind: 'opening' | 'closing' }>();
 
   for (const entry of entries) {
     const statement = entry.statement;
@@ -171,7 +183,7 @@ function bankAnchors(
     const closing = statement.closingBalance;
     const closesOn = statement.toDate?.slice(0, 10) ?? entry.bookingDate.date;
     if (closing && closing.value !== null && closesOn !== null) {
-      found.set(closesOn, Math.round(closing.value * 100));
+      found.set(closesOn, { amountCents: Math.round(closing.value * 100), kind: 'closing' });
     }
 
     const opening = statement.openingBalance;
@@ -179,28 +191,30 @@ function bankAnchors(
     if (opening && opening.value !== null && opensOn !== null) {
       const dayBefore = ayqAddDays(opensOn, -1);
       if (!found.has(dayBefore)) {
-        found.set(dayBefore, Math.round(opening.value * 100));
+        found.set(dayBefore, { amountCents: Math.round(opening.value * 100), kind: 'opening' });
       }
     }
   }
 
   return [...found.entries()]
-    .map(([coverageDate, amountCents]) => ({ coverageDate, amountCents }))
+    .map(([coverageDate, held]) => ({ coverageDate, ...held }))
     .sort((left, right) => (left.coverageDate < right.coverageDate ? -1 : 1));
 }
 
-async function accountFor(
-  name: string,
-  opening: { cents: number; date: string } | null,
-): Promise<string> {
+/**
+ * The account by that name, created if the budget has not seen it before.
+ *
+ * Created with no opening figure. Its technical starting balance is written by
+ * `ayqReapplyAnchor` from this account's own earliest statement opening
+ * (PF-006 F3) — the one path for it, so nothing can hand a new account an
+ * opening balance read from another account's statements.
+ */
+async function accountFor(name: string): Promise<{ id: string; created: boolean }> {
   const existing = (await api.getAccounts()).find(
     account => account.name === name,
   );
-  if (existing) return existing.id;
-  // Handed to Actual at creation, which is where it belongs: Actual writes it
-  // as the account's starting balance rather than as a transaction AYQ would
-  // then have to explain.
-  return api.createAccount({ name, offbudget: false }, opening?.cents ?? 0);
+  if (existing) return { id: existing.id, created: false };
+  return { id: await api.createAccount({ name, offbudget: false }, 0), created: true };
 }
 
 function bankCode(entry: AyqBankEntry): string | null {
@@ -269,13 +283,9 @@ export async function ayqImportCamt(
     );
   }
 
-  const importId = ayqId('import');
   const store = ayqReadStore(dataDir);
-
-  const seen = new Set<string>();
-  const transactions = [];
-  const provenance: Record<string, AyqProvenance> = {};
-  let skipped = 0;
+  const countBefore = await ayqTransactionCount();
+  const createdAt = new Date().toISOString();
 
   // Line 1 of the counterparty precedence, applied where a name is first
   // decided: the automatic resolver says what it makes of the statement, and an
@@ -285,70 +295,108 @@ export async function ayqImportCamt(
   // future import of the same variant lands on the same counterparty as the
   // rows already in the budget, which are aliased when they are read.
   const aliases = ayqAliasMap(store);
+  const provenance: Record<string, AyqProvenance> = {};
+  const profiles: Record<string, AyqAccountProfile> = {};
 
-  for (const entry of records) {
-    const resolved = ayqResolveCounterparty(entry);
-    const alias = resolved.key === null ? undefined : aliases.get(resolved.key);
-    const counterparty =
-      alias === undefined
-        ? resolved
-        : {
-            ...resolved,
-            name: alias.counterpartyName,
-            key: alias.counterpartyKey,
-            resolvedBy: 'alias' as const,
-          };
+  type AyqGroupImport = {
+    name: string;
+    entries: AyqBankEntry[];
+    importId: string;
+    accountId: string;
+    created: boolean;
+    prepared: number;
+    skipped: number;
+    imported: number;
+    errors: number;
+  };
+  const done: AyqGroupImport[] = [];
 
-    const transaction = ayqToActualTransaction(entry, counterparty);
-    if (transaction === null) {
-      skipped += 1;
-      continue;
+  // PF-006 F1: every statement goes into the account its own IBAN names. A ZIP
+  // of several accounts' statements is several imports into several accounts,
+  // each with its own record, its own evidence and its own anchors — nothing
+  // one account's statements say is ever written against another.
+  for (const { name, entries } of ayqGroupByAccount(records)) {
+    const importId = ayqId('import');
+    const seen = new Set<string>();
+    const transactions = [];
+    let skipped = 0;
+
+    for (const entry of entries) {
+      const resolved = ayqResolveCounterparty(entry);
+      const alias = resolved.key === null ? undefined : aliases.get(resolved.key);
+      const counterparty =
+        alias === undefined
+          ? resolved
+          : {
+              ...resolved,
+              name: alias.counterpartyName,
+              key: alias.counterpartyKey,
+              resolvedBy: 'alias' as const,
+            };
+
+      const transaction = ayqToActualTransaction(entry, counterparty);
+      if (transaction === null) {
+        skipped += 1;
+        continue;
+      }
+
+      const key = transaction.imported_id;
+      if (key !== undefined) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        // What the automatic resolver decided, and only that. The alias above
+        // changed which counterparty the transaction is filed under; it did not
+        // change what the bank sent or what AYQ made of it unaided, and this
+        // record is the evidence that lets the decision be read back or undone.
+        provenance[key] = {
+          importId,
+          counterpartyKey: resolved.key,
+          counterpartyName: resolved.name,
+          resolvedBy: resolved.resolvedBy,
+          kind: resolved.kind,
+          counterpartyIban: resolved.iban,
+          intermediary: resolved.intermediary,
+          mandateId: resolved.mandateId,
+          endToEndId: entry.references.endToEndId,
+          bankTransactionCode: bankCode(entry),
+          valueDate: entry.valueDate.date,
+          description: transaction.imported_payee ?? null,
+          file: entry.statement.file,
+        };
+      }
+
+      transactions.push(transaction);
     }
 
-    const key = transaction.imported_id;
-    if (key !== undefined) {
-      if (seen.has(key)) continue;
-      seen.add(key);
+    const { id: accountId, created } = await accountFor(name);
+    // CL_001 D3: the kind is not guessed from the file. A new account starts
+    // with the question waiting, and the owner is asked once.
+    if (created) profiles[accountId] = ayqNewAccountProfile(statedCurrency(entries), createdAt);
 
-      // What the automatic resolver decided, and only that. The alias above
-      // changed which counterparty the transaction is filed under; it did not
-      // change what the bank sent or what AYQ made of it unaided, and this
-      // record is the evidence that lets the decision be read back or undone.
-      provenance[key] = {
-        importId,
-        counterpartyKey: resolved.key,
-        counterpartyName: resolved.name,
-        resolvedBy: resolved.resolvedBy,
-        kind: resolved.kind,
-        counterpartyIban: resolved.iban,
-        intermediary: resolved.intermediary,
-        mandateId: resolved.mandateId,
-        endToEndId: entry.references.endToEndId,
-        bankTransactionCode: bankCode(entry),
-        valueDate: entry.valueDate.date,
-        description: transaction.imported_payee ?? null,
-        file: entry.statement.file,
-      };
-    }
-
-    transactions.push(transaction);
+    const result = await api.importTransactions(
+      accountId,
+      ayqWithAccount(transactions, accountId),
+    );
+    done.push({
+      name,
+      entries,
+      importId,
+      accountId,
+      created,
+      prepared: transactions.length,
+      skipped,
+      imported: result.added?.length ?? 0,
+      errors: result.errors?.length ?? 0,
+    });
   }
-
-  const accountName = ayqMaskAccount(records);
-  const opening = earliestOpening(records);
-  const accountId = await accountFor(accountName, opening);
-  const countBefore = await ayqTransactionCount();
-
-  const result = await api.importTransactions(
-    accountId,
-    ayqWithAccount(transactions, accountId),
-  );
-  const imported = result.added?.length ?? 0;
-  const errors = result.errors?.length ?? 0;
 
   // Written before the rules run: a rule reads the provenance to find out which
   // counterparty a transaction belongs to.
   store.provenance = { ...store.provenance, ...provenance };
+  for (const [accountId, profile] of Object.entries(profiles)) {
+    store.accountProfiles[accountId] ??= profile;
+  }
   ayqWriteStore(dataDir, store);
 
   const { categorised } = await ayqApplyRules(dataDir);
@@ -372,101 +420,154 @@ export async function ayqImportCamt(
     new Date().toISOString(),
   );
 
-  const record: AyqImportRecord = {
-    id: importId,
-    at: new Date().toISOString(),
-    file: paths.length === 1 ? basename(paths[0]) : `${paths.length} files`,
+  const at = new Date().toISOString();
+  const file = paths.length === 1 ? basename(paths[0]) : `${paths.length} files`;
+  const accountRecords: AyqImportRecord[] = [];
+  const outcomes: AyqImportAccountOutcome[] = [];
+
+  for (const [index, group] of done.entries()) {
+    const first = index === 0;
+    const { accountId, importId, entries } = group;
+    // The whole import's own facts — the files it could not use, and what the
+    // rules, the filing and the matching did over the budget — are told once,
+    // on the first account's record, so the history does not count them twice.
+    const record: AyqImportRecord = {
+      id: importId,
+      at,
+      file,
+      files: files.length,
+      records: entries.length,
+      prepared: group.prepared,
+      imported: group.imported,
+      // Everything the file held that did not become a new transaction: rows the
+      // budget already had, and repeats within the file itself. Both are the same
+      // thing to the person importing.
+      duplicates: entries.length - group.skipped - group.imported,
+      skipped: group.skipped,
+      failed: (first ? problems.length : 0) + group.errors,
+      problems: first ? problems : [],
+      accountId,
+      accountName: group.name,
+      categorised: first ? categorised : 0,
+      filed: first ? filed : 0,
+      matched: first ? matched.applied : 0,
+      matchesWaiting: first ? matched.proposals.length : 0,
+      // Filled in below, once the anchors this file carried have been written and
+      // the one that stands is known.
+      balanceWanted: false,
+      anchoredAt: null,
+      anchorEstablished: false,
+    };
+
+    const after = ayqReadStore(dataDir);
+    after.imports.push(record);
+
+    // What this file proves about the account's movements (§6.2). Every interval
+    // is kept, not just the furthest: an older statement imported to fill a gap
+    // is exactly the evidence that closes the gap, and a store that keeps only
+    // the boundary throws it away. Nothing here moves any boundary backwards
+    // either — the union does that arithmetic where it belongs.
+    const readAt = new Date().toISOString();
+    after.evidence.push(
+      ...coverageEvidence(entries, accountId, importId, readAt, group.name),
+    );
+
+    // And the balances the bank itself stated, as anchors (§4.4). Which of them
+    // stands is `ayqActiveAnchor`'s question, not this one's: an older statement
+    // imported later adds an older anchor and does not displace a newer one.
+    const anchoredBefore = ayqActiveAnchor(after, accountId);
+    for (const stated of bankAnchors(entries)) {
+      const already = after.anchors.some(
+        one =>
+          one.accountId === accountId &&
+          one.source === 'bank' &&
+          one.coverageDate === stated.coverageDate &&
+          one.amountCents === stated.amountCents,
+      );
+      // Importing the same statement twice must not write the same anchor twice:
+      // duplicates are to have zero effect (§4.3), and an anchor history full of
+      // identical rows is provenance nobody can read.
+      if (already) continue;
+      after.anchors.push({
+        id: ayqId('anchor'),
+        accountId,
+        amountCents: stated.amountCents,
+        coverageDate: stated.coverageDate,
+        importId,
+        source: 'bank',
+        createdAt: readAt,
+        kind: stated.kind,
+      });
+    }
+    ayqWriteStore(dataDir, after);
+
+    // §4.3 and PF-006 F3: the technical starting balance is this account's own
+    // earliest statement opening, and it is written again after every import —
+    // an older statement moves it back, a newer one leaves it and adds its
+    // movements. None of it runs when the account has no anchor, because then
+    // there is nothing to build the row on.
+    await ayqReapplyAnchor(dataDir, accountId);
+
+    // Whether the import left the owner anything to do about the balance (§4.4):
+    // no reliable bank figure, and no anchor from before either.
+    const settled = ayqReadStore(dataDir);
+    const anchorAfter = ayqActiveAnchor(settled, accountId);
+    record.balanceWanted = anchorAfter === null;
+    record.anchoredAt = anchorAfter?.coverageDate ?? null;
+    if (anchoredBefore === null && anchorAfter !== null) {
+      record.anchorEstablished = true;
+    }
+    const position = settled.imports.findIndex(one => one.id === importId);
+    if (position >= 0) {
+      settled.imports[position] = record;
+      ayqWriteStore(dataDir, settled);
+    }
+
+    accountRecords.push(record);
+    outcomes.push({
+      importId,
+      accountId,
+      accountName: group.name,
+      created: group.created,
+      records: record.records,
+      imported: record.imported,
+      duplicates: record.duplicates,
+      balanceWanted: record.balanceWanted,
+      anchoredAt: record.anchoredAt,
+      anchorEstablished: record.anchorEstablished,
+      kindWanted: ayqKindWanted(settled, accountId),
+    });
+  }
+
+  const total = (pick: (one: AyqImportRecord) => number): number =>
+    accountRecords.reduce((sum, one) => sum + pick(one), 0);
+  const wanting = accountRecords.find(one => one.balanceWanted) ?? accountRecords[0];
+  const imported = total(one => one.imported);
+
+  return {
+    // The import as a whole, for the line the screen says after it. Each
+    // account's own record is in the history, and in `accounts` below.
+    id: accountRecords[0].id,
+    at,
+    file,
     files: files.length,
-    records: records.length,
-    prepared: transactions.length,
+    records: total(one => one.records),
+    prepared: total(one => one.prepared),
     imported,
-    // Everything the file held that did not become a new transaction: rows the
-    // budget already had, and repeats within the file itself. Both are the same
-    // thing to the person importing.
-    duplicates: records.length - skipped - imported,
-    skipped,
-    failed: problems.length + errors,
+    duplicates: total(one => one.duplicates),
+    skipped: total(one => one.skipped),
+    failed: total(one => one.failed),
     problems,
-    accountId,
-    accountName,
+    accountId: accountRecords[0].accountId,
+    accountName: accountRecords.map(one => one.accountName).join(', '),
     categorised,
     filed,
     matched: matched.applied,
     matchesWaiting: matched.proposals.length,
-    // Filled in below, once the anchors this file carried have been written and
-    // the one that stands is known.
-    balanceWanted: false,
-    anchoredAt: null,
-    anchorEstablished: false,
-  };
-
-  const after = ayqReadStore(dataDir);
-  after.imports.push(record);
-
-  // What this file proves about the account's movements (§6.2). Every interval
-  // is kept, not just the furthest: an older statement imported to fill a gap
-  // is exactly the evidence that closes the gap, and a store that keeps only
-  // the boundary throws it away. Nothing here moves any boundary backwards
-  // either — the union does that arithmetic where it belongs.
-  const readAt = new Date().toISOString();
-  after.evidence.push(
-    ...coverageEvidence(records, accountId, importId, readAt),
-  );
-
-  // And the balances the bank itself stated, as anchors (§4.4). Which of them
-  // stands is `ayqActiveAnchor`'s question, not this one's: an older statement
-  // imported later adds an older anchor and does not displace a newer one.
-  const anchoredBefore = ayqActiveAnchor(after, accountId);
-  for (const stated of bankAnchors(records)) {
-    const already = after.anchors.some(
-      one =>
-        one.accountId === accountId &&
-        one.source === 'bank' &&
-        one.coverageDate === stated.coverageDate &&
-        one.amountCents === stated.amountCents,
-    );
-    // Importing the same statement twice must not write the same anchor twice:
-    // duplicates are to have zero effect (§4.3), and an anchor history full of
-    // identical rows is provenance nobody can read.
-    if (already) continue;
-    after.anchors.push({
-      id: ayqId('anchor'),
-      accountId,
-      amountCents: stated.amountCents,
-      coverageDate: stated.coverageDate,
-      importId,
-      source: 'bank',
-      createdAt: readAt,
-    });
-  }
-  ayqWriteStore(dataDir, after);
-
-  // §4.3: whatever the active anchor now is, Actual's balance has to agree
-  // with it at its own coverage date. When every new movement falls after that
-  // date the arithmetic lands on the technical figure that is already there and
-  // nothing is written; when one falls on or before it, the technical starting
-  // balance is recomputed so the anchor stays true. One code path, so neither
-  // case can be forgotten — and none of it runs at all when the account has no
-  // anchor, because there is then nothing to keep true.
-  await ayqReapplyAnchor(dataDir, accountId);
-
-  // Whether the import left the owner anything to do about the balance (§4.4):
-  // no reliable bank figure, and no anchor from before either.
-  const anchorAfter = ayqActiveAnchor(ayqReadStore(dataDir), accountId);
-  record.balanceWanted = anchorAfter === null;
-  record.anchoredAt = anchorAfter?.coverageDate ?? null;
-  if (anchoredBefore === null && anchorAfter !== null) {
-    record.anchorEstablished = true;
-  }
-  const settled = ayqReadStore(dataDir);
-  const at = settled.imports.findIndex(one => one.id === importId);
-  if (at >= 0) {
-    settled.imports[at] = record;
-    ayqWriteStore(dataDir, settled);
-  }
-
-  return {
-    ...record,
+    balanceWanted: accountRecords.some(one => one.balanceWanted),
+    anchoredAt: wanting.anchoredAt,
+    anchorEstablished: accountRecords.some(one => one.anchorEstablished),
+    accounts: outcomes,
     budgetId: budget.budgetId,
     budgetName: budget.budgetName,
     // The import lands after `importTransactions` resolves, so the count is

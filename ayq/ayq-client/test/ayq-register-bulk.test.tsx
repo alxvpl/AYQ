@@ -35,6 +35,9 @@ const ACCOUNTS: AyqAccountSummary[] = [
     balanceCents: 128450,
     transactionCount: 3,
     countsTowardFunds: true,
+    kind: null,
+    kindWanted: false,
+    mixedStatements: false,
   },
 ];
 
@@ -66,6 +69,7 @@ const row = (id: string, over: Partial<AyqLedgerRow> = {}): AyqLedgerRow => ({
   categoryId: null,
   categorySource: null,
   cleared: true,
+  transferWith: null,
   ...over,
 });
 
