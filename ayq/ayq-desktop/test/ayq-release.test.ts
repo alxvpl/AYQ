@@ -22,13 +22,16 @@ const manifest = JSON.parse(
 
 const base = { productName: 'AYQ', version: '0.4.1', ayq: { build: '013' } };
 
-test('the manifest is the release: AYQ Personal Finances 0.4.1 (Build 014)', () => {
+// PF-006: 0.4.2 is a PATCH, and the build is 015 because an unauthorised
+// AYQ-0.4.1-b014.exe exists (06 r006 §3.14): 014 is treated as consumed and is
+// not reused for different bytes (§3.4, §3.6).
+test('the manifest is the release: AYQ Personal Finances 0.4.2 (Build 015)', () => {
   assert.deepEqual(ayqRelease(), {
     product: 'AYQ Personal Finances',
-    version: '0.4.1',
-    build: '014',
-    identification: 'AYQ Personal Finances 0.4.1 (Build 014)',
-    fileName: 'AYQ-0.4.1-b014.exe',
+    version: '0.4.2',
+    build: '015',
+    identification: 'AYQ Personal Finances 0.4.2 (Build 015)',
+    fileName: 'AYQ-0.4.2-b015.exe',
   });
 });
 
